@@ -34,7 +34,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.charset.StandardCharsets
-import java.util.zip.ZipFile
 
 private const val TAG = "ReadScreen"
 
@@ -362,6 +361,16 @@ fun ReadScreen(
 
             if (zipFile.exists() && zipFile.length() > 0) {
                 addLog(LogLevel.INFO, LogCategory.SYSTEM, "✅ ZIP 下载完成: ${zipFile.length()} bytes")
+                // 检查文件头是否为有效 ZIP
+                val fileInputStream = java.io.FileInputStream(zipFile)
+                val magic = ByteArray(4)
+                fileInputStream.read(magic)
+                fileInputStream.close()
+                val magicHex = magic.joinToString("") { "%02X".format(it) }
+                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📋 文件头 Magic: $magicHex (PK=504B0304)")
+                if (magicHex != "504B0304" && magicHex != "504B0506" && magicHex != "504B0708") {
+                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "⚠️ 文件不是有效 ZIP 格式，可能是错误页面或重定向")
+                }
             } else {
                 addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 文件下载失败或为空")
                 throw Exception("文件下载失败或为空")
@@ -371,26 +380,41 @@ fun ReadScreen(
             if (password == null) {
                 throw Exception("无法生成解压密码")
             }
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔑 解压密码生成成功")
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔑 解压密码生成成功: ${password.substring(0, 8)}...${password.substring(56)}")
+            addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📋 密码详情: 第一次MD5=${password.substring(0, 32)}, 第二次MD5=${password.substring(32)}")
 
             val extractDir = File(cacheDir, cacheKey)
             extractDir.mkdirs()
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📂 开始解压到: ${extractDir.absolutePath}")
 
+            var extractedCount = 0
             try {
-                java.util.zip.ZipFile(zipFile, StandardCharsets.UTF_8).use { zip ->
-                    zip.entries().asSequence().forEach { entry ->
-                        val destPath = File(extractDir, entry.name)
-                        destPath.parentFile?.mkdirs()
-                        if (!entry.isDirectory) {
-                            zip.getInputStream(entry).use { input ->
-                                destPath.outputStream().use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                        }
-                    }
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔓 使用密码解压 ZIP...")
+                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📋 ZIP文件: ${zipFile.absolutePath}, 大小: ${zipFile.length()} bytes")
+                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📋 密码长度: ${password.length}, 前8字符: ${password.substring(0, 8)}")
+
+                val zip4jFile = net.lingala.zip4j.ZipFile(zipFile)
+                zip4jFile.setPassword(password.toCharArray())
+
+                val entries = zip4jFile.fileHeaders
+                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📦 ZIP 包含 ${entries.size} 个条目")
+                for (header in entries) {
+                    addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "  📄 条目: ${header.fileName} [加密=${header.isEncrypted}, 压缩方式=${header.compressionMethod}]")
                 }
+
+                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📂 开始解压到: ${extractDir.absolutePath}")
+                zip4jFile.extractAll(extractDir.absolutePath)
+                extractedCount = entries.size
+
+                // 列出解压后的文件结构以便调试
+                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📂 解压后目录内容:")
+                extractDir.walkTopDown().forEach { file ->
+                    addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "  ${if (file.isDirectory) "[DIR]" else "[FILE]"} ${file.absolutePath}")
+                }
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "✅ 解压完成: $extractedCount 个条目")
             } catch (e: Exception) {
+                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 解压异常: ${e.message}")
+                e.printStackTrace()
                 throw Exception("解压失败，请确认 ZIP 格式支持: ${e.message}")
             }
             addLog(LogLevel.INFO, LogCategory.SYSTEM, "📂 解压完成: ${extractDir.absolutePath}")

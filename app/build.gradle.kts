@@ -52,6 +52,9 @@ dependencies {
     // Shizuku API
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
+
+    // ZIP 解压（支持密码加密）
+    implementation(libs.zip4j)
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

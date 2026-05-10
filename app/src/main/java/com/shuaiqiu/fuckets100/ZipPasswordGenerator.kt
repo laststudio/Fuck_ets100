@@ -97,14 +97,15 @@ object ZipPasswordGenerator {
         
         // 第一次 MD5
         val firstMd5 = md5Hex(seed)
-        Log.d(TAG, "第一次 MD5: ${firstMd5}")
-        
-        // 第二次 MD5
-        val secondMd5 = md5Hex(firstMd5.toByteArray(Charsets.UTF_8))
-        Log.d(TAG, "第二次 MD5: ${secondMd5}")
-        
+        Log.d(TAG, "第一次 MD5: $firstMd5")
+
+        // 第二次 MD5 — 必须先转大写再计算，与 Python 实现一致喵~
+        val firstMd5Upper = firstMd5.uppercase()
+        val secondMd5 = md5Hex(firstMd5Upper.toByteArray(Charsets.US_ASCII))
+        Log.d(TAG, "第二次 MD5: $secondMd5")
+
         // 拼接最终密码 (64字符)
-        return firstMd5.uppercase() + secondMd5.uppercase()
+        return firstMd5Upper + secondMd5.uppercase()
     }
 
     /**

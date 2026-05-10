@@ -419,9 +419,8 @@ fun ReadScreen(
                     continue
                 }
 
-                // 4. 扫描解压目录（解压出来的文件本身就是 resource 目录的内容）
-                val uuidFolders = extractDir.listFiles()?.filter { it.isDirectory } ?: emptyList()
-                addLog(LogLevel.INFO, LogCategory.SYSTEM, "📂 解压目录: ${extractDir.name}, 找到 ${uuidFolders.size} 个子文件夹")
+                // 4. 直接从解压目录读取 content.json（不需要找子文件夹）
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "📂 解压目录: ${extractDir.name}")
 
                 // 列出解压目录中的所有文件/文件夹（帮助调试）
                 extractDir.listFiles()?.forEach { item ->
@@ -429,23 +428,19 @@ fun ReadScreen(
                     addLog(LogLevel.DEBUG, LogCategory.FILE, "  $type ${item.name}")
                 }
 
-                for (uuidFolder in uuidFolders) {
-                    val contentJsonFile = File(uuidFolder, "content.json")
-                    if (!contentJsonFile.exists()) {
-                        addLog(LogLevel.WARN, LogCategory.FILE, "⚠️ 跳过 ${uuidFolder.name}: 无 content.json")
-                        continue
-                    }
-
+                val contentJsonFile = File(extractDir, "content.json")
+                if (!contentJsonFile.exists()) {
+                    addLog(LogLevel.WARN, LogCategory.FILE, "⚠️ 解压目录中无 content.json，跳过")
+                } else {
                     val contentJson = contentJsonFile.readText()
                     try {
                         val json = org.json.JSONObject(contentJson)
                         val structureType = json.optString("structure_type", "")
 
-                        addLog(LogLevel.INFO, LogCategory.SECTION, "📄 解析: ${uuidFolder.name}")
+                        addLog(LogLevel.INFO, LogCategory.SECTION, "📄 解析 content.json")
                         addLog(LogLevel.INFO, LogCategory.SECTION, "   ├─ structure_type: $structureType")
                         addLog(LogLevel.INFO, LogCategory.SECTION, "   ├─ group_name: ${content.groupName}")
 
-                        // 用 ETS100AnswerReader 的解析方法喵~
                         val (questions, originalContent) = ETS100AnswerReader.parseContentJson(
                             json = json,
                             startIndex = questionIndex,

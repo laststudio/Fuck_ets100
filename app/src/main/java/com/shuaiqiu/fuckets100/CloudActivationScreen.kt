@@ -103,9 +103,52 @@ fun CloudActivationScreen(
                     Log.e("CloudActivationScreen", "✗ 登录失败！")
                     Log.e("CloudActivationScreen", "错误类型: ${e::class.java.simpleName}")
                     Log.e("CloudActivationScreen", "错误信息: ${e.message}")
-                    e.stackTrace.forEach { Log.e("CloudActivationScreen", "  at ${it}") }
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "登录失败: ${e.message}", Toast.LENGTH_LONG).show()
+                    
+                    when (e) {
+                        is ETS100ApiClient.DeviceBindRequiredException -> {
+                            // 喵~ 检测到设备需要绑定，开始自动绑定喵！
+                            Log.i("CloudActivationScreen", "检测到设备需要绑定，开始自动绑定...")
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "设备需要绑定，正在自动绑定...", Toast.LENGTH_SHORT).show()
+                            }
+                            
+                            val bindResult = ETS100ApiClient.bindDevice(e.phone, e.password, e.deviceCode)
+                            
+                            bindResult.onSuccess { bindResponse ->
+                                Log.i("CloudActivationScreen", "✓ 设备绑定成功！")
+                                Log.d("CloudActivationScreen", "绑定 Token: ${bindResponse.token}")
+                                
+                                // 绑定成功后，获取父账户 ID
+                                val ecardResult = ETS100ApiClient.getEcardList(bindResponse.token)
+                                
+                                ecardResult.onSuccess { parentAccountId ->
+                                    Log.i("CloudActivationScreen", "✓ 获取父账户ID成功: $parentAccountId")
+                                    
+                                    // 保存登录信息
+                                    ETS100AuthManager.saveLoginInfo(context, e.phone, bindResponse.token, parentAccountId)
+                                    
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "设备绑定并登录成功！", Toast.LENGTH_SHORT).show()
+                                        onLoginSuccess()
+                                    }
+                                }.onFailure { ecardError ->
+                                    Log.e("CloudActivationScreen", "✗ 获取父账户ID失败: ${ecardError.message}")
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "绑定成功但获取账户信息失败: ${ecardError.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }.onFailure { bindError ->
+                                Log.e("CloudActivationScreen", "✗ 设备绑定失败: ${bindError.message}")
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "设备绑定失败: ${bindError.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                        else -> {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "登录失败: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
                     }
                 }
                 

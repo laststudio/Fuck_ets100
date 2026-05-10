@@ -104,17 +104,6 @@ enum class ActivationMode(
         false
     ),
     
-    // SAF 模式 - 存储访问框架
-    SAF(
-        "SAF 已激活",
-        "使用 Android 存储访问框架 (SAF) 授权访问应用数据目录",
-        "SYS_READY",
-        "SAF",
-        Icons.Default.FolderShared,
-        Color(0xFF60A5FA),
-        false
-    ),
-    
     // 云端模式 - 在线获取作业和答案
     CLOUD(
         "云端模式",
@@ -141,7 +130,6 @@ sealed class Screen(val route: String, val icon: ImageVector, val label: String)
     object Debug : Screen("debug", Icons.Default.BugReport, "调试")
     object Share : Screen("share", Icons.Default.Share, "分享")
     object CloudActivation : Screen("cloud_activation", Icons.Default.Cloud, "云端激活")
-    object CloudHome : Screen("cloud_home", Icons.Default.CloudQueue, "云端首页")
 }
 
 // ============================================================================
@@ -224,51 +212,6 @@ fun FeAppMain() {
         )
     }
     
-    // SAF 文件夹选择触发器
-    var safFolderSelectionTrigger by remember { mutableStateOf(0) }
-    
-    // SAF 文件夹选择 Activity Result Launcher
-    val safFolderPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        if (uri != null) {
-            // 保存选择的目录
-            SAFManager.saveDirectory(uri, null)
-            
-            // 检查目录是否正确
-            if (SAFManager.isCorrectDirectory()) {
-                Toast.makeText(context, "目录验证成功~", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, "注意：选择的目录不正确，请重新选择 Android/data 目录", Toast.LENGTH_LONG).show()
-            }
-        } else {
-            // 用户取消了选择
-            Toast.makeText(context, "未选择任何目录", Toast.LENGTH_SHORT).show()
-        }
-    }
-    
-    // 监听 SAF 文件夹选择触发器变化
-    LaunchedEffect(safFolderSelectionTrigger) {
-        if (safFolderSelectionTrigger > 0) {
-            // 获取初始 URI 并启动选择器
-            val initialUri = SAFManager.getInitialUri()
-            safFolderPickerLauncher.launch(initialUri)
-            // 清除初始 URI
-            SAFManager.clearInitialUri()
-        }
-    }
-    
-    // 设置 SAF 文件夹选择回调
-    DisposableEffect(Unit) {
-        SAFManager.setOnFolderSelectedCallback {
-            // 触发文件夹选择
-            safFolderSelectionTrigger++
-        }
-        onDispose {
-            SAFManager.setOnFolderSelectedCallback(null)
-        }
-    }
-
     // 自动检测 Shizuku 状态并更新激活模式
     LaunchedEffect(shizukuState.isRunning, shizukuState.isSui) {
         if (!SettingsManager.hasUserSelectedMode()) {
@@ -279,7 +222,13 @@ fun FeAppMain() {
     FeThemeWrapper(theme = currentTheme) {
         Scaffold(
             bottomBar = {
-                if (currentRoute in listOf("home", "read", "settings")) {
+                if (currentRoute in listOf(
+                Screen.Home.route,
+                Screen.Read.route,
+                Screen.Settings.route,
+                Screen.Activation.route,
+                Screen.CloudActivation.route
+            )) {
                     NavigationBar(
                         containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
                         tonalElevation = 8.dp
@@ -290,9 +239,7 @@ fun FeAppMain() {
                                 selected = currentRoute == screen.route,
                                 onClick = {
                                     navController.navigate(screen.route) {
-                                        popUpTo(navController.graph.startDestinationId) { saveState = true }
                                         launchSingleTop = true
-                                        restoreState = true
                                     }
                                 },
                                 colors = NavigationBarItemDefaults.colors(
@@ -390,25 +337,10 @@ fun FeAppMain() {
                     CloudActivationScreen(
                         navController = navController,
                         onLoginSuccess = {
-                            navController.navigate(Screen.CloudHome.route) {
-                                popUpTo(Screen.CloudActivation.route) { inclusive = true }
-                            }
-                        }
-                    )
-                }
-                
-                // 云端首页
-                composable(
-                    route = Screen.CloudHome.route,
-                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) },
-                    exitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) }
-                ) {
-                    CloudHomeScreen(
-                        navController = navController,
-                        onShowAnswer = { paper ->
-                            // 显示答案（复用 ReadScreen）
-                            FeApplication.sharePaper = paper
-                            navController.navigate(Screen.Read.route)
+                            // 宝贝登录成功后设置 CLOUD 模式并返回上一页（ActivationScreen）喵~
+                            currentMode = ActivationMode.CLOUD
+                            SettingsManager.saveActivationMode(ActivationMode.CLOUD)
+                            navController.popBackStack()
                         }
                     )
                 }

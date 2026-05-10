@@ -77,7 +77,6 @@ fun HomeScreen(mode: ActivationMode, shizukuState: ShizukuState, navController: 
     val isTrulyActivated = when {
         mode == ActivationMode.SHIZUKU -> shizukuState.isRunning && shizukuState.permissionGranted && hasAllBasicPermissions
         mode == ActivationMode.ROOT -> hasAllBasicPermissions && RootManager.isRootAvailable()
-        mode == ActivationMode.SAF -> hasAllBasicPermissions && SAFManager.isConfigured() && SAFManager.isCorrectDirectory()
         mode == ActivationMode.DIRECT_READ -> hasAllBasicPermissions && ZWCHelper.isDirectReadAvailable()
         mode != ActivationMode.DEFAULT -> hasAllBasicPermissions
         else -> false
@@ -173,8 +172,6 @@ fun StatusCard(
         mode == ActivationMode.SHIZUKU && shizukuState.isRunning && !shizukuState.permissionGranted -> "Shizuku 等待授权"
         mode == ActivationMode.SHIZUKU && !shizukuState.isRunning -> "Shizuku 未运行"
         mode == ActivationMode.ROOT && !RootManager.isRootAvailable() -> "Root 未获取"
-        mode == ActivationMode.SAF && !SAFManager.isConfigured() -> "SAF 等待配置"
-        mode == ActivationMode.SAF && !SAFManager.isCorrectDirectory() -> "SAF 目录错误"
         else -> mode.title
     }
 
@@ -263,17 +260,6 @@ fun StatusCard(
                                 }
                                 "${shizukuState.getRuntimeTypeName()} v${shizukuState.version} | UID: $uidStr"
                             }
-                        }
-                        Text(
-                            text = subText, 
-                            style = MaterialTheme.typography.labelSmall, 
-                            color = animatedColor.copy(alpha = 0.6f)
-                        )
-                    } else if (mode == ActivationMode.SAF) {
-                        val subText = when {
-                            !SAFManager.isConfigured() -> "请先选择授权目录"
-                            !SAFManager.isCorrectDirectory() -> "选择的目录不正确，请重新选择"
-                            else -> SAFManager.getSavedDirectoryName() ?: "已授权目录"
                         }
                         Text(
                             text = subText, 

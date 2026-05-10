@@ -208,11 +208,6 @@ fun ActivationSettingsScreen(
                                     ActivationMode.ROOT -> {
                                         FeRootActivationPanel(context)
                                     }
-                                    ActivationMode.SAF -> {
-                                        FeSafActivationPanel(context, onOpenFolderPicker = {
-                                            SAFManager.requestFolderSelection()
-                                        })
-                                    }
                                     ActivationMode.DIRECT_READ -> {
                                         FeDirectReadActivationPanel(hasFilesPerm && hasOverlayPerm && hasAppListPerm)
                                     }
@@ -248,8 +243,6 @@ fun FeModeStatusCard(
     context: android.content.Context
 ) {
     var isRootAvailable by remember { mutableStateOf(RootManager.isRootAvailable()) }
-    var isSafConfigured by remember { mutableStateOf(SAFManager.isConfigured()) }
-    var isSafCorrectDirectory by remember { mutableStateOf(SAFManager.isCorrectDirectory()) }
     var isDirectReadAvailable by remember { mutableStateOf(ZWCHelper.isDirectReadAvailable()) }
     
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -257,8 +250,6 @@ fun FeModeStatusCard(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 isRootAvailable = RootManager.isRootAvailable()
-                isSafConfigured = SAFManager.isConfigured()
-                isSafCorrectDirectory = SAFManager.isCorrectDirectory()
                 isDirectReadAvailable = ZWCHelper.isDirectReadAvailable()
             }
         }
@@ -273,7 +264,6 @@ fun FeModeStatusCard(
         ActivationMode.SHIZUKU -> if (shizukuState.isRunning && shizukuState.permissionGranted) Color(0xFF4ADE80) else errorRedColor
         ActivationMode.ROOT -> if (hasAllBasicPermissions && isRootAvailable) Color(0xFF4ADE80) else errorRedColor
         ActivationMode.DIRECT_READ -> if (hasAllBasicPermissions && isDirectReadAvailable) Color(0xFF4ADE80) else errorRedColor
-        ActivationMode.SAF -> if (hasAllBasicPermissions && isSafConfigured && isSafCorrectDirectory) Color(0xFF4ADE80) else errorRedColor
         ActivationMode.CLOUD -> {
             val isCloudLoggedIn = ETS100AuthManager.isLoggedIn(context)
             if (isCloudLoggedIn) Color(0xFF4ADE80) else MaterialTheme.colorScheme.outline
@@ -314,16 +304,6 @@ fun FeModeStatusCard(
         ActivationMode.DIRECT_READ -> {
             val title = "漏洞直读模式"
             val desc = if (hasAllBasicPermissions) "通过零宽字符漏洞绕过限制" else "需要全文件访问权限"
-            Triple(title, desc, null)
-        }
-        ActivationMode.SAF -> {
-            val title = "SAF 模式"
-            val desc = when {
-                !hasAllBasicPermissions -> "需要基础系统权限"
-                !isSafConfigured -> "尚未选择授权目录"
-                !isSafCorrectDirectory -> "选择的目录不正确"
-                else -> "一切准备就绪"
-            }
             Triple(title, desc, null)
         }
         ActivationMode.CLOUD -> {
@@ -770,141 +750,6 @@ fun FeRootActivationPanel(context: android.content.Context) {
     }
 }
 
-@Composable
-fun FeSafActivationPanel(
-    context: android.content.Context,
-    onOpenFolderPicker: () -> Unit
-) {
-    val safBlue = Color(0xFF60A5FA)
-    val successColor = Color(0xFF4ADE80)
-    
-    var isSafConfigured by remember { mutableStateOf(SAFManager.isConfigured()) }
-    var directoryName by remember { mutableStateOf(SAFManager.getSavedDirectoryName()) }
-    
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                isSafConfigured = SAFManager.isConfigured()
-                directoryName = SAFManager.getSavedDirectoryName()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    Column {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = when {
-                    isSafConfigured -> "存储访问框架已就绪"
-                    else -> "存储访问框架 - 选择目录授权"
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isSafConfigured) successColor else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        
-        if (isSafConfigured) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "已授权: ${directoryName ?: "未知"}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-            )
-        }
-        
-        Spacer(Modifier.height(16.dp))
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (isSafConfigured) {
-                OutlinedButton(
-                    onClick = { },
-                    enabled = false,
-                    border = BorderStroke(1.dp, successColor.copy(alpha = 0.5f)),
-                    colors = ButtonDefaults.outlinedButtonColors(disabledContentColor = successColor),
-                    modifier = Modifier.weight(1f).height(40.dp)
-                ) {
-                    Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("目录已就绪", fontWeight = FontWeight.Bold)
-                }
-                
-                OutlinedButton(
-                    onClick = onOpenFolderPicker,
-                    border = BorderStroke(1.dp, safBlue.copy(alpha = 0.5f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = safBlue),
-                    modifier = Modifier.weight(1f).height(40.dp)
-                ) {
-                    Icon(Icons.Default.FolderOff, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("更换目录", fontWeight = FontWeight.Bold)
-                }
-            } else {
-                Button(
-                    onClick = onOpenFolderPicker,
-                    colors = ButtonDefaults.buttonColors(containerColor = safBlue, contentColor = Color.White),
-                    modifier = Modifier.weight(1f).height(40.dp)
-                ) {
-                    Icon(Icons.Default.FolderShared, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("选择文件夹", fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-        
-        if (!isSafConfigured) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "提示：SAF 模式允许您授权访问任意目录，无需 Root 权限。授权后应用可持续访问该目录",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-            )
-            
-            Spacer(Modifier.height(4.dp))
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        safBlue.copy(alpha = 0.1f),
-                        RoundedCornerShape(8.dp)
-                    )
-                    .padding(8.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.FolderOpen,
-                        contentDescription = null,
-                        tint = safBlue,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "目标路径：/storage/emulated/0/Android/data",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = safBlue
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = safBlue,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "注意：可能不支持 Android 14 及以上版本",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = safBlue
-                    )
-                }
-            }
-        }
-    }
-}
-
 /**
  * 云端模式激活面板
  * 喵~ 用于显示登录状态和跳转到登录页面喵！
@@ -972,8 +817,8 @@ fun FeCloudActivationPanel(
                 
                 Button(
                     onClick = {
-                        // 进入云端首页
-                        navController.navigate(Screen.CloudHome.route)
+                        // 宝贝直接跳转到答题页面，云端模式入口喵~
+                        navController.navigate(Screen.Read.route)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = cloudColor, contentColor = Color.White),
                     modifier = Modifier.weight(1f).height(40.dp)

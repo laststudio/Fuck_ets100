@@ -136,6 +136,16 @@ object ETS100AuthManager {
     }
 
     /**
+     * 更新 Token
+     * 宝贝用于 token 刷新后更新本地存储喵~
+     */
+    fun updateToken(context: Context, newToken: String) {
+        val prefs = getPrefs(context)
+        prefs.edit().putString(Keys.TOKEN, newToken).apply()
+        Log.d(TAG, "Token 已更新，新 token 长度: ${newToken.length}")
+    }
+
+    /**
      * 获取父账户 ID
      */
     fun getParentAccountId(context: Context): String? {

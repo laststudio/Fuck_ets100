@@ -68,9 +68,6 @@ class FeApplication : Application() {
         // 初始化设置管理器
         SettingsManager.init(this)
         
-        // 初始化SAF管理器
-        SAFManager.init(this)
-        
         // 初始化资源索引管理器（宝贝加载 resource-*.json 喵~）
         ResourceIndexManager.initialize(this)
         

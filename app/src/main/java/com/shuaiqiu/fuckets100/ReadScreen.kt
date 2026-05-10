@@ -1,6 +1,7 @@
 package com.shuaiqiu.fuckets100
 
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -31,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.nio.charset.StandardCharsets
+import java.util.zip.ZipFile
 
 private const val TAG = "ReadScreen"
 
@@ -96,6 +100,33 @@ private sealed class InitResult {
     data class Error(val message: String) : InitResult()
 }
 
+// ========== 云端模式辅助函数喵~ ==========
+
+/**
+ * 创建云端作业的占位 Paper 对象
+ * 用于在列表中显示"未加载"状态喵~
+ */
+private fun createCloudHomeworkPlaceholder(homework: ETS100ApiClient.HomeworkInfo): ETS100AnswerReader.Paper {
+    return ETS100AnswerReader.Paper(
+        paperId = homework.name.hashCode().toLong(),
+        title = homework.name,
+        dataFileName = "",
+        fileSize = 0L,
+        sections = listOf(
+            ETS100AnswerReader.Section(
+                caption = "云端作业",
+                category = "cloud_homework",
+                typeName = "未加载",
+                questions = emptyList(),
+                originalContent = null
+            )
+        ),
+        downloadTime = 0L,
+        regionLabel = "云端",
+        paperName = homework.name
+    )
+}
+
 /**
  * 阅读界面 - 显示ETS 100答案的阅读界面
  * 支持多种激活模式（Shizuku、Root、SAF等）
@@ -144,6 +175,25 @@ fun ReadScreen(
     
     // 可展开 FAB 相关状态
     var isFabExpanded by remember { mutableStateOf(false) }
+
+    // ========== 云端模式状态喵~ ==========
+    var homeworkList by remember { mutableStateOf<List<ETS100ApiClient.HomeworkInfo>>(emptyList()) }
+    var isLoadingCloudHomework by remember { mutableStateOf(false) }
+    var cloudHomeworkError by remember { mutableStateOf<String?>(null) }
+    var cloudBaseUrl by remember { mutableStateOf(ETS100ApiClient.Config.CDN_BASE_URL) }
+    var downloadedPapers by remember { mutableStateOf<Map<String, List<ETS100AnswerReader.Paper>>>(emptyMap()) }
+    var downloadedHomeworkNames by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var cloudDownloadingHomeworks by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var failedCloudHomeworks by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    // 宝贝新增：云端作业占位符列表喵~
+    val cloudHomeworkPlaceholders by remember {
+        derivedStateOf {
+            homeworkList
+                .filter { hw -> !downloadedHomeworkNames.contains(hw.name) }
+                .map { hw -> createCloudHomeworkPlaceholder(hw) }
+        }
+    }
     
     // 分区颜色映射 - 宝贝这个和试卷详情页面的颜色一致喵~
     val categoryColors = mapOf(
@@ -170,12 +220,276 @@ fun ReadScreen(
         val entry = LogEntry(timestamp = timestamp, level = level, category = category, message = message)
         debugLog = debugLog + entry
     }
+
+    // ========== 云端模式辅助函数喵~ ==========
+
+    /**
+     * 加载云端作业列表
+     */
+    suspend fun loadCloudHomeworkList() {
+        if (!ETS100AuthManager.isLoggedIn(context)) {
+            cloudHomeworkError = "未登录，请先在设置中登录云端账号"
+            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 未登录云端账号")
+            return
+        }
+
+        var token = ETS100AuthManager.getToken(context)
+        val parentId = ETS100AuthManager.getParentAccountId(context)
+
+        if (token == null || parentId == null) {
+            cloudHomeworkError = "登录信息不完整，请重新登录"
+            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 登录信息不完整")
+            return
+        }
+
+        isLoadingCloudHomework = true
+        cloudHomeworkError = null
+        addLog(LogLevel.INFO, LogCategory.SYSTEM, "☁️ 开始加载云端作业列表")
+
+        var lastError: Throwable? = null
+        var success = false
+        val tokenNonNull = token!!
+
+        addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔄 主动刷新 Token...")
+        var currentToken = tokenNonNull
+        val newToken = ETS100ApiClient.refreshToken(tokenNonNull)
+        if (newToken != null) {
+            ETS100AuthManager.updateToken(context, newToken)
+            currentToken = newToken
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "✓ Token 刷新成功喵~")
+        } else {
+            addLog(LogLevel.WARN, LogCategory.SYSTEM, "⚠ Token 刷新失败，使用原 token 继续")
+        }
+
+        val result = ETS100ApiClient.getHomeworkList(currentToken, parentId)
+        result.onSuccess { response ->
+            homeworkList = response.homeworks
+            cloudBaseUrl = response.baseUrl
+            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 获取到 ${homeworkList.size} 个云端作业")
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 API 返回的 base_url = ${response.baseUrl}")
+            success = true
+        }.onFailure { e ->
+            lastError = e
+            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取作业列表失败: ${e.message}")
+        }
+
+        if (!success) {
+            cloudHomeworkError = lastError?.message ?: "获取作业列表失败"
+            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取作业列表失败: $cloudHomeworkError")
+        }
+
+        isLoadingCloudHomework = false
+    }
+
+    /**
+     * 清除云端作业缓存
+     * 宝贝删除所有已下载的云端作业文件喵~
+     */
+    fun clearCloudHomeworkCache() {
+        val cacheDir = File(context.cacheDir, "cloud_homework")
+        if (cacheDir.exists()) {
+            cacheDir.deleteRecursively()
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "🗑️ 已删除云端缓存目录")
+        }
+        downloadedPapers = emptyMap()
+        downloadedHomeworkNames = emptySet()
+        papers = emptyList()
+        homeworkList = emptyList()
+        Toast.makeText(context, "已清除所有云端缓存", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * 下载并解析云端作业
+     * 宝贝这个函数处理下载、解压和解析的全流程喵~
+     */
+    suspend fun downloadAndParseHomework(
+        homeworkInfo: ETS100ApiClient.HomeworkInfo,
+        content: ETS100ApiClient.HomeworkContent
+    ) {
+        addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 content.url = ${content.url}")
+        addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 cloudBaseUrl = $cloudBaseUrl")
+
+        val zipUrl = if (content.url.startsWith("http")) {
+            var finalUrl = content.url
+            if (content.url.startsWith("http://")) {
+                finalUrl = content.url.replaceFirst("http://", "https://")
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 HTTP转HTTPS: $finalUrl")
+            }
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 使用绝对URL: $finalUrl")
+            finalUrl
+        } else {
+            var baseUrl = cloudBaseUrl
+            if (baseUrl.startsWith("http://")) {
+                baseUrl = baseUrl.replaceFirst("http://", "https://")
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 baseUrl HTTP转HTTPS: $baseUrl")
+            }
+            val url = if (content.url.startsWith("/")) content.url else "/${content.url}"
+            val constructed = baseUrl.trimEnd('/') + url
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 拼接后的 URL = $constructed")
+            constructed
+        }
+
+        val cacheKey = "${homeworkInfo.name}_${content.groupName}"
+        if (downloadedPapers.containsKey(cacheKey)) {
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📁 缓存命中，直接显示已下载的试卷")
+            Toast.makeText(context, "该作业已下载，直接显示喵~", Toast.LENGTH_SHORT).show()
+            papers = downloadedPapers[cacheKey] ?: emptyList()
+            return
+        }
+
+        cloudDownloadingHomeworks = cloudDownloadingHomeworks + homeworkInfo.name
+        failedCloudHomeworks = failedCloudHomeworks - homeworkInfo.name
+        addLog(LogLevel.INFO, LogCategory.SYSTEM, "⬇️ 开始下载: ${homeworkInfo.name}")
+
+        try {
+            val cacheDir = File(context.cacheDir, "cloud_homework")
+            cacheDir.mkdirs()
+            val zipFile = File(cacheDir, "${cacheKey}.zip")
+
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 正在连接 CDN...")
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 URL: $zipUrl")
+
+            val downloadResult = ETS100ApiClient.downloadFile(zipUrl, zipFile)
+            downloadResult.onFailure { e ->
+                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 下载失败: ${e.message}")
+                val errorMsg = e.message ?: ""
+                if (errorMsg.contains("404") || errorMsg.contains("NoSuchKey")) {
+                    Toast.makeText(context, "该作业答案文件不存在或已下架喵~", Toast.LENGTH_LONG).show()
+                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "⚠️ 可能是文件已被删除或过期")
+                }
+                throw Exception("下载失败: ${e.message}")
+            }
+
+            if (zipFile.exists() && zipFile.length() > 0) {
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "✅ ZIP 下载完成: ${zipFile.length()} bytes")
+            } else {
+                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 文件下载失败或为空")
+                throw Exception("文件下载失败或为空")
+            }
+
+            val password = ZipPasswordGenerator.generatePassword(zipFile.absolutePath)
+            if (password == null) {
+                throw Exception("无法生成解压密码")
+            }
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔑 解压密码生成成功")
+
+            val extractDir = File(cacheDir, cacheKey)
+            extractDir.mkdirs()
+
+            try {
+                java.util.zip.ZipFile(zipFile, StandardCharsets.UTF_8).use { zip ->
+                    zip.entries().asSequence().forEach { entry ->
+                        val destPath = File(extractDir, entry.name)
+                        destPath.parentFile?.mkdirs()
+                        if (!entry.isDirectory) {
+                            zip.getInputStream(entry).use { input ->
+                                destPath.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                throw Exception("解压失败，请确认 ZIP 格式支持: ${e.message}")
+            }
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📂 解压完成: ${extractDir.absolutePath}")
+
+            val dataDir = File(extractDir, "data")
+            if (!dataDir.exists()) {
+                throw Exception("解压后未找到 data 目录")
+            }
+
+            val dataFiles = dataDir.listFiles()?.filter { it.isFile && it.name.endsWith(".json") } ?: emptyList()
+            if (dataFiles.isEmpty()) {
+                throw Exception("data 目录下没有 JSON 文件")
+            }
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📁 找到 ${dataFiles.size} 个 JSON 文件")
+
+            val parsedPapers = mutableListOf<ETS100AnswerReader.Paper>()
+            for (jsonFile in dataFiles) {
+                try {
+                    val content = jsonFile.readText()
+                    val json = org.json.JSONObject(content)
+                    val sections = mutableListOf<ETS100AnswerReader.Section>()
+
+                    val sectionData = json.optJSONObject("sectionData") ?: json.optJSONObject("data") ?: json
+                    sectionData.keys().forEach { key ->
+                        val sectionArray = sectionData.optJSONArray(key) ?: return@forEach
+                        val questions = mutableListOf<ETS100AnswerReader.Question>()
+
+                        for (i in 0 until sectionArray.length()) {
+                            val item = sectionArray.optJSONObject(i) ?: continue
+                            val questionText = item.optString("question", item.optString("text", ""))
+                            val answerText = item.optString("answer", item.optString("answerText", ""))
+
+                            if (questionText.isNotEmpty()) {
+                                questions.add(ETS100AnswerReader.Question(
+                                    order = questions.size + 1,
+                                    sectionOrder = questions.size + 1,
+                                    sectionCaption = key,
+                                    typeName = "云端作业",
+                                    questionText = questionText,
+                                    answers = listOf(answerText),
+                                    originalText = item.toString()
+                                ))
+                            }
+                        }
+
+                        if (questions.isNotEmpty()) {
+                            sections.add(ETS100AnswerReader.Section(
+                                caption = key,
+                                category = "cloud_homework",
+                                typeName = "云端作业",
+                                questions = questions,
+                                originalContent = null
+                            ))
+                        }
+                    }
+
+                    if (sections.isNotEmpty()) {
+                        parsedPapers.add(ETS100AnswerReader.Paper(
+                            paperId = jsonFile.name.hashCode().toLong(),
+                            title = jsonFile.name.removeSuffix(".json"),
+                            dataFileName = jsonFile.name,
+                            fileSize = jsonFile.length(),
+                            sections = sections
+                        ))
+                    }
+                } catch (e: Exception) {
+                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 解析 ${jsonFile.name} 失败: ${e.message}")
+                }
+            }
+            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "📝 解析到 ${parsedPapers.size} 份试卷")
+
+            downloadedPapers = downloadedPapers + (cacheKey to parsedPapers)
+            downloadedHomeworkNames = downloadedHomeworkNames + homeworkInfo.name
+            cloudDownloadingHomeworks = cloudDownloadingHomeworks - homeworkInfo.name
+
+            papers = parsedPapers
+
+            Toast.makeText(context, "下载并解析成功！", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 下载解析失败: ${e.message}")
+            Toast.makeText(context, "下载失败: ${e.message}", Toast.LENGTH_LONG).show()
+            cloudDownloadingHomeworks = cloudDownloadingHomeworks - homeworkInfo.name
+            failedCloudHomeworks = failedCloudHomeworks + homeworkInfo.name
+        }
+    }
     
     // 初始化加载 - 使用 rememberUpdatedState 确保最新的 currentMode
     // 宝贝添加了 reloadTrigger 依赖，这样点击读取按钮时就可以重新加载喵~
     val currentModeRef = remember { mutableStateOf(currentMode) }
     LaunchedEffect(currentMode, reloadTrigger) {
         currentModeRef.value = currentMode
+        
+        // 云端模式不执行本地加载，等待用户点击读取按钮喵~
+        if (currentMode == ActivationMode.CLOUD) {
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "☁️ 云端模式，等待用户点击读取按钮加载作业列表")
+            isLoading = false
+            return@LaunchedEffect
+        }
+        
         isLoading = true
         errorMessage = null
         debugLog = emptyList()  // 清空之前的日志喵~
@@ -352,7 +666,16 @@ fun ReadScreen(
                 },
                 onReadClick = {
                     isFabExpanded = false
-                    reloadTrigger++  // 宝贝增加触发器来刷新页面喵~
+                    if (currentMode == ActivationMode.CLOUD) {
+                        // 云端模式：加载作业列表喵~
+                        cloudHomeworkError = null
+                        papers = emptyList()
+                        homeworkList = emptyList()
+                        scope.launch { loadCloudHomeworkList() }
+                    } else {
+                        // 本地模式：重新加载本地试卷喵~
+                        reloadTrigger++
+                    }
                 }
             )
         }
@@ -364,7 +687,8 @@ fun ReadScreen(
                 .background(MaterialTheme.colorScheme.background)
         ) {
             when {
-                isLoading -> {
+                // 1. 加载中（本地模式 isLoading 或 云端模式 isLoadingCloudHomework）喵~
+                isLoading || (currentMode == ActivationMode.CLOUD && isLoadingCloudHomework) -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -380,8 +704,9 @@ fun ReadScreen(
                         }
                     }
                 }
-                
-                errorMessage != null -> {
+
+                // 2. 错误状态（本地 errorMessage 或 云端 cloudHomeworkError）喵~
+                errorMessage != null || cloudHomeworkError != null -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -398,7 +723,7 @@ fun ReadScreen(
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                errorMessage!!,
+                                errorMessage ?: cloudHomeworkError ?: "未知错误",
                                 style = MaterialTheme.typography.bodyLarge,
                                 textAlign = TextAlign.Center,
                                 color = MaterialTheme.colorScheme.error
@@ -410,8 +735,38 @@ fun ReadScreen(
                         }
                     }
                 }
-                
-                papers.isEmpty() -> {
+
+                // 3. 云端模式：作业列表非空但还没下载试卷，显示占位符列表喵~
+                currentMode == ActivationMode.CLOUD && homeworkList.isNotEmpty() && papers.isEmpty() -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        item { CloudModeInfoCard() }
+                        itemsIndexed(cloudHomeworkPlaceholders) { paperIndex, paper ->
+                            PaperListItem(
+                                paper = paper,
+                                paperIndex = paperIndex,
+                                onClick = {
+                                    val homeworkInfo = homeworkList.find { it.name == paper.paperName }
+                                    if (homeworkInfo != null) {
+                                        val content = homeworkInfo.contents.firstOrNull()
+                                        if (content != null) {
+                                            scope.launch { downloadAndParseHomework(homeworkInfo, content) }
+                                        }
+                                    }
+                                },
+                                categoryColors = categoryColors,
+                                isLoading = cloudDownloadingHomeworks.contains(paper.paperName),
+                                isFailed = failedCloudHomeworks.contains(paper.paperName)
+                            )
+                        }
+                    }
+                }
+
+                // 4. 空列表（本地和云端统一处理）喵~
+                papers.isEmpty() && homeworkList.isEmpty() -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -441,7 +796,7 @@ fun ReadScreen(
                         }
                     }
                 }
-                
+
                 else -> {
                     // 宝贝使用 Crossfade 实现流畅的切换动画喵~
                     Crossfade(
@@ -473,15 +828,6 @@ fun ReadScreen(
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                item {
-                                    FileListCard(
-                                        dataFiles = dataFiles,
-                                        resourceFiles = resourceFiles,
-                                        readerInfo = readerInfo,
-                                        currentMode = currentMode
-                                    )
-                                }
-                                
                                 itemsIndexed(papers) { paperIndex, paper ->
                                     PaperListItem(
                                         paper = paper,
@@ -505,33 +851,40 @@ fun ReadScreen(
                     onDismiss = { showDeleteConfirmDialog = false },
                     onConfirm = {
                         showDeleteConfirmDialog = false
-                        // 宝贝执行删除操作喵~
-                        addLog(LogLevel.WARN, LogCategory.FILE, "🗑️ 开始删除 data 和 resource 目录...")
-                        
-                        // 获取当前模式
-                        val currentModeValue = ShizukuManager.getCurrentActivationMode()
-                        
-                        // 删除 data 目录
-                        val dataPath = ETS100FileReader.Path.getDataDir()
-                        val dataDeleted = ETS100FileReader.deleteDirectory(currentModeValue, dataPath, context)
-                        if (dataDeleted) {
-                            addLog(LogLevel.SUCCESS, LogCategory.FILE, "✅ data 目录删除成功")
+                        // 宝贝检查模式喵~
+                        if (currentMode == ActivationMode.CLOUD) {
+                            // 云端模式：清除缓存喵~
+                            clearCloudHomeworkCache()
                         } else {
-                            addLog(LogLevel.ERROR, LogCategory.FILE, "❌ data 目录删除失败")
+                            // 本地模式：删除 data 和 resource 目录喵~
+                            addLog(LogLevel.WARN, LogCategory.FILE, "🗑️ 开始删除 data 和 resource 目录...")
+
+                            // 获取当前模式
+                            val currentModeValue = ShizukuManager.getCurrentActivationMode()
+
+                            // 删除 data 目录
+                            val dataPath = ETS100FileReader.Path.getDataDir()
+                            val dataDeleted = ETS100FileReader.deleteDirectory(currentModeValue, dataPath, context)
+                            if (dataDeleted) {
+                                addLog(LogLevel.SUCCESS, LogCategory.FILE, "✅ data 目录删除成功")
+                            } else {
+                                addLog(LogLevel.ERROR, LogCategory.FILE, "❌ data 目录删除失败")
+                            }
+
+                            // 删除 resource 目录
+                            val resourcePath = ETS100FileReader.Path.getResourceDir()
+                            val resourceDeleted = ETS100FileReader.deleteDirectory(currentModeValue, resourcePath, context)
+                            if (resourceDeleted) {
+                                addLog(LogLevel.SUCCESS, LogCategory.FILE, "✅ resource 目录删除成功")
+                            } else {
+                                addLog(LogLevel.ERROR, LogCategory.FILE, "❌ resource 目录删除失败")
+                            }
+
+                            // 刷新页面重新读取
+                            reloadTrigger++
                         }
-                        
-                        // 删除 resource 目录
-                        val resourcePath = ETS100FileReader.Path.getResourceDir()
-                        val resourceDeleted = ETS100FileReader.deleteDirectory(currentModeValue, resourcePath, context)
-                        if (resourceDeleted) {
-                            addLog(LogLevel.SUCCESS, LogCategory.FILE, "✅ resource 目录删除成功")
-                        } else {
-                            addLog(LogLevel.ERROR, LogCategory.FILE, "❌ resource 目录删除失败")
-                        }
-                        
-                        // 刷新页面重新读取
-                        reloadTrigger++
-                    }
+                    },
+                    isCloudMode = currentMode == ActivationMode.CLOUD
                 )
             }
         }
@@ -1595,195 +1948,6 @@ private fun QuestionDetailItem(
     }
 }
 
-@Composable
-private fun FileListCard(
-    dataFiles: List<ETS100FileReader.FileItem>,
-    resourceFiles: List<ETS100FileReader.FileItem>,
-    readerInfo: String,
-    currentMode: ActivationMode
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Folder,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "文件浏览器",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "${dataFiles.size} 个文件",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    IconButton(onClick = { expanded = !expanded }) {
-                        Icon(
-                            if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = if (expanded) "收起" else "展开"
-                        )
-                    }
-                }
-            }
-
-            Text(
-                "阅读器: $readerInfo",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                "数据目录: ${ETS100FileReader.Path.getDataDir()}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            if (expanded) {
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    "data (${dataFiles.size} 个)",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-
-                if (dataFiles.isEmpty()) {
-                    Text(
-                        "   (空目录)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                } else {
-                    dataFiles.take(15).forEach { file ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f, fill = false),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    if (file.isDirectory) Icons.Default.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = if (file.isDirectory) Color(0xFFFFB74D) else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    file.name,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.widthIn(max = 150.dp)
-                                )
-                            }
-                            if (!file.isDirectory) {
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    formatFileSize(file.size),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                    if (dataFiles.size > 15) {
-                        Text(
-                            "   ... 更多 ${dataFiles.size - 15} 个文件",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-
-                if (resourceFiles.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        "resource (${resourceFiles.size} 个)",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    resourceFiles.take(10).forEach { file ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f, fill = false),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    if (file.isDirectory) Icons.Default.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = if (file.isDirectory) Color(0xFFFFB74D) else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    file.name,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.widthIn(max = 150.dp)
-                                )
-                            }
-                            if (!file.isDirectory) {
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    formatFileSize(file.size),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                    if (resourceFiles.size > 10) {
-                        Text(
-                            "   ... 更多 ${resourceFiles.size - 10} 个文件",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
 /**
  * 可折叠项组件
  * 宝贝这个组件用于显示原文和答案的折叠项喵~
@@ -2259,7 +2423,9 @@ private fun PaperListItem(
     paper: ETS100AnswerReader.Paper,
     paperIndex: Int,
     onClick: () -> Unit,
-    categoryColors: Map<String, Color>
+    categoryColors: Map<String, Color>,
+    isLoading: Boolean = false,
+    isFailed: Boolean = false
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     
@@ -2306,18 +2472,45 @@ private fun PaperListItem(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
+                // 宝贝根据状态显示不同的图标喵~
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .background(primaryColor.copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
+                        .background(
+                            when {
+                                isLoading -> MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                isFailed -> MaterialTheme.colorScheme.error.copy(alpha = 0.1f)
+                                else -> primaryColor.copy(alpha = 0.1f)
+                            },
+                            RoundedCornerShape(12.dp)
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "${paperIndex + 1}",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = primaryColor
-                    )
+                    when {
+                        isLoading -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        isFailed -> {
+                            Icon(
+                                Icons.Default.ErrorOutline,
+                                contentDescription = "加载失败",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        else -> {
+                            Text(
+                                text = "${paperIndex + 1}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = primaryColor
+                            )
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
@@ -2375,25 +2568,89 @@ private fun PaperListItem(
                         }
                     }
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "${paper.sections.size} 个分区 · ${paper.sections.sumOf { it.questions.size }} 道题目",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    // 宝贝显示下载时间喵~
-                    Text(
-                        text = "下载时间: $downloadTimeStr",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
+                    // 宝贝根据状态显示不同的信息喵~
+                    when {
+                        isLoading -> {
+                            Text(
+                                text = "正在加载...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        isFailed -> {
+                            Text(
+                                text = "加载失败，点击重试",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        else -> {
+                            Text(
+                                text = "${paper.sections.size} 个分区 · ${paper.sections.sumOf { it.questions.size }} 道题目",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            // 宝贝显示下载时间喵~
+                            Text(
+                                text = if (paper.downloadTime > 0) "下载时间: $downloadTimeStr" else "未加载",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
                 }
             }
-            
+
+            // 宝贝只在非加载/非失败状态显示箭头图标喵~
+            if (!isLoading && !isFailed) {
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = "进入",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 宝贝云端模式信息卡片喵~
+ * 显示当前为云端作业模式
+ */
+@Composable
+private fun CloudModeInfoCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = "进入",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                Icons.Default.Cloud,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp)
             )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = "云端作业模式",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "点击作业项目开始下载喵~",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -2405,7 +2662,8 @@ private fun PaperListItem(
 @Composable
 private fun DeleteConfirmDialog(
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit
+    onConfirm: () -> Unit,
+    isCloudMode: Boolean = false
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2421,7 +2679,11 @@ private fun DeleteConfirmDialog(
             Text("确认删除？")
         },
         text = {
-            Text("这将删除以下目录中的所有文件：\n\n• data/ 目录\n• resource/ 目录\n\n此操作不可撤销！")
+            if (isCloudMode) {
+                Text("这将清除所有云端缓存的作业数据。\n\n此操作不可撤销！")
+            } else {
+                Text("这将删除以下目录中的所有文件：\n\n• data/ 目录\n• resource/ 目录\n\n此操作不可撤销！")
+            }
         },
         confirmButton = {
             TextButton(

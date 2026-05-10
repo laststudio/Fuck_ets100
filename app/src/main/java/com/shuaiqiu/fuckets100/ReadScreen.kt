@@ -249,18 +249,44 @@ fun ReadScreen(
         var success = false
         val tokenNonNull = token!!
 
-        addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔄 主动刷新 Token...")
-        var currentToken = tokenNonNull
-        val newToken = ETS100ApiClient.refreshToken(tokenNonNull)
-        if (newToken != null) {
-            ETS100AuthManager.updateToken(context, newToken)
-            currentToken = newToken
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "✓ Token 刷新成功喵~")
+        addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔐 自动重新登录获取最新 Token...")
+        var currentToken: String? = null
+        val phone = ETS100AuthManager.getPhone(context)
+        val savedPassword = ETS100AuthManager.getPassword(context)
+        val deviceCode = ETS100AuthManager.getDeviceCode(context)
+
+        if (phone != null && savedPassword != null) {
+            try {
+                val loginResult = ETS100ApiClient.login(phone, savedPassword, deviceCode)
+                loginResult.onSuccess { loginResponse ->
+                    val ecardResult = ETS100ApiClient.getEcardList(loginResponse.token)
+                    ecardResult.onSuccess { parentAccountId ->
+                        ETS100AuthManager.saveLoginInfo(context, phone, loginResponse.token, parentAccountId)
+                        currentToken = loginResponse.token
+                        addLog(LogLevel.INFO, LogCategory.SYSTEM, "✓ 登录成功，Token 已更新喵~")
+                    }.onFailure { e ->
+                        addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取父账户ID失败: ${e.message}")
+                    }
+                }.onFailure { e ->
+                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 登录失败: ${e.message}")
+                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "请在设置中重新登录")
+                }
+            } catch (e: ETS100ApiClient.DeviceBindRequiredException) {
+                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 设备需要重新绑定，请在设置中重新登录")
+            }
         } else {
-            addLog(LogLevel.WARN, LogCategory.SYSTEM, "⚠ Token 刷新失败，使用原 token 继续")
+            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 未保存密码，请先在设置中登录")
         }
 
-        val result = ETS100ApiClient.getHomeworkList(currentToken, parentId)
+        val tokenForRequest = currentToken
+        if (tokenForRequest == null) {
+            cloudHomeworkError = "获取 Token 失败，请重新登录"
+            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取 Token 失败，无法加载作业列表")
+            isLoadingCloudHomework = false
+            return
+        }
+
+        val result = ETS100ApiClient.getHomeworkList(tokenForRequest, parentId)
         result.onSuccess { response ->
             homeworkList = response.homeworks
             cloudBaseUrl = response.baseUrl
@@ -302,33 +328,11 @@ fun ReadScreen(
      * 宝贝这个函数处理下载、解压和解析的全流程喵~
      */
     suspend fun downloadAndParseHomework(
-        homeworkInfo: ETS100ApiClient.HomeworkInfo,
-        content: ETS100ApiClient.HomeworkContent
+        homeworkInfo: ETS100ApiClient.HomeworkInfo
     ) {
-        addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 content.url = ${content.url}")
-        addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 cloudBaseUrl = $cloudBaseUrl")
+        addLog(LogLevel.INFO, LogCategory.SYSTEM, "📥 开始下载作业: ${homeworkInfo.name}, 共 ${homeworkInfo.contents.size} 个内容")
 
-        val zipUrl = if (content.url.startsWith("http")) {
-            var finalUrl = content.url
-            if (content.url.startsWith("http://")) {
-                finalUrl = content.url.replaceFirst("http://", "https://")
-                addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 HTTP转HTTPS: $finalUrl")
-            }
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 使用绝对URL: $finalUrl")
-            finalUrl
-        } else {
-            var baseUrl = cloudBaseUrl
-            if (baseUrl.startsWith("http://")) {
-                baseUrl = baseUrl.replaceFirst("http://", "https://")
-                addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 baseUrl HTTP转HTTPS: $baseUrl")
-            }
-            val url = if (content.url.startsWith("/")) content.url else "/${content.url}"
-            val constructed = baseUrl.trimEnd('/') + url
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 拼接后的 URL = $constructed")
-            constructed
-        }
-
-        val cacheKey = "${homeworkInfo.name}_${content.groupName}"
+        val cacheKey = homeworkInfo.name
         if (downloadedPapers.containsKey(cacheKey)) {
             addLog(LogLevel.INFO, LogCategory.SYSTEM, "📁 缓存命中，直接显示已下载的试卷")
             Toast.makeText(context, "该作业已下载，直接显示喵~", Toast.LENGTH_SHORT).show()
@@ -338,161 +342,171 @@ fun ReadScreen(
 
         cloudDownloadingHomeworks = cloudDownloadingHomeworks + homeworkInfo.name
         failedCloudHomeworks = failedCloudHomeworks - homeworkInfo.name
-        addLog(LogLevel.INFO, LogCategory.SYSTEM, "⬇️ 开始下载: ${homeworkInfo.name}")
 
         try {
             val cacheDir = File(context.cacheDir, "cloud_homework")
             cacheDir.mkdirs()
-            val zipFile = File(cacheDir, "${cacheKey}.zip")
+            val allSections = mutableListOf<ETS100AnswerReader.Section>()
+            var questionIndex = 0
 
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 正在连接 CDN...")
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 URL: $zipUrl")
-
-            val downloadResult = ETS100ApiClient.downloadFile(zipUrl, zipFile)
-            downloadResult.onFailure { e ->
-                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 下载失败: ${e.message}")
-                val errorMsg = e.message ?: ""
-                if (errorMsg.contains("404") || errorMsg.contains("NoSuchKey")) {
-                    Toast.makeText(context, "该作业答案文件不存在或已下架喵~", Toast.LENGTH_LONG).show()
-                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "⚠️ 可能是文件已被删除或过期")
+            for (content in homeworkInfo.contents) {
+                // 1. 构造完整 URL
+                val zipUrl = if (content.url.startsWith("http")) {
+                    content.url.replaceFirst("http://", "https://")
+                } else {
+                    var baseUrl = cloudBaseUrl
+                    if (baseUrl.startsWith("http://")) {
+                        baseUrl = baseUrl.replaceFirst("http://", "https://")
+                    }
+                    val fullUrl = if (content.url.startsWith("/")) content.url else "/${content.url}"
+                    baseUrl.trimEnd('/') + fullUrl
                 }
-                throw Exception("下载失败: ${e.message}")
-            }
+                val zipFileName = zipUrl.substringAfterLast('/').substringBefore('?')
+                if (zipFileName.isEmpty()) {
+                    addLog(LogLevel.WARN, LogCategory.SYSTEM, "⚠️ 无法从 URL 提取文件名: ${content.url}")
+                    continue
+                }
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "⬇️ 下载 ${content.groupName}: $zipFileName")
 
-            if (zipFile.exists() && zipFile.length() > 0) {
-                addLog(LogLevel.INFO, LogCategory.SYSTEM, "✅ ZIP 下载完成: ${zipFile.length()} bytes")
-                // 检查文件头是否为有效 ZIP
-                val fileInputStream = java.io.FileInputStream(zipFile)
+                val zipFile = File(cacheDir, zipFileName)
+                if (zipFile.exists() && zipFile.length() > 0) {
+                    addLog(LogLevel.INFO, LogCategory.SYSTEM, "📦 文件已存在，跳过下载: ${zipFileName}")
+                } else {
+                    val downloadResult = ETS100ApiClient.downloadFile(zipUrl, zipFile)
+                    downloadResult.onFailure { e ->
+                        addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 下载失败 ${content.groupName}: ${e.message}")
+                    }
+                    if (downloadResult.isFailure) {
+                        addLog(LogLevel.WARN, LogCategory.SYSTEM, "⏭️ 跳过失败的下载: ${content.groupName}")
+                        continue
+                    }
+                    addLog(LogLevel.INFO, LogCategory.SYSTEM, "✅ 下载完成: ${zipFile.length()} bytes")
+                }
+
+                // 2. 验证 ZIP Magic
+                val fis = java.io.FileInputStream(zipFile)
                 val magic = ByteArray(4)
-                fileInputStream.read(magic)
-                fileInputStream.close()
+                fis.read(magic)
+                fis.close()
                 val magicHex = magic.joinToString("") { "%02X".format(it) }
-                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📋 文件头 Magic: $magicHex (PK=504B0304)")
                 if (magicHex != "504B0304" && magicHex != "504B0506" && magicHex != "504B0708") {
-                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "⚠️ 文件不是有效 ZIP 格式，可能是错误页面或重定向")
-                }
-            } else {
-                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 文件下载失败或为空")
-                throw Exception("文件下载失败或为空")
-            }
-
-            val password = ZipPasswordGenerator.generatePassword(zipFile.absolutePath)
-            if (password == null) {
-                throw Exception("无法生成解压密码")
-            }
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔑 解压密码生成成功: ${password.substring(0, 8)}...${password.substring(56)}")
-            addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📋 密码详情: 第一次MD5=${password.substring(0, 32)}, 第二次MD5=${password.substring(32)}")
-
-            val extractDir = File(cacheDir, cacheKey)
-            extractDir.mkdirs()
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📂 开始解压到: ${extractDir.absolutePath}")
-
-            var extractedCount = 0
-            try {
-                addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔓 使用密码解压 ZIP...")
-                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📋 ZIP文件: ${zipFile.absolutePath}, 大小: ${zipFile.length()} bytes")
-                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📋 密码长度: ${password.length}, 前8字符: ${password.substring(0, 8)}")
-
-                val zip4jFile = net.lingala.zip4j.ZipFile(zipFile)
-                zip4jFile.setPassword(password.toCharArray())
-
-                val entries = zip4jFile.fileHeaders
-                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📦 ZIP 包含 ${entries.size} 个条目")
-                for (header in entries) {
-                    addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "  📄 条目: ${header.fileName} [加密=${header.isEncrypted}, 压缩方式=${header.compressionMethod}]")
+                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "⚠️ 文件不是有效 ZIP: $magicHex")
+                    continue
                 }
 
-                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📂 开始解压到: ${extractDir.absolutePath}")
-                zip4jFile.extractAll(extractDir.absolutePath)
-                extractedCount = entries.size
-
-                // 列出解压后的文件结构以便调试
-                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📂 解压后目录内容:")
-                extractDir.walkTopDown().forEach { file ->
-                    addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "  ${if (file.isDirectory) "[DIR]" else "[FILE]"} ${file.absolutePath}")
+                // 3. 生成密码 + 解压
+                val password = ZipPasswordGenerator.generatePassword(zipFile.absolutePath)
+                if (password == null) {
+                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 无法生成解压密码: ${zipFileName}")
+                    continue
                 }
-                addLog(LogLevel.INFO, LogCategory.SYSTEM, "✅ 解压完成: $extractedCount 个条目")
-            } catch (e: Exception) {
-                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 解压异常: ${e.message}")
-                e.printStackTrace()
-                throw Exception("解压失败，请确认 ZIP 格式支持: ${e.message}")
-            }
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📂 解压完成: ${extractDir.absolutePath}")
+                addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "🔑 密码: ${password.substring(0, 8)}...")
 
-            val dataDir = File(extractDir, "data")
-            if (!dataDir.exists()) {
-                throw Exception("解压后未找到 data 目录")
-            }
+                val extractDirName = zipFileName.removeSuffix(".zip")
+                val extractDir = File(cacheDir, extractDirName)
+                if (extractDir.exists()) {
+                    extractDir.deleteRecursively()
+                }
+                extractDir.mkdirs()
 
-            val dataFiles = dataDir.listFiles()?.filter { it.isFile && it.name.endsWith(".json") } ?: emptyList()
-            if (dataFiles.isEmpty()) {
-                throw Exception("data 目录下没有 JSON 文件")
-            }
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📁 找到 ${dataFiles.size} 个 JSON 文件")
-
-            val parsedPapers = mutableListOf<ETS100AnswerReader.Paper>()
-            for (jsonFile in dataFiles) {
                 try {
-                    val content = jsonFile.readText()
-                    val json = org.json.JSONObject(content)
-                    val sections = mutableListOf<ETS100AnswerReader.Section>()
-
-                    val sectionData = json.optJSONObject("sectionData") ?: json.optJSONObject("data") ?: json
-                    sectionData.keys().forEach { key ->
-                        val sectionArray = sectionData.optJSONArray(key) ?: return@forEach
-                        val questions = mutableListOf<ETS100AnswerReader.Question>()
-
-                        for (i in 0 until sectionArray.length()) {
-                            val item = sectionArray.optJSONObject(i) ?: continue
-                            val questionText = item.optString("question", item.optString("text", ""))
-                            val answerText = item.optString("answer", item.optString("answerText", ""))
-
-                            if (questionText.isNotEmpty()) {
-                                questions.add(ETS100AnswerReader.Question(
-                                    order = questions.size + 1,
-                                    sectionOrder = questions.size + 1,
-                                    sectionCaption = key,
-                                    typeName = "云端作业",
-                                    questionText = questionText,
-                                    answers = listOf(answerText),
-                                    originalText = item.toString()
-                                ))
-                            }
-                        }
-
-                        if (questions.isNotEmpty()) {
-                            sections.add(ETS100AnswerReader.Section(
-                                caption = key,
-                                category = "cloud_homework",
-                                typeName = "云端作业",
-                                questions = questions,
-                                originalContent = null
-                            ))
-                        }
-                    }
-
-                    if (sections.isNotEmpty()) {
-                        parsedPapers.add(ETS100AnswerReader.Paper(
-                            paperId = jsonFile.name.hashCode().toLong(),
-                            title = jsonFile.name.removeSuffix(".json"),
-                            dataFileName = jsonFile.name,
-                            fileSize = jsonFile.length(),
-                            sections = sections
-                        ))
-                    }
+                    val zip4jFile = net.lingala.zip4j.ZipFile(zipFile)
+                    zip4jFile.setPassword(password.toCharArray())
+                    zip4jFile.extractAll(extractDir.absolutePath)
+                    addLog(LogLevel.DEBUG, LogCategory.SYSTEM, "📦 解压完成: $extractDirName")
                 } catch (e: Exception) {
-                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 解析 ${jsonFile.name} 失败: ${e.message}")
+                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 解压失败 ${content.groupName}: ${e.message}")
+                    continue
+                }
+
+                // 4. 扫描解压目录（解压出来的文件本身就是 resource 目录的内容）
+                val uuidFolders = extractDir.listFiles()?.filter { it.isDirectory } ?: emptyList()
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "📂 解压目录: ${extractDir.name}, 找到 ${uuidFolders.size} 个子文件夹")
+
+                // 列出解压目录中的所有文件/文件夹（帮助调试）
+                extractDir.listFiles()?.forEach { item ->
+                    val type = if (item.isDirectory) "📁" else "📄"
+                    addLog(LogLevel.DEBUG, LogCategory.FILE, "  $type ${item.name}")
+                }
+
+                for (uuidFolder in uuidFolders) {
+                    val contentJsonFile = File(uuidFolder, "content.json")
+                    if (!contentJsonFile.exists()) {
+                        addLog(LogLevel.WARN, LogCategory.FILE, "⚠️ 跳过 ${uuidFolder.name}: 无 content.json")
+                        continue
+                    }
+
+                    val contentJson = contentJsonFile.readText()
+                    try {
+                        val json = org.json.JSONObject(contentJson)
+                        val structureType = json.optString("structure_type", "")
+
+                        addLog(LogLevel.INFO, LogCategory.SECTION, "📄 解析: ${uuidFolder.name}")
+                        addLog(LogLevel.INFO, LogCategory.SECTION, "   ├─ structure_type: $structureType")
+                        addLog(LogLevel.INFO, LogCategory.SECTION, "   ├─ group_name: ${content.groupName}")
+
+                        // 用 ETS100AnswerReader 的解析方法喵~
+                        val (questions, originalContent) = ETS100AnswerReader.parseContentJson(
+                            json = json,
+                            startIndex = questionIndex,
+                            category = "",
+                            typeName = content.groupName,
+                            sectionCaption = content.groupName
+                        )
+
+                        if (questions.isEmpty()) {
+                            addLog(LogLevel.WARN, LogCategory.QUESTION, "   └─ ⚠️ 未解析到任何题目！")
+                        } else {
+                            addLog(LogLevel.SUCCESS, LogCategory.QUESTION, "   ├─ ✅ 解析到 ${questions.size} 道题")
+                            for ((i, q) in questions.withIndex()) {
+                                val isLast = i == questions.size - 1
+                                val prefix = if (isLast) "   │   └─" else "   │   ├─"
+                                addLog(LogLevel.INFO, LogCategory.QUESTION, "$prefix 第${q.order}题: ${q.questionText.take(60)}")
+                                if (q.answers.isNotEmpty()) {
+                                    for ((j, ans) in q.answers.withIndex()) {
+                                        val ansPrefix = if (isLast) "   │       └─" else "   │       ├─"
+                                        addLog(LogLevel.INFO, LogCategory.ANSWER, "$ansPrefix 答案${j+1}: ${ans.take(80)}")
+                                    }
+                                } else {
+                                    val ansPrefix = if (isLast) "   │       └─" else "   │       ├─"
+                                    addLog(LogLevel.WARN, LogCategory.ANSWER, "$ansPrefix 无标准答案")
+                                }
+                            }
+
+                            allSections.add(ETS100AnswerReader.Section(
+                                caption = content.groupName,
+                                category = structureType,
+                                typeName = content.groupName,
+                                questions = questions,
+                                originalContent = originalContent
+                            ))
+                            questionIndex += questions.size
+                        }
+                    } catch (e: Exception) {
+                        addLog(LogLevel.ERROR, LogCategory.FILE, "   └─ ✗ 解析 content.json 失败: ${e.message}")
+                    }
                 }
             }
-            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "📝 解析到 ${parsedPapers.size} 份试卷")
 
-            downloadedPapers = downloadedPapers + (cacheKey to parsedPapers)
+            if (allSections.isEmpty()) {
+                throw Exception("未能解析到任何题目")
+            }
+
+            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "📝 共解析到 ${allSections.size} 个题型，${questionIndex} 道题")
+
+            val paper = ETS100AnswerReader.Paper(
+                paperId = cacheKey.hashCode().toLong(),
+                title = homeworkInfo.name,
+                dataFileName = cacheKey,
+                fileSize = 0L,
+                sections = allSections
+            )
+            downloadedPapers = downloadedPapers + (cacheKey to listOf(paper))
             downloadedHomeworkNames = downloadedHomeworkNames + homeworkInfo.name
             cloudDownloadingHomeworks = cloudDownloadingHomeworks - homeworkInfo.name
-
-            papers = parsedPapers
-
+            papers = listOf(paper)
             Toast.makeText(context, "下载并解析成功！", Toast.LENGTH_SHORT).show()
+
         } catch (e: Exception) {
             addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 下载解析失败: ${e.message}")
             Toast.makeText(context, "下载失败: ${e.message}", Toast.LENGTH_LONG).show()
@@ -500,7 +514,7 @@ fun ReadScreen(
             failedCloudHomeworks = failedCloudHomeworks + homeworkInfo.name
         }
     }
-    
+
     // 初始化加载 - 使用 rememberUpdatedState 确保最新的 currentMode
     // 宝贝添加了 reloadTrigger 依赖，这样点击读取按钮时就可以重新加载喵~
     val currentModeRef = remember { mutableStateOf(currentMode) }
@@ -775,10 +789,7 @@ fun ReadScreen(
                                 onClick = {
                                     val homeworkInfo = homeworkList.find { it.name == paper.paperName }
                                     if (homeworkInfo != null) {
-                                        val content = homeworkInfo.contents.firstOrNull()
-                                        if (content != null) {
-                                            scope.launch { downloadAndParseHomework(homeworkInfo, content) }
-                                        }
+                                        scope.launch { downloadAndParseHomework(homeworkInfo) }
                                     }
                                 },
                                 categoryColors = categoryColors,

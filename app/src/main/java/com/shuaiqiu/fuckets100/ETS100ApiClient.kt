@@ -433,16 +433,16 @@ object ETS100ApiClient {
     }
 
     /**
-     * 获取作业列表
+     * 获取历史作业列表
      * POST /g/homework/list
-     * 
+     *
      * @param token 登录返回的 token
      * @param parentAccountId 父账户 ID
-     * @return 作业列表响应
+     * @return 历史作业列表响应（status=2 获取历史作业喵~）
      */
     suspend fun getHomeworkList(token: String, parentAccountId: String): Result<HomeworkListResponse> {
-        Log.d(TAG, "getHomeworkList: parentAccountId=$parentAccountId")
-        
+        Log.d(TAG, "getHistoryHomeworkList: parentAccountId=$parentAccountId")
+
         val bodyData = mapOf(
             "r" to "g/homework/list",
             "params" to mapOf(
@@ -450,10 +450,15 @@ object ETS100ApiClient {
                 "token" to token,
                 "parent_account_id" to parentAccountId,
                 "limit" to "0",
-                "status" to "1",
+                "status" to "2",
                 "offset" to "0",
+                "max_end_time" to "",
+                "max_homework_id" to "",
+                "min_end_time" to "",
+                "min_homework_id" to "",
                 "get_to_do_count" to 1,
                 "show_old_homework" to 1,
+                "parent_homework_id" to "",
                 "get_all_count" to 1,
                 "check_pass" to 1,
                 "get_to_overtime_count" to 1,

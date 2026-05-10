@@ -29,6 +29,7 @@ object ETS100AuthManager {
         const val TOKEN = "token"
         const val PARENT_ACCOUNT_ID = "parent_account_id"
         const val IS_LOGGED_IN = "is_logged_in"
+        const val PASSWORD = "password"
     }
 
     // ============================================================================
@@ -159,6 +160,24 @@ object ETS100AuthManager {
     fun getPhone(context: Context): String? {
         val prefs = getPrefs(context)
         return prefs.getString(Keys.PHONE, null)
+    }
+
+    /**
+     * 保存密码
+     * 喵~ 用于自动重新登录喵！
+     */
+    fun savePassword(context: Context, password: String) {
+        val prefs = getPrefs(context)
+        prefs.edit().putString(Keys.PASSWORD, password).apply()
+        Log.d(TAG, "密码已保存喵~")
+    }
+
+    /**
+     * 获取保存的密码
+     */
+    fun getPassword(context: Context): String? {
+        val prefs = getPrefs(context)
+        return prefs.getString(Keys.PASSWORD, null)
     }
 
     /**

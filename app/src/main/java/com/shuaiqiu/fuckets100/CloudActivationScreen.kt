@@ -86,6 +86,7 @@ fun CloudActivationScreen(
                         
                         // 保存登录信息
                         ETS100AuthManager.saveLoginInfo(context, phone, loginResponse.token, parentAccountId)
+                        ETS100AuthManager.savePassword(context, password)
                         
                         withContext(Dispatchers.Main) {
                             Toast.makeText(context, "登录成功！", Toast.LENGTH_SHORT).show()
@@ -126,6 +127,7 @@ fun CloudActivationScreen(
                                     
                                     // 保存登录信息
                                     ETS100AuthManager.saveLoginInfo(context, e.phone, bindResponse.token, parentAccountId)
+                                    ETS100AuthManager.savePassword(context, e.password)
                                     
                                     withContext(Dispatchers.Main) {
                                         Toast.makeText(context, "设备绑定并登录成功！", Toast.LENGTH_SHORT).show()

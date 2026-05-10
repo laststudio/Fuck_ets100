@@ -194,7 +194,7 @@ object ETS100AnswerReader {
     /**
      * 根据 category 获取 structure_type
      */
-    private fun getStructureType(category: String, json: JSONObject): String {
+    internal fun getStructureType(category: String, json: JSONObject): String {
         // 优先使用 content.json 中的 structure_type
         val structureType = json.optString("structure_type", "")
         if (structureType.isNotEmpty()) {
@@ -1347,7 +1347,7 @@ object ETS100AnswerReader {
      * - topic → collector.picture
      * - simple_expression_ufj → collector.role
      */
-    private fun parseContentJson(
+    internal fun parseContentJson(
         json: JSONObject,
         startIndex: Int,
         category: String,

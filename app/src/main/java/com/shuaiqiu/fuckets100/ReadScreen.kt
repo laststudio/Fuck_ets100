@@ -175,22 +175,20 @@ fun ReadScreen(
     // 可展开 FAB 相关状态
     var isFabExpanded by remember { mutableStateOf(false) }
 
-    // ========== 云端模式状态喵~ ==========
-    var homeworkList by remember { mutableStateOf<List<ETS100ApiClient.HomeworkInfo>>(emptyList()) }
-    var isLoadingCloudHomework by remember { mutableStateOf(false) }
-    var cloudHomeworkError by remember { mutableStateOf<String?>(null) }
-    var cloudBaseUrl by remember { mutableStateOf(ETS100ApiClient.Config.CDN_BASE_URL) }
-    var downloadedPapers by remember { mutableStateOf<Map<String, List<ETS100AnswerReader.Paper>>>(emptyMap()) }
-    var downloadedHomeworkNames by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var cloudDownloadingHomeworks by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var failedCloudHomeworks by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // ========== 云端模式状态喵~ 宝贝这些状态现在保存在单例中，Tab 切换不丢失喵~
+    var homeworkList by remember { mutableStateOf(CloudHomeworkState.homeworkList) }
+    var isLoadingCloudHomework by remember { mutableStateOf(CloudHomeworkState.isLoading) }
+    var cloudHomeworkError by remember { mutableStateOf(CloudHomeworkState.error) }
+    var cloudBaseUrl by remember { mutableStateOf(CloudHomeworkState.cloudBaseUrl) }
+    var downloadedPapers by remember { mutableStateOf(CloudHomeworkState.downloadedPapers) }
+    var downloadedHomeworkNames by remember { mutableStateOf(CloudHomeworkState.downloadedHomeworkNames) }
+    var cloudDownloadingHomeworks by remember { mutableStateOf(CloudHomeworkState.cloudDownloadingHomeworks) }
+    var failedCloudHomeworks by remember { mutableStateOf(CloudHomeworkState.failedCloudHomeworks) }
 
-    // 宝贝新增：云端作业占位符列表喵~
+    // 宝贝新增：云端作业占位符列表喵~ 现在显示所有作业，包括已下载的喵~
     val cloudHomeworkPlaceholders by remember {
         derivedStateOf {
-            homeworkList
-                .filter { hw -> !downloadedHomeworkNames.contains(hw.name) }
-                .map { hw -> createCloudHomeworkPlaceholder(hw) }
+            homeworkList.map { hw -> createCloudHomeworkPlaceholder(hw) }
         }
     }
     
@@ -243,6 +241,8 @@ fun ReadScreen(
 
         isLoadingCloudHomework = true
         cloudHomeworkError = null
+        CloudHomeworkState.isLoading = true
+        CloudHomeworkState.error = null
         addLog(LogLevel.INFO, LogCategory.SYSTEM, "☁️ 开始加载云端作业列表")
 
         var lastError: Throwable? = null
@@ -290,6 +290,8 @@ fun ReadScreen(
         result.onSuccess { response ->
             homeworkList = response.homeworks
             cloudBaseUrl = response.baseUrl
+            CloudHomeworkState.homeworkList = response.homeworks
+            CloudHomeworkState.cloudBaseUrl = response.baseUrl
             addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 获取到 ${homeworkList.size} 个云端作业")
             addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 API 返回的 base_url = ${response.baseUrl}")
             success = true
@@ -300,10 +302,12 @@ fun ReadScreen(
 
         if (!success) {
             cloudHomeworkError = lastError?.message ?: "获取作业列表失败"
+            CloudHomeworkState.error = cloudHomeworkError
             addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取作业列表失败: $cloudHomeworkError")
         }
 
         isLoadingCloudHomework = false
+        CloudHomeworkState.isLoading = false
     }
 
     /**
@@ -320,6 +324,7 @@ fun ReadScreen(
         downloadedHomeworkNames = emptySet()
         papers = emptyList()
         homeworkList = emptyList()
+        CloudHomeworkState.clear()
         Toast.makeText(context, "已清除所有云端缓存", Toast.LENGTH_SHORT).show()
     }
 
@@ -334,14 +339,15 @@ fun ReadScreen(
 
         val cacheKey = homeworkInfo.name
         if (downloadedPapers.containsKey(cacheKey)) {
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📁 缓存命中，直接显示已下载的试卷")
-            Toast.makeText(context, "该作业已下载，直接显示喵~", Toast.LENGTH_SHORT).show()
-            papers = downloadedPapers[cacheKey] ?: emptyList()
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📁 缓存命中，作业已下载喵~")
+            Toast.makeText(context, "该作业已下载喵~", Toast.LENGTH_SHORT).show()
             return
         }
 
         cloudDownloadingHomeworks = cloudDownloadingHomeworks + homeworkInfo.name
         failedCloudHomeworks = failedCloudHomeworks - homeworkInfo.name
+        CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
+        CloudHomeworkState.failedCloudHomeworks = failedCloudHomeworks
 
         try {
             val cacheDir = File(context.cacheDir, "cloud_homework")
@@ -499,7 +505,10 @@ fun ReadScreen(
             downloadedPapers = downloadedPapers + (cacheKey to listOf(paper))
             downloadedHomeworkNames = downloadedHomeworkNames + homeworkInfo.name
             cloudDownloadingHomeworks = cloudDownloadingHomeworks - homeworkInfo.name
-            papers = listOf(paper)
+            CloudHomeworkState.downloadedPapers = downloadedPapers
+            CloudHomeworkState.downloadedHomeworkNames = downloadedHomeworkNames
+            CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
+            // 宝贝下载成功后不再切换页面，只标记已下载，停留作业列表喵~
             Toast.makeText(context, "下载并解析成功！", Toast.LENGTH_SHORT).show()
 
         } catch (e: Exception) {
@@ -507,6 +516,8 @@ fun ReadScreen(
             Toast.makeText(context, "下载失败: ${e.message}", Toast.LENGTH_LONG).show()
             cloudDownloadingHomeworks = cloudDownloadingHomeworks - homeworkInfo.name
             failedCloudHomeworks = failedCloudHomeworks + homeworkInfo.name
+            CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
+            CloudHomeworkState.failedCloudHomeworks = failedCloudHomeworks
         }
     }
 
@@ -700,10 +711,8 @@ fun ReadScreen(
                 onReadClick = {
                     isFabExpanded = false
                     if (currentMode == ActivationMode.CLOUD) {
-                        // 云端模式：加载作业列表喵~
+                        // 云端模式：加载作业列表喵~ 不再清空状态，保留已下载的作业喵~
                         cloudHomeworkError = null
-                        papers = emptyList()
-                        homeworkList = emptyList()
                         scope.launch { loadCloudHomeworkList() }
                     } else {
                         // 本地模式：重新加载本地试卷喵~
@@ -769,28 +778,66 @@ fun ReadScreen(
                     }
                 }
 
-                // 3. 云端模式：作业列表非空但还没下载试卷，显示占位符列表喵~
-                currentMode == ActivationMode.CLOUD && homeworkList.isNotEmpty() && papers.isEmpty() -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        item { CloudModeInfoCard() }
-                        itemsIndexed(cloudHomeworkPlaceholders) { paperIndex, paper ->
-                            PaperListItem(
+                // 3. 云端模式：作业列表非空，显示作业列表或答案详情喵~
+                currentMode == ActivationMode.CLOUD && homeworkList.isNotEmpty() -> {
+                    // 宝贝用 Crossfade 在作业列表和答案详情之间切换喵~
+                    Crossfade(
+                        targetState = showPaperDetail && selectedPaper != null,
+                        animationSpec = tween(300),
+                        label = "cloudPaperDetailCrossfade"
+                    ) { showDetail ->
+                        if (showDetail && selectedPaper != null) {
+                            val paper = selectedPaper!!
+                            PaperDetailScreen(
                                 paper = paper,
-                                paperIndex = paperIndex,
-                                onClick = {
-                                    val homeworkInfo = homeworkList.find { it.name == paper.paperName }
-                                    if (homeworkInfo != null) {
-                                        scope.launch { downloadAndParseHomework(homeworkInfo) }
-                                    }
+                                onBack = {
+                                    showPaperDetail = false
+                                    selectedPaper = null
                                 },
                                 categoryColors = categoryColors,
-                                isLoading = cloudDownloadingHomeworks.contains(paper.paperName),
-                                isFailed = failedCloudHomeworks.contains(paper.paperName)
+                                onShare = {
+                                    FeApplication.sharePaper = paper
+                                    onNavigateToShare()
+                                }
                             )
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                item { CloudModeInfoCard() }
+                                itemsIndexed(homeworkList) { paperIndex, homeworkInfo ->
+                                    val isDownloaded = downloadedHomeworkNames.contains(homeworkInfo.name)
+                                    val isDownloading = cloudDownloadingHomeworks.contains(homeworkInfo.name)
+                                    val isFailed = failedCloudHomeworks.contains(homeworkInfo.name)
+                                    val paper = if (isDownloaded) {
+                                        downloadedPapers[homeworkInfo.name]?.firstOrNull() ?: createCloudHomeworkPlaceholder(homeworkInfo)
+                                    } else {
+                                        createCloudHomeworkPlaceholder(homeworkInfo)
+                                    }
+                                    PaperListItem(
+                                        paper = paper,
+                                        paperIndex = paperIndex,
+                                        onClick = {
+                                            if (isDownloaded) {
+                                                // 宝贝已下载，点击查看详情喵~
+                                                downloadedPapers[homeworkInfo.name]?.firstOrNull()?.let { downloadedPaper ->
+                                                    selectedPaper = downloadedPaper
+                                                    showPaperDetail = true
+                                                }
+                                            } else if (!isDownloading) {
+                                                // 宝贝未下载，开始下载喵~
+                                                scope.launch { downloadAndParseHomework(homeworkInfo) }
+                                            }
+                                        },
+                                        categoryColors = categoryColors,
+                                        isLoading = isDownloading,
+                                        isFailed = isFailed,
+                                        isDownloaded = isDownloaded
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -2455,7 +2502,8 @@ private fun PaperListItem(
     onClick: () -> Unit,
     categoryColors: Map<String, Color>,
     isLoading: Boolean = false,
-    isFailed: Boolean = false
+    isFailed: Boolean = false,
+    isDownloaded: Boolean = false  // 宝贝标记是否已下载喵~
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     
@@ -2571,6 +2619,21 @@ private fun PaperListItem(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                        // 宝贝添加已下载标记喵~
+                        if (isDownloaded) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                color = Color(0xFF22C55E),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "已下载",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(2.dp))
                     // 宝贝显示分区类型，用对应颜色喵~

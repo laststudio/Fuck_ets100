@@ -450,7 +450,7 @@ object ETS100ApiClient {
                 "token" to token,
                 "parent_account_id" to parentAccountId,
                 "limit" to "0",
-                "status" to "2",
+                "status" to "1",
                 "offset" to "0",
                 "max_end_time" to "",
                 "max_homework_id" to "",

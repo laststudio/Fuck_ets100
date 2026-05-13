@@ -79,6 +79,7 @@ object ETS100AnswerReader {
         val answers: List<String>,      // 答案列表
         val originalText: String?,      // 原始文本内容
         val category: String = "",       // category 分类
+        val displayOrder: Int? = null,
         val content: AnswerContent = AnswerContent.Reading("")  // 用于UI显示
     ) {
         // 兼容性别名 - ReadScreen 使用 question.question
@@ -177,6 +178,14 @@ object ETS100AnswerReader {
             .replace(Regex("<[^>]+>"), "")            // 移除 HTML 标签
             .replace("\u200B", "")                    // 移除零宽空格
             .trim()
+    }
+    private fun extractChooseQuestionNumber(item: JSONObject): Int? {
+        item.optString("xt_xh", "").trim().toIntOrNull()?.let { return it }
+        return Regex("ets_th\\s*(\\d+)", RegexOption.IGNORE_CASE)
+            .find(item.optString("xt_nr", ""))
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
     }
 
     /**
@@ -608,6 +617,7 @@ object ETS100AnswerReader {
 
                     for (i in 0 until xtlist.length()) {
                         val item = xtlist.getJSONObject(i)
+                        val displayOrder = extractChooseQuestionNumber(item)
                         val questionText = cleanQuestion(item.optString("xt_nr", ""))
                         val answer = item.optString("answer", "")
                         val xxlist = item.optJSONArray("xxlist")
@@ -630,7 +640,8 @@ object ETS100AnswerReader {
                             questionText = questionText,
                             answers = listOf(answerText),
                             originalText = null,
-                            category = "simple_expression_ufi"
+                            category = "simple_expression_ufi",
+                            displayOrder = displayOrder
                         ))
                         questionIndex++
                     }
@@ -690,7 +701,10 @@ object ETS100AnswerReader {
         // 按文档顺序组装：听后选择 → 听后回答 → 听后转述
         val sections = mutableListOf<Section>()
         if (chooseQuestions.isNotEmpty()) {
-            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", chooseQuestions, null))
+            val sortedChooseQuestions = chooseQuestions.sortedWith(
+                compareBy<Question> { it.displayOrder ?: it.sectionOrder }.thenBy { it.sectionOrder }
+            )
+            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", sortedChooseQuestions, null))
         }
         if (roleQuestions.isNotEmpty()) {
             sections.add(Section("听后回答", "simple_expression_ufk", "听后回答", roleQuestions, null))
@@ -752,6 +766,7 @@ object ETS100AnswerReader {
 
                     for (i in 0 until xtlist.length()) {
                         val item = xtlist.getJSONObject(i)
+                        val displayOrder = extractChooseQuestionNumber(item)
                         val questionText = cleanQuestion(item.optString("xt_nr", ""))
                         val answer = item.optString("answer", "")
                         val xxlist = item.optJSONArray("xxlist")
@@ -774,7 +789,8 @@ object ETS100AnswerReader {
                             questionText = questionText,
                             answers = listOf(answerText),
                             originalText = null,
-                            category = "simple_expression_ufi"
+                            category = "simple_expression_ufi",
+                            displayOrder = displayOrder
                         ))
                         questionIndex++
                     }
@@ -857,7 +873,10 @@ object ETS100AnswerReader {
         // 按文档顺序组装：听后选择 → 听后记录 → 听后转述 → 回答问题
         val sections = mutableListOf<Section>()
         if (chooseQuestions.isNotEmpty()) {
-            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", chooseQuestions, null))
+            val sortedChooseQuestions = chooseQuestions.sortedWith(
+                compareBy<Question> { it.displayOrder ?: it.sectionOrder }.thenBy { it.sectionOrder }
+            )
+            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", sortedChooseQuestions, null))
         }
         if (fillQuestions.isNotEmpty()) {
             sections.add(Section("听后记录", "simple_expression_ufi", "听后记录", fillQuestions, null))
@@ -1524,6 +1543,7 @@ object ETS100AnswerReader {
                 if (xtlist != null && xtlist.length() > 0) {
                     for (i in 0 until xtlist.length()) {
                         val item = xtlist.getJSONObject(i)
+                        val displayOrder = extractChooseQuestionNumber(item)
                         val questionText = cleanQuestion(item.optString("xt_nr", ""))
                         val answer = item.optString("answer", "")
                         
@@ -1552,10 +1572,14 @@ object ETS100AnswerReader {
                             questionText = questionText,
                             answers = listOf(answerText),
                             originalText = originalContent,
-                            category = category
+                            category = category,
+                            displayOrder = displayOrder
                         ))
                     }
-                    return Pair(questions, originalContent)
+                    val sortedQuestions = questions.sortedWith(
+                        compareBy<Question> { it.displayOrder ?: it.sectionOrder }.thenBy { it.sectionOrder }
+                    )
+                    return Pair(sortedQuestions, originalContent)
                 }
             }
 

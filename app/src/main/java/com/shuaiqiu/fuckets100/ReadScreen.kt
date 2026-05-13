@@ -1329,7 +1329,7 @@ private fun QuestionItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Q${questionIndex + 1}",
+                    "Q${question.displayOrder ?: questionIndex + 1}",
                     style = MaterialTheme.typography.labelMedium,
                     color = categoryColor,
                     fontWeight = FontWeight.Bold
@@ -1930,7 +1930,7 @@ private fun QuestionDetailItem(
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "Q${questionIndex + 1}",
+                                text = "Q${question.displayOrder ?: questionIndex + 1}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = categoryColor,
                                 fontWeight = FontWeight.Bold
@@ -2117,7 +2117,7 @@ private fun QuestionBlock(
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "Q${questionIndex + 1}",
+                            "Q${question.displayOrder ?: questionIndex + 1}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = categoryColor
@@ -2432,7 +2432,7 @@ private fun QuestionItemSimple(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    "Q${questionIndex + 1}",
+                    "Q${question.displayOrder ?: questionIndex + 1}",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = categoryColor

@@ -124,25 +124,6 @@ fun GeneralSettingsScreen(navController: NavHostController) {
                 }
             }
             
-            // 索引状态信息（仅在调试模式下显示）
-            if (debugModeEnabled) {
-                Text("索引状态", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                
-                OutlinedCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        IndexStatusRow("BeijingIndexManager", BeijingIndexManager.getStats())
-                        Spacer(modifier = Modifier.height(8.dp))
-                        IndexStatusRow("ResourceIndexManager", ResourceIndexManager.getStats())
-                        Spacer(modifier = Modifier.height(8.dp))
-                        IndexStatusRow("初始化状态", 
-                            "Beijing: ${BeijingIndexManager.isReady()}, Resource: ${ResourceIndexManager.isReady()}")
-                    }
-                }
-            }
         }
     }
 }
@@ -271,25 +252,6 @@ private fun GeneralSettingsSwitchRow(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange
-        )
-    }
-}
-
-/**
- * 喵~ 索引状态行组件
- */
-@Composable
-private fun IndexStatusRow(label: String, value: String) {
-    Column {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

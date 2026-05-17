@@ -1129,68 +1129,18 @@ object ETS100AnswerReader {
 
         Log.d(TAG, "parseNormalExercise: 完成 ${dataFile.name} 包含 ${sections.size} 个section共${globalQuestionIndex}道题目")
 
-        // 喵~ 查询 BeijingIndexManager 获取试卷名称（优先）和地区标签
-        val paperIdStr = paperId.toString()
-        
-        // 获取 fileNameData 中的 fileIdentifier（用于 fileIdentifier 查询）
-        val fileNameData = json.optJSONArray("fileNameData")
-        val firstFileIdentifier = if (fileNameData != null && fileNameData.length() > 0) {
-            fileNameData.getString(0)
-        } else null
-        
-        Log.d(TAG, "parseNormalExercise: paperId=$paperIdStr, firstFileIdentifier=$firstFileIdentifier")
-        
-        // 优先从 BeijingIndexManager 获取（beijing-*.json 有完整的试卷名称）
-        var regionLabel = BeijingIndexManager.getRegionLabel(paperIdStr)
-        var paperName = BeijingIndexManager.getPaperName(paperIdStr)
-        
-        // 如果 paperId 查询失败，尝试使用 fileIdentifier 查询
-        if (regionLabel == "未知" && firstFileIdentifier != null) {
-            val fiEntry = BeijingIndexManager.getEntryByFileIdentifier(firstFileIdentifier)
-            if (fiEntry != null) {
-                regionLabel = fiEntry.regionType.displayName
-                paperName = fiEntry.name
-                Log.d(TAG, "parseNormalExercise: 通过 fileIdentifier 找到试卷: ${fiEntry.name}")
-            }
-        }
-        
-        // 如果 BeijingIndexManager 没找到，fallback 到 ResourceIndexManager
-        if (regionLabel == "未知" || paperName == null) {
-            val resourceRegionLabel = ResourceIndexManager.getRegionLabel(paperIdStr)
-            val resourcePaperName = ResourceIndexManager.getPaperName(paperIdStr)
-            
-            // 如果 paperId 查询失败，尝试使用 fileIdentifier 查询
-            if ((resourceRegionLabel == "未知" || resourcePaperName == null) && firstFileIdentifier != null) {
-                val fiEntry = ResourceIndexManager.getEntryByFileIdentifier(firstFileIdentifier)
-                if (fiEntry != null) {
-                    val fiRegionLabel = fiEntry.regionType.displayName
-                    val fiPaperName = fiEntry.name
-                    if (resourceRegionLabel == "未知" && fiRegionLabel != "未知") {
-                        // 不要覆盖，因为这个可能更准确
-                    }
-                    if (resourcePaperName == null && fiPaperName != null) {
-                        // 同样保留已有的
-                    }
-                }
-            }
-            
-            if (regionLabel == "未知" && resourceRegionLabel != "未知") {
-                regionLabel = resourceRegionLabel
-            }
-            if (paperName == null && resourcePaperName != null) {
-                paperName = resourcePaperName
-            }
-        }
+        val regionLabel = "未知"
+        val paperName: String? = null
 
         return Paper(
             paperId = paperId,
-            title = paperName ?: "试卷 #$paperId",  // 优先使用索引中的名称喵~
+            title = "试卷 #$paperId",
             dataFileName = dataFile.name,
             fileSize = dataFile.size,
             sections = sections,
-            downloadTime = dataFile.lastModified,  // 宝贝添加了下载时间喵~
-            regionLabel = regionLabel,  // 喵~ 添加地区标签
-            paperName = paperName  // 喵~ 添加试卷名称
+            downloadTime = dataFile.lastModified,
+            regionLabel = regionLabel,
+            paperName = paperName
         )
     }
 

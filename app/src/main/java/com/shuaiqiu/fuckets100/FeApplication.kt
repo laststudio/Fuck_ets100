@@ -68,12 +68,6 @@ class FeApplication : Application() {
         // 初始化设置管理器
         SettingsManager.init(this)
         
-        // 初始化资源索引管理器（宝贝加载 resource-*.json 喵~）
-        ResourceIndexManager.initialize(this)
-        
-        // 初始化北京索引管理器（宝贝加载 beijing-*.json 喵~）
-        BeijingIndexManager.initialize(this)
-        
         // 初始化Sui (Magisk 模块)
         isSui = Sui.init(BuildConfig.APPLICATION_ID)
         Log.d(TAG, "Sui initialized: $isSui")

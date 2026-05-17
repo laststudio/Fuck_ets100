@@ -22,7 +22,7 @@ import androidx.navigation.NavHostController
 
 /**
  * 调试页面
- * 用于显示索引文件和 fileIdentifier 等调试信息
+ * 用于显示设备路径和解析日志等调试信息
  * 喵~ 这个页面默认隐藏，只有在通用设置中开启调试模式后才显示喵！
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,50 +79,6 @@ fun DebugScreen(navController: NavHostController) {
                 }
             }
 
-            // 索引管理器状态
-            DebugSection(title = "索引管理器状态") {
-                DebugInfoRow("BeijingIndexManager", "C系列: ${BeijingIndexManager.getStats()}")
-                DebugInfoRow("ResourceIndexManager", "G系列: ${ResourceIndexManager.getStats()}")
-                DebugInfoRow("初始化状态", "Beijing: ${BeijingIndexManager.isReady()}, Resource: ${ResourceIndexManager.isReady()}")
-            }
-
-            // 索引文件列表
-            DebugSection(title = "索引文件 (assets/etsresource/)") {
-                val indexFiles = listOf(
-                    "beijing-C1.json" to "初中一年级北京索引",
-                    "beijing-C2.json" to "初中二年级北京索引",
-                    "beijing-C3.json" to "初中三年级北京索引",
-                    "beijing-G1.json" to "高中一年级北京索引",
-                    "beijing-G2.json" to "高中二年级北京索引",
-                    "beijing-G3.json" to "高中三年级北京索引",
-                    "resource-C1.json" to "初中一年级资源索引",
-                    "resource-C2.json" to "初中二年级资源索引",
-                    "resource-C3.json" to "初中三年级资源索引",
-                    "resource-G1.json" to "高中一年级资源索引",
-                    "resource-G2.json" to "高中二年级资源索引",
-                    "resource-G3.json" to "高中三年级资源索引"
-                )
-                indexFiles.forEach { (fileName, description) ->
-                    DebugInfoRow(fileName, description)
-                }
-            }
-
-            // byFileIdentifier 结构说明
-            DebugSection(title = "byFileIdentifier 查询原理") {
-                Text(
-                    "当设备的 paperId 在索引中不存在时，会尝试通过 fileIdentifier 在 byFileIdentifier 中反向查找喵~",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "数据结构：fileIdentifier → {id, name, fileIdentifiers[]}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-
             // 设备数据路径
             DebugSection(title = "设备数据路径") {
                 DebugInfoRow("Data 目录", "/storage/emulated/0/Android/data/com.ets100.secondary/files/Download/ETS_secondary/data/")
@@ -133,9 +89,9 @@ fun DebugScreen(navController: NavHostController) {
             DebugSection(title = "解析日志格式") {
                 Text(
                     """
-                    | parsePaper: paperId=760241, firstFileIdentifier=2b55c4a6bdc3e950cf81f7a0818464d3
-                    | parsePaper: 通过 fileIdentifier 找到试卷: 2025-BSD 必修一 U1A
-                    | 加载 beijing-G1.json: 660 条记录 (items), 8200 条记录 (byFileIdentifier)
+                    | parsePaper: paperId=760241
+                    | parsePaper: sections=4, questions=20
+                    | parseQuestion: category=collector.choose, answer=A
                     """.trimMargin(),
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,

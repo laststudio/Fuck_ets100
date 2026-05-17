@@ -28,5 +28,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Fuck_ets100"
+rootProject.name = "Fe"
 include(":app")

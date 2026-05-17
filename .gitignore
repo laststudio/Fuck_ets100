@@ -62,7 +62,7 @@ xcuserdata
 *.xccheckout
 *.moved-aside
 
-# Env files (避免提交敏感信息)
+# Env files (avoid committing sensitive data)
 .env
 .env.*
 *.env
@@ -70,20 +70,20 @@ xcuserdata
 # Test coverage
 coverage/
 
-# App release (release apk 目录)
+# App release output
 app/release/output-metadata.json
 app/release/baselineProfiles/
 
-# Plans (开发计划文档)
+# Plans
 plans/
 
-# Design reference (界面设计参考)
+# Design reference
 stitch_fe_material_3_interface/
 
-# ets 读取文件 (测试数据)
+# ETS parsing files (test data)
 ets读取/
 
-# AI 开发工具目录
+# AI development tool directories
 .kilo/
 .kotlin/
 .roo/

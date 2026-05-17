@@ -1,0 +1,8 @@
+* text=auto eol=lf
+
+*.kt text working-tree-encoding=UTF-8 eol=lf
+*.kts text working-tree-encoding=UTF-8 eol=lf
+*.xml text working-tree-encoding=UTF-8 eol=lf
+*.md text working-tree-encoding=UTF-8 eol=lf
+*.properties text working-tree-encoding=UTF-8 eol=lf
+*.pro text working-tree-encoding=UTF-8 eol=lf

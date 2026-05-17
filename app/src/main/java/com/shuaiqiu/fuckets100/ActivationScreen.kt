@@ -43,9 +43,16 @@ fun ActivationSettingsScreen(
     var hasFilesPerm by remember { mutableStateOf(PermissionsHelper.hasAllFilesAccess()) }
     var hasOverlayPerm by remember { mutableStateOf(PermissionsHelper.hasOverlayPermission(context)) }
     var hasAppListPerm by remember { mutableStateOf(PermissionsHelper.hasAppListPermission()) }
+    var cloudLoggedIn by remember { mutableStateOf(ETS100AuthManager.isLoggedIn(context)) }
+    var cloudPhone by remember { mutableStateOf(ETS100AuthManager.getPhone(context)) }
 
     // Shizuku 权限请求状态
     var pendingPermissionRequest by remember { mutableStateOf(false) }
+
+    fun refreshCloudAuthState() {
+        cloudLoggedIn = ETS100AuthManager.isLoggedIn(context)
+        cloudPhone = ETS100AuthManager.getPhone(context)
+    }
 
     // 监听生命周期，从系统设置返回时自动刷新基础权限的绿勾勾
     DisposableEffect(lifecycleOwner) {
@@ -54,6 +61,7 @@ fun ActivationSettingsScreen(
                 hasFilesPerm = PermissionsHelper.hasAllFilesAccess()
                 hasOverlayPerm = PermissionsHelper.hasOverlayPermission(context)
                 hasAppListPerm = PermissionsHelper.hasAppListPermission()
+                refreshCloudAuthState()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -94,6 +102,8 @@ fun ActivationSettingsScreen(
                     currentMode = currentMode,
                     shizukuState = shizukuState,
                     hasAllBasicPermissions = hasFilesPerm && hasOverlayPerm && hasAppListPerm,
+                    cloudLoggedIn = cloudLoggedIn,
+                    cloudPhone = cloudPhone,
                     context = context
                 )
                 Spacer(Modifier.height(8.dp))
@@ -163,11 +173,17 @@ fun ActivationSettingsScreen(
                             Column(Modifier.padding(start = 12.dp).weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                                     Text(mode.name, fontWeight = FontWeight.Bold, color = if(isSelected) mode.hexColor else MaterialTheme.colorScheme.onSurface)
-                                    Surface(color = if(mode == ActivationMode.ROOT) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(50)) {
-                                        val displayBadge = if (mode == ActivationMode.SHIZUKU && shizukuState.isRunning && shizukuState.permissionGranted) {
-                                            "UID: ${shizukuState.uid}"
-                                        } else {
-                                            mode.badge
+                                    val badgeContainerColor = when (mode) {
+                                        ActivationMode.ROOT -> MaterialTheme.colorScheme.errorContainer
+                                        ActivationMode.CLOUD -> if (cloudLoggedIn) successColor.copy(alpha = 0.18f) else MaterialTheme.colorScheme.errorContainer
+                                        else -> MaterialTheme.colorScheme.primaryContainer
+                                    }
+                                    Surface(color = badgeContainerColor, shape = RoundedCornerShape(50)) {
+                                        val displayBadge = when {
+                                            mode == ActivationMode.SHIZUKU && shizukuState.isRunning && shizukuState.permissionGranted -> "UID: ${shizukuState.uid}"
+                                            mode == ActivationMode.CLOUD && cloudLoggedIn -> "已激活"
+                                            mode == ActivationMode.CLOUD -> "未激活"
+                                            else -> mode.badge
                                         }
                                         Text(displayBadge, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
                                     }
@@ -212,7 +228,13 @@ fun ActivationSettingsScreen(
                                         FeDirectReadActivationPanel(hasFilesPerm && hasOverlayPerm && hasAppListPerm)
                                     }
                                     ActivationMode.CLOUD -> {
-                                        FeCloudActivationPanel(context, navController)
+                                        FeCloudActivationPanel(
+                                            context = context,
+                                            navController = navController,
+                                            isLoggedIn = cloudLoggedIn,
+                                            phone = cloudPhone,
+                                            onCloudAuthChanged = { refreshCloudAuthState() }
+                                        )
                                     }
                                     else -> {
                                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -240,6 +262,8 @@ fun FeModeStatusCard(
     currentMode: ActivationMode,
     shizukuState: ShizukuState,
     hasAllBasicPermissions: Boolean,
+    cloudLoggedIn: Boolean,
+    cloudPhone: String?,
     context: android.content.Context
 ) {
     var isRootAvailable by remember { mutableStateOf(RootManager.isRootAvailable()) }
@@ -264,10 +288,7 @@ fun FeModeStatusCard(
         ActivationMode.SHIZUKU -> if (shizukuState.isRunning && shizukuState.permissionGranted) Color(0xFF4ADE80) else errorRedColor
         ActivationMode.ROOT -> if (hasAllBasicPermissions && isRootAvailable) Color(0xFF4ADE80) else errorRedColor
         ActivationMode.DIRECT_READ -> if (hasAllBasicPermissions && isDirectReadAvailable) Color(0xFF4ADE80) else errorRedColor
-        ActivationMode.CLOUD -> {
-            val isCloudLoggedIn = ETS100AuthManager.isLoggedIn(context)
-            if (isCloudLoggedIn) Color(0xFF4ADE80) else MaterialTheme.colorScheme.outline
-        }
+        ActivationMode.CLOUD -> if (cloudLoggedIn) Color(0xFF4ADE80) else errorRedColor
     }
     
     val isActive = statusColor == Color(0xFF4ADE80)
@@ -307,10 +328,8 @@ fun FeModeStatusCard(
             Triple(title, desc, null)
         }
         ActivationMode.CLOUD -> {
-            val isLoggedIn = ETS100AuthManager.isLoggedIn(context)
-            val phone = ETS100AuthManager.getPhone(context)
-            val title = if (isLoggedIn) "云端模式" else "云端模式"
-            val desc = if (isLoggedIn) "已登录: $phone" else "需要登录 ETS100 账号"
+            val title = if (cloudLoggedIn) "云端模式已激活" else "云端模式未激活"
+            val desc = if (cloudLoggedIn) "已登录: ${maskPhoneNumber(cloudPhone)}" else "需要登录 ETS100 账号"
             Triple(title, desc, null)
         }
     }
@@ -757,24 +776,13 @@ fun FeRootActivationPanel(context: android.content.Context) {
 @Composable
 fun FeCloudActivationPanel(
     context: android.content.Context,
-    navController: NavHostController
+    navController: NavHostController,
+    isLoggedIn: Boolean,
+    phone: String?,
+    onCloudAuthChanged: () -> Unit
 ) {
     val cloudColor = Color(0xFF60A5FA)
     val successColor = Color(0xFF4ADE80)
-    
-    val isLoggedIn = remember { ETS100AuthManager.isLoggedIn(context) }
-    val phone = remember { ETS100AuthManager.getPhone(context) }
-    
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                // 刷新登录状态
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
     
     Column {
         Row(
@@ -784,11 +792,20 @@ fun FeCloudActivationPanel(
         ) {
             Text(
                 text = when {
-                    isLoggedIn -> "已登录: $phone"
-                    else -> "需要登录 ETS100 账号"
+                    isLoggedIn -> "云端模式已激活"
+                    else -> "云端模式未激活"
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = if (isLoggedIn) successColor else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        if (isLoggedIn && !phone.isNullOrBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "已登录: ${maskPhoneNumber(phone)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         
@@ -804,6 +821,7 @@ fun FeCloudActivationPanel(
                     onClick = {
                         // 登出
                         ETS100AuthManager.logout(context)
+                        onCloudAuthChanged()
                         Toast.makeText(context, "已退出登录", Toast.LENGTH_SHORT).show()
                     },
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),

@@ -43,6 +43,7 @@ fun HomeScreen(mode: ActivationMode, shizukuState: ShizukuState, navController: 
     var hasOverlayPerm by remember { mutableStateOf(PermissionsHelper.hasOverlayPermission(context)) }
     var hasAppListPerm by remember { mutableStateOf(PermissionsHelper.hasAppListPermission()) }
     var hasRootAvailable by remember { mutableStateOf(RootManager.isRootAvailable()) }
+    var cloudLoggedIn by remember { mutableStateOf(ETS100AuthManager.isLoggedIn(context)) }
     
     // ETS 应用信息状态
     var etsAppInfo by remember { mutableStateOf<Pair<Boolean, String>?>(null) } // (已安装, 版本号)
@@ -54,6 +55,8 @@ fun HomeScreen(mode: ActivationMode, shizukuState: ShizukuState, navController: 
                 hasFilesPerm = PermissionsHelper.hasAllFilesAccess()
                 hasOverlayPerm = PermissionsHelper.hasOverlayPermission(context)
                 hasAppListPerm = PermissionsHelper.hasAppListPermission()
+                hasRootAvailable = RootManager.isRootAvailable()
+                cloudLoggedIn = ETS100AuthManager.isLoggedIn(context)
                 // 刷新 ETS 应用信息
                 etsAppInfo = getAppInfo(context)
             }
@@ -76,8 +79,9 @@ fun HomeScreen(mode: ActivationMode, shizukuState: ShizukuState, navController: 
     // Direct Read 模式会检测零宽字符漏洞绕过限制，而其他模式需要相应的权限和配置
     val isTrulyActivated = when {
         mode == ActivationMode.SHIZUKU -> shizukuState.isRunning && shizukuState.permissionGranted && hasAllBasicPermissions
-        mode == ActivationMode.ROOT -> hasAllBasicPermissions && RootManager.isRootAvailable()
+        mode == ActivationMode.ROOT -> hasAllBasicPermissions && hasRootAvailable
         mode == ActivationMode.DIRECT_READ -> hasAllBasicPermissions && ZWCHelper.isDirectReadAvailable()
+        mode == ActivationMode.CLOUD -> cloudLoggedIn
         mode != ActivationMode.DEFAULT -> hasAllBasicPermissions
         else -> false
     }
@@ -119,6 +123,7 @@ fun HomeScreen(mode: ActivationMode, shizukuState: ShizukuState, navController: 
                 shizukuState = shizukuState, 
                 isTrulyActivated = isTrulyActivated, 
                 activeColor = activeColor, 
+                cloudLoggedIn = cloudLoggedIn,
                 navController = navController
             )
             DeviceCard(activeColor = activeColor, etsAppInfo = etsAppInfo)
@@ -154,6 +159,7 @@ fun StatusCard(
     shizukuState: ShizukuState,
     isTrulyActivated: Boolean,
     activeColor: Color,
+    cloudLoggedIn: Boolean,
     navController: NavHostController
 ) {
     val context = LocalContext.current
@@ -167,6 +173,8 @@ fun StatusCard(
 
     // 根据当前状态显示不同的标题
     val displayTitle = when {
+        mode == ActivationMode.CLOUD && cloudLoggedIn -> "云端模式已激活"
+        mode == ActivationMode.CLOUD -> "云端模式未激活"
         // 基础权限未授予时显示等待授权提示
         !hasAllBasicPermissions -> "等待授权"
         mode == ActivationMode.SHIZUKU && shizukuState.isRunning && !shizukuState.permissionGranted -> "Shizuku 等待授权"
@@ -236,7 +244,9 @@ fun StatusCard(
                     )
 
                     // 详细说明文字
-                    if (!hasAllBasicPermissions) {
+                    if (mode == ActivationMode.CLOUD) {
+                        // 云端模式首页只保留主状态，避免暴露账号信息。
+                    } else if (!hasAllBasicPermissions) {
                         val subText = when {
                             !hasFilesPerm -> "需要文件访问权限才能读取题库，请授权"
                             !hasOverlayPerm -> "需要悬浮窗权限才能显示答题界面，请授权"

@@ -96,7 +96,7 @@ object SettingsManager {
     }
     
     /**
-     * 喵~ 保存隐藏调试按钮开关（默认 false - 默认显示调试按钮）
+     * 保存隐藏调试按钮开关（默认 true - 默认隐藏调试按钮）
      */
     fun saveHideDebugButton(hide: Boolean) {
         prefs.edit {
@@ -105,9 +105,9 @@ object SettingsManager {
     }
     
     /**
-     * 喵~ 获取隐藏调试按钮开关（默认 false - 调试按钮默认显示）
+     * 获取隐藏调试按钮开关（默认 true - 调试按钮默认隐藏）
      */
     fun getHideDebugButton(): Boolean {
-        return prefs.getBoolean(KEY_HIDE_DEBUG_BUTTON, false)
+        return prefs.getBoolean(KEY_HIDE_DEBUG_BUTTON, true)
     }
 }

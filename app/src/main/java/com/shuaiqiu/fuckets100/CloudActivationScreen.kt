@@ -311,13 +311,13 @@ fun CloudActivationScreen(
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = "登录说明",
+                            text = "登录风险提示",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "使用 ETS100 账号登录，账号为手机号。登录后可以在线查看作业列表和答案。",
+                            text = "登录云端模式可能会导致 E听说账号在官方客户端退出登录。请确认当前没有正在使用 E听说，再继续登录。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

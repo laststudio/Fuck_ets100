@@ -174,6 +174,7 @@ fun ReadScreen(
     
     // 可展开 FAB 相关状态
     var isFabExpanded by remember { mutableStateOf(false) }
+    var showCloudReadConfirmDialog by remember { mutableStateOf(false) }
 
     // ========== 云端模式状态喵~ 宝贝这些状态现在保存在单例中，Tab 切换不丢失喵~
     var homeworkList by remember { mutableStateOf(CloudHomeworkState.homeworkList) }
@@ -711,9 +712,7 @@ fun ReadScreen(
                 onReadClick = {
                     isFabExpanded = false
                     if (currentMode == ActivationMode.CLOUD) {
-                        // 云端模式：加载作业列表喵~ 不再清空状态，保留已下载的作业喵~
-                        cloudHomeworkError = null
-                        scope.launch { loadCloudHomeworkList() }
+                        showCloudReadConfirmDialog = true
                     } else {
                         // 本地模式：重新加载本地试卷喵~
                         reloadTrigger++
@@ -962,6 +961,17 @@ fun ReadScreen(
                         }
                     },
                     isCloudMode = currentMode == ActivationMode.CLOUD
+                )
+            }
+
+            if (showCloudReadConfirmDialog) {
+                CloudReadConfirmDialog(
+                    onDismiss = { showCloudReadConfirmDialog = false },
+                    onConfirm = {
+                        showCloudReadConfirmDialog = false
+                        cloudHomeworkError = null
+                        scope.launch { loadCloudHomeworkList() }
+                    }
                 )
             }
         }
@@ -2786,6 +2796,43 @@ private fun DeleteConfirmDialog(
                 )
             ) {
                 Text("确认删除")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+private fun CloudReadConfirmDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(48.dp)
+            )
+        },
+        title = {
+            Text("确认读取云端作业？")
+        },
+        text = {
+            Text(
+                "读取云端作业可能会导致 E听说官方客户端退出登录。\n\n" +
+                    "请先确认没有正在进行的 E听说练习或考试。建议读取完答案后，再去 E听说做题；否则可能导致 E听说考试或练习连接断开。"
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("确认读取")
             }
         },
         dismissButton = {

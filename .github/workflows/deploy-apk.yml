@@ -44,6 +44,8 @@ jobs:
             "ANDROID_KEY_PASSWORD"
             "GITEE_USERNAME"
             "GITEE_TOKEN"
+            "LANZOU_USERNAME"
+            "LANZOU_PASSWORD"
           )
           for secret_name in "${required_secrets[@]}"; do
             if [ -z "${!secret_name:-}" ]; then
@@ -59,6 +61,8 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          LANZOU_USERNAME: ${{ secrets.LANZOU_USERNAME }}
+          LANZOU_PASSWORD: ${{ secrets.LANZOU_PASSWORD }}
 
       - name: 读取版本号
         id: version
@@ -133,6 +137,22 @@ jobs:
           path: ${{ steps.artifact.outputs.apk_path }}
           if-no-files-found: error
 
+      - name: 安装蓝奏云上传依赖
+        shell: bash
+        run: python -m pip install --upgrade requests requests-toolbelt
+
+      - name: 上传 APK 到蓝奏云
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/release/upload_lanzou.py \
+            --file "${{ steps.artifact.outputs.apk_path }}" \
+            --folder-name "${LANZOU_FOLDER_NAME}"
+        env:
+          LANZOU_USERNAME: ${{ secrets.LANZOU_USERNAME }}
+          LANZOU_PASSWORD: ${{ secrets.LANZOU_PASSWORD }}
+          LANZOU_FOLDER_NAME: ${{ vars.LANZOU_FOLDER_NAME || 'fe' }}
+
       - name: 发布 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -149,6 +169,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "RELEASE_FORCE_UPDATE=${RELEASE_FORCE_UPDATE}"
+          echo "RELEASE_KILL_SWITCH=${RELEASE_KILL_SWITCH}"
+          if [ -n "${RELEASE_NOTICE_MESSAGE}" ]; then
+            echo "RELEASE_NOTICE_MESSAGE 已配置。"
+          else
+            echo "RELEASE_NOTICE_MESSAGE 为空。"
+          fi
           python scripts/release/update_remote_config.py \
             --version-code "${{ steps.version.outputs.version_code }}" \
             --version-name "${{ steps.version.outputs.version_name }}" \
@@ -161,4 +188,5 @@ jobs:
           GITEE_CONFIG_BRANCH: ${{ vars.GITEE_CONFIG_BRANCH || 'master' }}
           GITEE_CONFIG_FILE: ${{ vars.GITEE_CONFIG_FILE || 'config.json' }}
           RELEASE_FORCE_UPDATE: ${{ vars.RELEASE_FORCE_UPDATE || 'false' }}
+          RELEASE_KILL_SWITCH: ${{ vars.RELEASE_KILL_SWITCH || 'false' }}
           RELEASE_NOTICE_MESSAGE: ${{ vars.RELEASE_NOTICE_MESSAGE || '' }}

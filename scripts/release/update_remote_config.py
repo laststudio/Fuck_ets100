@@ -69,7 +69,7 @@ def update_config_file(
     update_message: str,
     is_force: bool,
     notice_message: str,
-    keep_kill_switch: bool,
+    is_kill_switch_on: bool,
 ) -> bool:
     """精准更新远程配置字段，保留未知字段避免误伤。"""
     if config_file.exists():
@@ -87,11 +87,7 @@ def update_config_file(
     config["isForce"] = is_force
     config["updateMessage"] = update_message
     config["noticeMessage"] = notice_message
-
-    if not keep_kill_switch:
-        config["isKillSwitchOn"] = False
-    else:
-        config.setdefault("isKillSwitchOn", False)
+    config["isKillSwitchOn"] = is_kill_switch_on
 
     updated = json.dumps(config, ensure_ascii=False, indent=2)
     config_file.write_text(updated + "\n", encoding="utf-8")
@@ -118,7 +114,7 @@ def main() -> int:
     parser.add_argument("--message-file", default=None, help="更新提示文件")
     parser.add_argument("--notice-message", default=os.getenv("RELEASE_NOTICE_MESSAGE", ""), help="公告文本")
     parser.add_argument("--force", default=os.getenv("RELEASE_FORCE_UPDATE", "false"), help="是否强制更新")
-    parser.add_argument("--keep-kill-switch", action="store_true", help="保留远端 KillSwitch 当前值")
+    parser.add_argument("--kill-switch", default=os.getenv("RELEASE_KILL_SWITCH", "false"), help="是否开启 KillSwitch")
     parser.add_argument("--gitee-username", default=os.getenv("GITEE_USERNAME"), help="Gitee 用户名")
     parser.add_argument("--gitee-token", default=os.getenv("GITEE_TOKEN"), help="Gitee Token")
     parser.add_argument("--gitee-repo", default=os.getenv("GITEE_CONFIG_REPO", DEFAULT_REPO), help="Gitee 仓库 owner/name")
@@ -132,6 +128,7 @@ def main() -> int:
 
         update_message = read_message(args.message, args.message_file)
         is_force = parse_bool(args.force)
+        is_kill_switch_on = parse_bool(args.kill_switch)
 
         with tempfile.TemporaryDirectory(prefix="fe-gitee-config-") as temp_dir:
             temp_path = Path(temp_dir)
@@ -150,7 +147,7 @@ def main() -> int:
                 update_message,
                 is_force,
                 args.notice_message,
-                args.keep_kill_switch,
+                is_kill_switch_on,
             )
 
             if not changed:

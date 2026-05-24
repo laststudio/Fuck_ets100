@@ -126,6 +126,12 @@ private fun createCloudHomeworkPlaceholder(homework: ETS100ApiClient.HomeworkInf
     )
 }
 
+private fun cloudHomeworkStatusLabel(status: String): String {
+    return if (status == CloudHomeworkState.STATUS_HISTORY) "历史作业" else "当前作业"
+}
+
+private fun cloudHomeworkCacheKey(status: String, homeworkName: String): String = "$status:$homeworkName"
+
 /**
  * 阅读界面 - 显示ETS 100答案的阅读界面
  * 支持多种激活模式（Shizuku、Root、SAF等）
@@ -177,7 +183,8 @@ fun ReadScreen(
     var showCloudReadConfirmDialog by remember { mutableStateOf(false) }
 
     // ========== 云端模式状态喵~ 宝贝这些状态现在保存在单例中，Tab 切换不丢失喵~
-    var homeworkList by remember { mutableStateOf(CloudHomeworkState.homeworkList) }
+    var selectedCloudHomeworkStatus by remember { mutableStateOf(CloudHomeworkState.selectedStatus) }
+    var homeworkListsByStatus by remember { mutableStateOf(CloudHomeworkState.homeworkListsByStatus) }
     var isLoadingCloudHomework by remember { mutableStateOf(CloudHomeworkState.isLoading) }
     var cloudHomeworkError by remember { mutableStateOf(CloudHomeworkState.error) }
     var cloudBaseUrl by remember { mutableStateOf(CloudHomeworkState.cloudBaseUrl) }
@@ -187,6 +194,16 @@ fun ReadScreen(
     var failedCloudHomeworks by remember { mutableStateOf(CloudHomeworkState.failedCloudHomeworks) }
 
     // 宝贝新增：云端作业占位符列表喵~ 现在显示所有作业，包括已下载的喵~
+    val homeworkList by remember {
+        derivedStateOf {
+            homeworkListsByStatus[selectedCloudHomeworkStatus].orEmpty()
+        }
+    }
+    val selectedCloudHomeworkLabel by remember {
+        derivedStateOf {
+            cloudHomeworkStatusLabel(selectedCloudHomeworkStatus)
+        }
+    }
     val cloudHomeworkPlaceholders by remember {
         derivedStateOf {
             homeworkList.map { hw -> createCloudHomeworkPlaceholder(hw) }
@@ -224,7 +241,10 @@ fun ReadScreen(
     /**
      * 加载云端作业列表
      */
-    suspend fun loadCloudHomeworkList() {
+    suspend fun loadCloudHomeworkList(status: String = selectedCloudHomeworkStatus) {
+        selectedCloudHomeworkStatus = status
+        CloudHomeworkState.selectedStatus = status
+
         if (!ETS100AuthManager.isLoggedIn(context)) {
             cloudHomeworkError = "未登录，请先在设置中登录云端账号"
             addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 未登录云端账号")
@@ -244,7 +264,7 @@ fun ReadScreen(
         cloudHomeworkError = null
         CloudHomeworkState.isLoading = true
         CloudHomeworkState.error = null
-        addLog(LogLevel.INFO, LogCategory.SYSTEM, "☁️ 开始加载云端作业列表")
+        addLog(LogLevel.INFO, LogCategory.SYSTEM, "☁️ 开始加载${cloudHomeworkStatusLabel(status)}列表")
 
         var lastError: Throwable? = null
         var success = false
@@ -287,13 +307,13 @@ fun ReadScreen(
             return
         }
 
-        val result = ETS100ApiClient.getHomeworkList(tokenForRequest, parentId)
+        val result = ETS100ApiClient.getHomeworkList(tokenForRequest, parentId, status)
         result.onSuccess { response ->
-            homeworkList = response.homeworks
+            homeworkListsByStatus = homeworkListsByStatus + (status to response.homeworks)
             cloudBaseUrl = response.baseUrl
-            CloudHomeworkState.homeworkList = response.homeworks
+            CloudHomeworkState.homeworkListsByStatus = homeworkListsByStatus
             CloudHomeworkState.cloudBaseUrl = response.baseUrl
-            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 获取到 ${homeworkList.size} 个云端作业")
+            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 获取到 ${response.homeworks.size} 个${cloudHomeworkStatusLabel(status)}")
             addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 API 返回的 base_url = ${response.baseUrl}")
             success = true
         }.onFailure { e ->
@@ -311,6 +331,20 @@ fun ReadScreen(
         CloudHomeworkState.isLoading = false
     }
 
+    fun selectCloudHomeworkStatus(status: String) {
+        if (status == selectedCloudHomeworkStatus) return
+
+        selectedCloudHomeworkStatus = status
+        CloudHomeworkState.selectedStatus = status
+        selectedPaper = null
+        showPaperDetail = false
+        cloudHomeworkError = CloudHomeworkState.error
+
+        if (!homeworkListsByStatus.containsKey(status)) {
+            scope.launch { loadCloudHomeworkList(status) }
+        }
+    }
+
     /**
      * 清除云端作业缓存
      * 宝贝删除所有已下载的云端作业文件喵~
@@ -324,7 +358,8 @@ fun ReadScreen(
         downloadedPapers = emptyMap()
         downloadedHomeworkNames = emptySet()
         papers = emptyList()
-        homeworkList = emptyList()
+        homeworkListsByStatus = emptyMap()
+        selectedCloudHomeworkStatus = CloudHomeworkState.STATUS_CURRENT
         CloudHomeworkState.clear()
         Toast.makeText(context, "已清除所有云端缓存", Toast.LENGTH_SHORT).show()
     }
@@ -334,19 +369,20 @@ fun ReadScreen(
      * 宝贝这个函数处理下载、解压和解析的全流程喵~
      */
     suspend fun downloadAndParseHomework(
-        homeworkInfo: ETS100ApiClient.HomeworkInfo
+        homeworkInfo: ETS100ApiClient.HomeworkInfo,
+        status: String = selectedCloudHomeworkStatus
     ) {
         addLog(LogLevel.INFO, LogCategory.SYSTEM, "📥 开始下载作业: ${homeworkInfo.name}, 共 ${homeworkInfo.contents.size} 个内容")
 
-        val cacheKey = homeworkInfo.name
+        val cacheKey = cloudHomeworkCacheKey(status, homeworkInfo.name)
         if (downloadedPapers.containsKey(cacheKey)) {
             addLog(LogLevel.INFO, LogCategory.SYSTEM, "📁 缓存命中，作业已下载喵~")
             Toast.makeText(context, "该作业已下载喵~", Toast.LENGTH_SHORT).show()
             return
         }
 
-        cloudDownloadingHomeworks = cloudDownloadingHomeworks + homeworkInfo.name
-        failedCloudHomeworks = failedCloudHomeworks - homeworkInfo.name
+        cloudDownloadingHomeworks = cloudDownloadingHomeworks + cacheKey
+        failedCloudHomeworks = failedCloudHomeworks - cacheKey
         CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
         CloudHomeworkState.failedCloudHomeworks = failedCloudHomeworks
 
@@ -504,8 +540,8 @@ fun ReadScreen(
                 sections = allSections
             )
             downloadedPapers = downloadedPapers + (cacheKey to listOf(paper))
-            downloadedHomeworkNames = downloadedHomeworkNames + homeworkInfo.name
-            cloudDownloadingHomeworks = cloudDownloadingHomeworks - homeworkInfo.name
+            downloadedHomeworkNames = downloadedHomeworkNames + cacheKey
+            cloudDownloadingHomeworks = cloudDownloadingHomeworks - cacheKey
             CloudHomeworkState.downloadedPapers = downloadedPapers
             CloudHomeworkState.downloadedHomeworkNames = downloadedHomeworkNames
             CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
@@ -515,8 +551,8 @@ fun ReadScreen(
         } catch (e: Exception) {
             addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 下载解析失败: ${e.message}")
             Toast.makeText(context, "下载失败: ${e.message}", Toast.LENGTH_LONG).show()
-            cloudDownloadingHomeworks = cloudDownloadingHomeworks - homeworkInfo.name
-            failedCloudHomeworks = failedCloudHomeworks + homeworkInfo.name
+            cloudDownloadingHomeworks = cloudDownloadingHomeworks - cacheKey
+            failedCloudHomeworks = failedCloudHomeworks + cacheKey
             CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
             CloudHomeworkState.failedCloudHomeworks = failedCloudHomeworks
         }
@@ -778,7 +814,7 @@ fun ReadScreen(
                 }
 
                 // 3. 云端模式：作业列表非空，显示作业列表或答案详情喵~
-                currentMode == ActivationMode.CLOUD && homeworkList.isNotEmpty() -> {
+                currentMode == ActivationMode.CLOUD -> {
                     // 宝贝用 Crossfade 在作业列表和答案详情之间切换喵~
                     Crossfade(
                         targetState = showPaperDetail && selectedPaper != null,
@@ -805,13 +841,29 @@ fun ReadScreen(
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                item { CloudModeInfoCard() }
+                                item {
+                                    CloudModeInfoCard(
+                                        selectedStatus = selectedCloudHomeworkStatus,
+                                        onStatusChange = { selectCloudHomeworkStatus(it) }
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    CloudHomeworkStatusToggle(
+                                        selectedStatus = selectedCloudHomeworkStatus,
+                                        onStatusChange = { selectCloudHomeworkStatus(it) }
+                                    )
+                                }
+                                if (homeworkListsByStatus.containsKey(selectedCloudHomeworkStatus) && homeworkList.isEmpty()) {
+                                    item {
+                                        EmptyCloudHomeworkCard(label = selectedCloudHomeworkLabel)
+                                    }
+                                }
                                 itemsIndexed(homeworkList) { paperIndex, homeworkInfo ->
-                                    val isDownloaded = downloadedHomeworkNames.contains(homeworkInfo.name)
-                                    val isDownloading = cloudDownloadingHomeworks.contains(homeworkInfo.name)
-                                    val isFailed = failedCloudHomeworks.contains(homeworkInfo.name)
+                                    val homeworkKey = cloudHomeworkCacheKey(selectedCloudHomeworkStatus, homeworkInfo.name)
+                                    val isDownloaded = downloadedHomeworkNames.contains(homeworkKey)
+                                    val isDownloading = cloudDownloadingHomeworks.contains(homeworkKey)
+                                    val isFailed = failedCloudHomeworks.contains(homeworkKey)
                                     val paper = if (isDownloaded) {
-                                        downloadedPapers[homeworkInfo.name]?.firstOrNull() ?: createCloudHomeworkPlaceholder(homeworkInfo)
+                                        downloadedPapers[homeworkKey]?.firstOrNull() ?: createCloudHomeworkPlaceholder(homeworkInfo)
                                     } else {
                                         createCloudHomeworkPlaceholder(homeworkInfo)
                                     }
@@ -821,13 +873,13 @@ fun ReadScreen(
                                         onClick = {
                                             if (isDownloaded) {
                                                 // 宝贝已下载，点击查看详情喵~
-                                                downloadedPapers[homeworkInfo.name]?.firstOrNull()?.let { downloadedPaper ->
+                                                downloadedPapers[homeworkKey]?.firstOrNull()?.let { downloadedPaper ->
                                                     selectedPaper = downloadedPaper
                                                     showPaperDetail = true
                                                 }
                                             } else if (!isDownloading) {
                                                 // 宝贝未下载，开始下载喵~
-                                                scope.launch { downloadAndParseHomework(homeworkInfo) }
+                                                scope.launch { downloadAndParseHomework(homeworkInfo, selectedCloudHomeworkStatus) }
                                             }
                                         },
                                         categoryColors = categoryColors,
@@ -974,6 +1026,63 @@ fun ReadScreen(
                     }
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun EmptyCloudHomeworkCard(label: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.FolderOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = "未找到$label",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudHomeworkStatusToggle(
+    selectedStatus: String,
+    onStatusChange: (String) -> Unit
+) {
+    val isHistory = selectedStatus == CloudHomeworkState.STATUS_HISTORY
+
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        SegmentedButton(
+            selected = !isHistory,
+            onClick = { onStatusChange(CloudHomeworkState.STATUS_CURRENT) },
+            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+            icon = {}
+        ) {
+            Text("当前作业")
+        }
+        SegmentedButton(
+            selected = isHistory,
+            onClick = { onStatusChange(CloudHomeworkState.STATUS_HISTORY) },
+            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+            icon = {}
+        ) {
+            Text("历史作业")
         }
     }
 }
@@ -2721,7 +2830,11 @@ private fun PaperListItem(
  * 显示当前为云端作业模式
  */
 @Composable
-private fun CloudModeInfoCard() {
+private fun CloudModeInfoCard(
+    selectedStatus: String,
+    onStatusChange: (String) -> Unit
+) {
+    val isHistory = selectedStatus == CloudHomeworkState.STATUS_HISTORY
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(

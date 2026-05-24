@@ -440,8 +440,12 @@ object ETS100ApiClient {
      * @param parentAccountId 父账户 ID
      * @return 历史作业列表响应（status=2 获取历史作业喵~）
      */
-    suspend fun getHomeworkList(token: String, parentAccountId: String): Result<HomeworkListResponse> {
-        Log.d(TAG, "getHistoryHomeworkList: parentAccountId=$parentAccountId")
+    suspend fun getHomeworkList(
+        token: String,
+        parentAccountId: String,
+        status: String = CloudHomeworkState.STATUS_CURRENT
+    ): Result<HomeworkListResponse> {
+        Log.d(TAG, "getHomeworkList: parentAccountId=$parentAccountId, status=$status")
 
         val bodyData = mapOf(
             "r" to "g/homework/list",
@@ -450,7 +454,7 @@ object ETS100ApiClient {
                 "token" to token,
                 "parent_account_id" to parentAccountId,
                 "limit" to "0",
-                "status" to "1",
+                "status" to status,
                 "offset" to "0",
                 "max_end_time" to "",
                 "max_homework_id" to "",

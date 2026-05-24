@@ -5,7 +5,16 @@ package com.shuaiqiu.fuckets100
  * 保存在内存中，Tab 切换时不丢失喵~
  */
 object CloudHomeworkState {
-    var homeworkList: List<ETS100ApiClient.HomeworkInfo> = emptyList()
+    const val STATUS_CURRENT = "1"
+    const val STATUS_HISTORY = "2"
+
+    var selectedStatus: String = STATUS_CURRENT
+    var homeworkListsByStatus: Map<String, List<ETS100ApiClient.HomeworkInfo>> = emptyMap()
+    var homeworkList: List<ETS100ApiClient.HomeworkInfo>
+        get() = homeworkListsByStatus[selectedStatus].orEmpty()
+        set(value) {
+            homeworkListsByStatus = homeworkListsByStatus + (selectedStatus to value)
+        }
     var cloudBaseUrl: String = ETS100ApiClient.Config.CDN_BASE_URL
     var downloadedPapers: Map<String, List<ETS100AnswerReader.Paper>> = emptyMap()
     var downloadedHomeworkNames: Set<String> = emptySet()
@@ -15,7 +24,8 @@ object CloudHomeworkState {
     var error: String? = null
 
     fun clear() {
-        homeworkList = emptyList()
+        selectedStatus = STATUS_CURRENT
+        homeworkListsByStatus = emptyMap()
         downloadedPapers = emptyMap()
         downloadedHomeworkNames = emptySet()
         cloudDownloadingHomeworks = emptySet()

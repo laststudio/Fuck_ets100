@@ -179,13 +179,60 @@ object ETS100AnswerReader {
             .replace("\u200B", "")                    // 移除零宽空格
             .trim()
     }
+    private val questionNumberFields = listOf(
+        "xt_xh",
+        "xth",
+        "xh",
+        "th",
+        "question_no",
+        "questionNo",
+        "order",
+        "sort",
+        "index"
+    )
+
+    private val questionNumberTextPatterns = listOf(
+        Regex("ets_th\\s*(\\d+)", RegexOption.IGNORE_CASE),
+        Regex("\\u7b2c\\s*(\\d+)\\s*\\u9898"),
+        Regex("^\\s*(\\d+)\\s*[.\\u3001\\uff0e)\\uff09]")
+    )
+
+    private fun parsePositiveInt(value: String): Int? {
+        return value.trim().toIntOrNull()?.takeIf { it > 0 }
+    }
+
+    private fun extractQuestionNumberFromText(vararg texts: String?): Int? {
+        for (text in texts) {
+            if (text.isNullOrBlank()) continue
+            for (pattern in questionNumberTextPatterns) {
+                val number = pattern.find(text)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.let(::parsePositiveInt)
+                if (number != null) return number
+            }
+        }
+        return null
+    }
+
+    private fun extractQuestionNumber(item: JSONObject, vararg textKeys: String): Int? {
+        for (field in questionNumberFields) {
+            parsePositiveInt(item.optString(field, ""))?.let { return it }
+        }
+
+        val keys = (textKeys.toList() + listOf("xt_nr", "ask", "question", "text", "topic", "value")).distinct()
+        return extractQuestionNumberFromText(*keys.map { item.optString(it, "") }.toTypedArray())
+    }
+
     private fun extractChooseQuestionNumber(item: JSONObject): Int? {
-        item.optString("xt_xh", "").trim().toIntOrNull()?.let { return it }
-        return Regex("ets_th\\s*(\\d+)", RegexOption.IGNORE_CASE)
-            .find(item.optString("xt_nr", ""))
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.toIntOrNull()
+        return extractQuestionNumber(item, "xt_nr")
+    }
+
+    private val questionOfficialOrderComparator =
+        compareBy<Question> { it.displayOrder ?: it.sectionOrder }.thenBy { it.sectionOrder }
+
+    private fun sortQuestionsByOfficialOrder(questions: List<Question>): List<Question> {
+        return questions.sortedWith(questionOfficialOrderComparator)
     }
 
     /**
@@ -480,6 +527,7 @@ object ETS100AnswerReader {
                         } else listOf("暂无标准答案")
 
                         val questionText = ask.substringAfter(" ").ifEmpty { ask }
+                        val displayOrder = extractQuestionNumber(q, "ask", "question", "text")
 
                         when {
                             hasBr && askaudio.isNotEmpty() -> {
@@ -492,7 +540,8 @@ object ETS100AnswerReader {
                                     questionText = questionText,
                                     answers = answers,
                                     originalText = null,
-                                    category = "simple_expression_ufi"
+                                    category = "simple_expression_ufi",
+                                    displayOrder = displayOrder
                                 ))
                             }
                             askaudio.isNotEmpty() && !hasBr -> {
@@ -505,7 +554,8 @@ object ETS100AnswerReader {
                                     questionText = questionText,
                                     answers = answers,
                                     originalText = null,
-                                    category = "simple_expression_ufk"
+                                    category = "simple_expression_ufk",
+                                    displayOrder = displayOrder
                                 ))
                             }
                             askaudio.isEmpty() && hasChinese -> {
@@ -518,7 +568,8 @@ object ETS100AnswerReader {
                                     questionText = questionText,
                                     answers = answers,
                                     originalText = null,
-                                    category = "simple_expression_ufj"
+                                    category = "simple_expression_ufj",
+                                    displayOrder = displayOrder
                                 ))
                             }
                         }
@@ -544,7 +595,8 @@ object ETS100AnswerReader {
                         questionText = topicTitle,
                         answers = answers,
                         originalText = infoObj.optString("value", ""),
-                        category = "topic"
+                        category = "topic",
+                        displayOrder = extractQuestionNumber(infoObj, "topic", "value")
                     ))
                     questionIndex++
                 }
@@ -555,16 +607,16 @@ object ETS100AnswerReader {
         // 按文档顺序组装：听选信息 → 回答问题 → 信息转述 → 提问
         val sections = mutableListOf<Section>()
         if (listeningSelectQuestions.isNotEmpty()) {
-            sections.add(Section("听选信息", "simple_expression_ufi", "听选信息", listeningSelectQuestions, null))
+            sections.add(Section("听选信息", "simple_expression_ufi", "听选信息", sortQuestionsByOfficialOrder(listeningSelectQuestions), null))
         }
         if (answerQuestions.isNotEmpty()) {
-            sections.add(Section("回答问题", "simple_expression_ufk", "回答问题", answerQuestions, null))
+            sections.add(Section("回答问题", "simple_expression_ufk", "回答问题", sortQuestionsByOfficialOrder(answerQuestions), null))
         }
         if (pictureQuestions.isNotEmpty()) {
-            sections.add(Section("信息转述", "topic", "信息转述", pictureQuestions, null))
+            sections.add(Section("信息转述", "topic", "信息转述", sortQuestionsByOfficialOrder(pictureQuestions), null))
         }
         if (askQuestions.isNotEmpty()) {
-            sections.add(Section("提问", "simple_expression_ufj", "提问", askQuestions, null))
+            sections.add(Section("提问", "simple_expression_ufj", "提问", sortQuestionsByOfficialOrder(askQuestions), null))
         }
 
         if (sections.isEmpty()) return emptyList()
@@ -653,6 +705,7 @@ object ETS100AnswerReader {
                     for (i in 0 until questionsArray.length()) {
                         val q = questionsArray.getJSONObject(i)
                         val askText = cleanText(q.optString("ask", ""))
+                        val displayOrder = extractQuestionNumber(q, "ask", "question", "text")
                         val stdArray = q.optJSONArray("std")
                         val answers = if (stdArray != null && stdArray.length() > 0) {
                             (0 until stdArray.length()).map { idx ->
@@ -668,7 +721,8 @@ object ETS100AnswerReader {
                             questionText = askText,
                             answers = answers,
                             originalText = null,
-                            category = "simple_expression_ufk"
+                            category = "simple_expression_ufk",
+                            displayOrder = displayOrder
                         ))
                         questionIndex++
                     }
@@ -691,7 +745,8 @@ object ETS100AnswerReader {
                         questionText = topicTitle,
                         answers = answers,
                         originalText = infoObj.optString("value", ""),
-                        category = "topic"
+                        category = "topic",
+                        displayOrder = extractQuestionNumber(infoObj, "topic", "value")
                     ))
                     questionIndex++
                 }
@@ -701,16 +756,13 @@ object ETS100AnswerReader {
         // 按文档顺序组装：听后选择 → 听后回答 → 听后转述
         val sections = mutableListOf<Section>()
         if (chooseQuestions.isNotEmpty()) {
-            val sortedChooseQuestions = chooseQuestions.sortedWith(
-                compareBy<Question> { it.displayOrder ?: it.sectionOrder }.thenBy { it.sectionOrder }
-            )
-            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", sortedChooseQuestions, null))
+            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", sortQuestionsByOfficialOrder(chooseQuestions), null))
         }
         if (roleQuestions.isNotEmpty()) {
-            sections.add(Section("听后回答", "simple_expression_ufk", "听后回答", roleQuestions, null))
+            sections.add(Section("听后回答", "simple_expression_ufk", "听后回答", sortQuestionsByOfficialOrder(roleQuestions), null))
         }
         if (pictureQuestions.isNotEmpty()) {
-            sections.add(Section("听后转述", "topic", "听后转述", pictureQuestions, null))
+            sections.add(Section("听后转述", "topic", "听后转述", sortQuestionsByOfficialOrder(pictureQuestions), null))
         }
 
         if (sections.isEmpty()) return emptyList()
@@ -802,6 +854,7 @@ object ETS100AnswerReader {
                     for (i in 0 until stdArray.length()) {
                         val item = stdArray.getJSONObject(i)
                         val number = item.optString("xth", "")
+                        val displayOrder = extractQuestionNumber(item, "xth", "value")
                         val answer = cleanText(item.optString("value", ""))
 
                         fillQuestions.add(Question(
@@ -812,7 +865,8 @@ object ETS100AnswerReader {
                             questionText = "第${number}题",
                             answers = listOf(answer),
                             originalText = null,
-                            category = "simple_expression_ufi"
+                            category = "simple_expression_ufi",
+                            displayOrder = displayOrder
                         ))
                         questionIndex++
                     }
@@ -835,7 +889,8 @@ object ETS100AnswerReader {
                         questionText = topicTitle,
                         answers = answers,
                         originalText = infoObj.optString("value", ""),
-                        category = "topic"
+                        category = "topic",
+                        displayOrder = extractQuestionNumber(infoObj, "topic", "value")
                     ))
                     questionIndex++
                 }
@@ -846,6 +901,7 @@ object ETS100AnswerReader {
                     for (i in 0 until questionsArray.length()) {
                         val q = questionsArray.getJSONObject(i)
                         val askText = cleanText(q.optString("ask", ""))
+                        val displayOrder = extractQuestionNumber(q, "ask", "question", "text")
                         val stdArray = q.optJSONArray("std")
                         val answers = if (stdArray != null && stdArray.length() > 0) {
                             (0 until stdArray.length()).map { idx ->
@@ -861,7 +917,8 @@ object ETS100AnswerReader {
                             questionText = askText,
                             answers = answers,
                             originalText = null,
-                            category = "simple_expression_ufk"
+                            category = "simple_expression_ufk",
+                            displayOrder = displayOrder
                         ))
                         questionIndex++
                     }
@@ -873,19 +930,16 @@ object ETS100AnswerReader {
         // 按文档顺序组装：听后选择 → 听后记录 → 听后转述 → 回答问题
         val sections = mutableListOf<Section>()
         if (chooseQuestions.isNotEmpty()) {
-            val sortedChooseQuestions = chooseQuestions.sortedWith(
-                compareBy<Question> { it.displayOrder ?: it.sectionOrder }.thenBy { it.sectionOrder }
-            )
-            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", sortedChooseQuestions, null))
+            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", sortQuestionsByOfficialOrder(chooseQuestions), null))
         }
         if (fillQuestions.isNotEmpty()) {
-            sections.add(Section("听后记录", "simple_expression_ufi", "听后记录", fillQuestions, null))
+            sections.add(Section("听后记录", "simple_expression_ufi", "听后记录", sortQuestionsByOfficialOrder(fillQuestions), null))
         }
         if (pictureQuestions.isNotEmpty()) {
-            sections.add(Section("听后转述", "topic", "听后转述", pictureQuestions, null))
+            sections.add(Section("听后转述", "topic", "听后转述", sortQuestionsByOfficialOrder(pictureQuestions), null))
         }
         if (dialogueQuestions.isNotEmpty()) {
-            sections.add(Section("回答问题", "simple_expression_ufk", "回答问题", dialogueQuestions, null))
+            sections.add(Section("回答问题", "simple_expression_ufk", "回答问题", sortQuestionsByOfficialOrder(dialogueQuestions), null))
         }
 
         if (sections.isEmpty()) return emptyList()
@@ -937,7 +991,7 @@ object ETS100AnswerReader {
             caption = "通用练习",
             category = "unknown",
             typeName = "通用练习",
-            questions = allQuestions,
+            questions = sortQuestionsByOfficialOrder(allQuestions),
             originalContent = null
         ))
 
@@ -1121,7 +1175,7 @@ object ETS100AnswerReader {
                     caption = caption,
                     category = category,
                     typeName = typeName,
-                    questions = sectionQuestions,
+                    questions = sortQuestionsByOfficialOrder(sectionQuestions),
                     originalContent = sectionOriginalContent
                 ))
             }
@@ -1223,7 +1277,7 @@ object ETS100AnswerReader {
                         caption = groupName,
                         category = category,
                         typeName = typeName,
-                        questions = questions,
+                        questions = sortQuestionsByOfficialOrder(questions),
                         originalContent = originalContent
                     ))
                     globalQuestionIndex += questions.size
@@ -1385,7 +1439,8 @@ object ETS100AnswerReader {
                     questionText = topicTitle,
                     answers = answers,
                     originalText = originalContent,  // 喵~ 原文是 info.value 喵！
-                    category = category
+                    category = category,
+                    displayOrder = extractQuestionNumber(infoObj, "topic", "value")
                 ))
                 return Pair(questions, originalContent)
             }
@@ -1402,6 +1457,7 @@ object ETS100AnswerReader {
                             if (it.contains(" ")) it.substringAfter(" ") else it
                         }
                         val questionText = askText.ifEmpty { q.optString("question", q.optString("text", "")) }
+                        val displayOrder = extractQuestionNumber(q, "ask", "question", "text")
                         
                         val stdArray = q.optJSONArray("std")
                         val answers = if (stdArray != null && stdArray.length() > 0) {
@@ -1430,10 +1486,11 @@ object ETS100AnswerReader {
                             questionText = questionText,
                             answers = answers,
                             originalText = questionOriginalText,
-                            category = category
+                            category = category,
+                            displayOrder = displayOrder
                         ))
                     }
-                    return Pair(questions, originalContent)
+                    return Pair(sortQuestionsByOfficialOrder(questions), originalContent)
                 }
 
                 // 如果没有 question 数组但有 value，当作原文处理
@@ -1461,6 +1518,7 @@ object ETS100AnswerReader {
                         val q = questionsArray.getJSONObject(i)
                         val askText = cleanText(q.optString("ask", ""))
                         val questionText = askText.ifEmpty { q.optString("question", q.optString("text", "")) }
+                        val displayOrder = extractQuestionNumber(q, "ask", "question", "text")
                         
                         val stdArray = q.optJSONArray("std")
                         val answers = if (stdArray != null && stdArray.length() > 0) {
@@ -1479,10 +1537,11 @@ object ETS100AnswerReader {
                             questionText = questionText,
                             answers = answers,
                             originalText = originalContent,
-                            category = category
+                            category = category,
+                            displayOrder = displayOrder
                         ))
                     }
-                    return Pair(questions, originalContent)
+                    return Pair(sortQuestionsByOfficialOrder(questions), originalContent)
                 }
             }
 
@@ -1526,10 +1585,7 @@ object ETS100AnswerReader {
                             displayOrder = displayOrder
                         ))
                     }
-                    val sortedQuestions = questions.sortedWith(
-                        compareBy<Question> { it.displayOrder ?: it.sectionOrder }.thenBy { it.sectionOrder }
-                    )
-                    return Pair(sortedQuestions, originalContent)
+                    return Pair(sortQuestionsByOfficialOrder(questions), originalContent)
                 }
             }
 
@@ -1541,6 +1597,7 @@ object ETS100AnswerReader {
                     for (i in 0 until stdArray.length()) {
                         val item = stdArray.getJSONObject(i)
                         val number = item.optString("xth", "")
+                        val displayOrder = extractQuestionNumber(item, "xth", "value")
                         val answer = cleanText(item.optString("value", ""))
                         
                         questions.add(Question(
@@ -1551,10 +1608,11 @@ object ETS100AnswerReader {
                             questionText = "第${number}题",
                             answers = listOf(answer),
                             originalText = null,
-                            category = category
+                            category = category,
+                            displayOrder = displayOrder
                         ))
                     }
-                    return Pair(questions, originalContent)
+                    return Pair(sortQuestionsByOfficialOrder(questions), originalContent)
                 }
             }
 
@@ -1567,6 +1625,7 @@ object ETS100AnswerReader {
                         val q = questionsArray.getJSONObject(i)
                         val askText = cleanText(q.optString("ask", ""))
                         val questionText = askText.ifEmpty { q.optString("question", q.optString("text", "")) }
+                        val displayOrder = extractQuestionNumber(q, "ask", "question", "text")
                         
                         val stdArray = q.optJSONArray("std")
                         val answers = if (stdArray != null && stdArray.length() > 0) {
@@ -1585,10 +1644,11 @@ object ETS100AnswerReader {
                             questionText = questionText,
                             answers = answers,
                             originalText = originalContent,
-                            category = category
+                            category = category,
+                            displayOrder = displayOrder
                         ))
                     }
-                    return Pair(questions, originalContent)
+                    return Pair(sortQuestionsByOfficialOrder(questions), originalContent)
                 }
             }
 
@@ -1605,6 +1665,7 @@ object ETS100AnswerReader {
                             if (it.contains(" ")) it.substringAfter(" ") else it
                         }
                         val questionText = askText.ifEmpty { q.optString("question", q.optString("text", "")) }
+                        val displayOrder = extractQuestionNumber(q, "ask", "question", "text")
                         
                         val stdArray = q.optJSONArray("std")
                         val answers = if (stdArray != null && stdArray.length() > 0) {
@@ -1626,10 +1687,11 @@ object ETS100AnswerReader {
                             questionText = questionText,
                             answers = answers,
                             originalText = null,
-                            category = category
+                            category = category,
+                            displayOrder = displayOrder
                         ))
                     }
-                    return Pair(questions, originalContent)
+                    return Pair(sortQuestionsByOfficialOrder(questions), originalContent)
                 }
 
                 // 尝试作为 collector.picture 处理（有 std 数组）
@@ -1649,7 +1711,8 @@ object ETS100AnswerReader {
                         questionText = topicTitle,
                         answers = answers,
                         originalText = originalContent,
-                        category = category
+                        category = category,
+                        displayOrder = extractQuestionNumber(infoObj, "topic", "value")
                     ))
                     return Pair(questions, originalContent)
                 }

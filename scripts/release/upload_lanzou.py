@@ -16,8 +16,9 @@ from urllib3.exceptions import InsecureRequestWarning
 
 
 ACCOUNT_URL = "https://pc.woozooo.com/account.php"
+MYDISK_URL = "https://pc.woozooo.com/mydisk.php"
 DOUPLOAD_URL = "https://pc.woozooo.com/doupload.php"
-FILEUP_URL = "https://pc.woozooo.com/fileup.php"
+FILEUP_URL = "https://pc.woozooo.com/html5up.php"
 
 HEADERS = {
     "User-Agent": (
@@ -37,6 +38,7 @@ if hasattr(sys.stdout, "reconfigure"):
 def login(username: str, password: str) -> tuple[requests.Session, str]:
     session = requests.Session()
     login_page = session.get(ACCOUNT_URL, headers=HEADERS, timeout=20, verify=False)
+    login_page.encoding = "utf-8"
     formhash = re.search(r'name="formhash" value="(.+?)"', login_page.text)
     if not formhash:
         raise RuntimeError("Could not read LanZouCloud login formhash.")
@@ -59,9 +61,31 @@ def login(username: str, password: str) -> tuple[requests.Session, str]:
     cookies = session.cookies.get_dict()
     uid = cookies.get("ylogin")
     if not uid:
-        raise RuntimeError(f"LanZouCloud login failed, status={response.status_code}.")
+        snippet = compact_response_text(response.text)
+        raise RuntimeError(f"LanZouCloud login failed, status={response.status_code}, body={snippet}")
 
     return session, uid
+
+
+def compact_response_text(text: str | None, limit: int = 500) -> str:
+    return (text or "")[:limit].replace("\r", "\\r").replace("\n", "\\n")
+
+
+def require_json(response: requests.Response, step_name: str) -> dict:
+    text = response.text or ""
+    if not text.strip():
+        raise RuntimeError(
+            f"{step_name} failed: empty response, status={response.status_code}, "
+            f"content-type={response.headers.get('content-type')}"
+        )
+
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise RuntimeError(
+            f"{step_name} failed: response is not JSON, status={response.status_code}, "
+            f"content-type={response.headers.get('content-type')}, body={compact_response_text(text)}"
+        ) from exc
 
 
 def find_root_folder_id(session: requests.Session, uid: str, folder_name: str) -> int:
@@ -73,7 +97,7 @@ def find_root_folder_id(session: requests.Session, uid: str, folder_name: str) -
         verify=False,
     )
     response.raise_for_status()
-    data = response.json()
+    data = require_json(response, "list root folders")
 
     for folder in data.get("text", []):
         if folder.get("name", "").lower() == folder_name.lower():
@@ -101,6 +125,7 @@ def upload_file(session: requests.Session, file_path: Path, folder_id: int) -> i
         )
 
         upload_headers = HEADERS.copy()
+        upload_headers["Referer"] = MYDISK_URL
         upload_headers["Content-Type"] = multipart.content_type
         response = session.post(
             FILEUP_URL,
@@ -111,7 +136,7 @@ def upload_file(session: requests.Session, file_path: Path, folder_id: int) -> i
         )
 
     response.raise_for_status()
-    data = response.json()
+    data = require_json(response, "upload file")
     if data.get("zt") != 1:
         raise RuntimeError(f"LanZouCloud upload failed: {data}")
 

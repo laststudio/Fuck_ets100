@@ -1,0 +1,16 @@
+<xml_result>
+      <simple_expression_ufk lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.34">
+          <rec_paper>
+              <rec_paper beg_pos="217" content="rec_paper" end_pos="609" except_info="0" is_rejected="false" keywords="treated soldiers|worked treat soldiers|treated wounded sick|worked treat wounded sick|helped soldiers" phone_score="3.927656" reject_type="0" total_score="4.942137" word_hit_of_each_kw="1.00|0.67|0.67|0.50|0.50">
+                  <sentence content="he treated sick and wounded soldiers " index="0">
+                      <word beg_pos="227" content="he" end_pos="263"></word>
+                      <word beg_pos="263" content="treated" end_pos="319"></word>
+                      <word beg_pos="319" content="sick" end_pos="367"></word>
+                      <word beg_pos="367" content="and" end_pos="402"></word>
+                      <word beg_pos="402" content="wounded" end_pos="459"></word>
+                      <word beg_pos="459" content="soldiers" end_pos="550"></word>
+                  </sentence>
+              </rec_paper>
+          </rec_paper>
+      </simple_expression_ufk>
+  </xml_result>

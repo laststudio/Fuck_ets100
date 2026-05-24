@@ -1,0 +1,73 @@
+<xml_result>
+
+  <topic lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
+    <rec_paper>
+      <rec_paper accuracy_score="4.904079" beg_pos="268" content="rec_paper" end_pos="2697" except_info="0" is_rejected="false" keypoints="here are the results of the talent show|in the fourth place is the sunshine team|they are the youngest group|in the third place is eastside|they are good dancers|in the second place is the star|the young man played the guitar well|in the first place is the storm|the lead singer had a great voice" phone_score="5.000000" reject_type="0" speeking_speed="147.413788" total_score="4.949925" word_hit_of_each_kp="1.00|0.88|0.80|1.00|1.00|1.00|0.86|1.00|1.00">
+        <sentence content="here are the results of the talent show in the fourth place in the sunshine team there are " index="0">
+          <word beg_pos="289" content="here" end_pos="342"/>
+          <word beg_pos="342" content="are" end_pos="355"/>
+          <word beg_pos="355" content="the" end_pos="371"/>
+          <word beg_pos="371" content="results" end_pos="433"/>
+          <word beg_pos="433" content="of" end_pos="461"/>
+          <word beg_pos="461" content="the" end_pos="486"/>
+          <word beg_pos="486" content="talent" end_pos="533"/>
+          <word beg_pos="533" content="show" end_pos="582"/>
+          <word beg_pos="582" content="in" end_pos="637"/>
+          <word beg_pos="637" content="the" end_pos="651"/>
+          <word beg_pos="651" content="fourth" end_pos="691"/>
+          <word beg_pos="691" content="place" end_pos="733"/>
+          <word beg_pos="733" content="in" end_pos="749"/>
+          <word beg_pos="749" content="the" end_pos="761"/>
+          <word beg_pos="761" content="sunshine" end_pos="829"/>
+          <word beg_pos="829" content="team" end_pos="856"/>
+          <word beg_pos="856" content="there" end_pos="953"/>
+          <word beg_pos="953" content="are" end_pos="999"/>
+        </sentence>
+        <sentence content="youngest group in the third place is eastside they are good dancers in the second place is the star " index="1">
+          <word beg_pos="1024" content="youngest" end_pos="1103"/>
+          <word beg_pos="1103" content="group" end_pos="1155"/>
+          <word beg_pos="1155" content="in" end_pos="1211"/>
+          <word beg_pos="1211" content="the" end_pos="1237"/>
+          <word beg_pos="1237" content="third" end_pos="1277"/>
+          <word beg_pos="1277" content="place" end_pos="1327"/>
+          <word beg_pos="1327" content="is" end_pos="1361"/>
+          <word beg_pos="1361" content="eastside" end_pos="1486"/>
+          <word beg_pos="1486" content="they" end_pos="1547"/>
+          <word beg_pos="1547" content="are" end_pos="1557"/>
+          <word beg_pos="1557" content="good" end_pos="1587"/>
+          <word beg_pos="1587" content="dancers" end_pos="1657"/>
+          <word beg_pos="1657" content="in" end_pos="1674"/>
+          <word beg_pos="1674" content="the" end_pos="1683"/>
+          <word beg_pos="1683" content="second" end_pos="1729"/>
+          <word beg_pos="1729" content="place" end_pos="1763"/>
+          <word beg_pos="1763" content="is" end_pos="1785"/>
+          <word beg_pos="1785" content="the" end_pos="1799"/>
+          <word beg_pos="1799" content="star" end_pos="1849"/>
+        </sentence>
+        <sentence content="the young man played the guitar well the first place is the storm the lead singer had a great voice " index="2">
+          <word beg_pos="1893" content="the" end_pos="1911"/>
+          <word beg_pos="1911" content="young" end_pos="1942"/>
+          <word beg_pos="1942" content="man" end_pos="1971"/>
+          <word beg_pos="1971" content="played" end_pos="2004"/>
+          <word beg_pos="2004" content="the" end_pos="2019"/>
+          <word beg_pos="2019" content="guitar" end_pos="2055"/>
+          <word beg_pos="2055" content="well" end_pos="2103"/>
+          <word beg_pos="2103" content="the" end_pos="2166"/>
+          <word beg_pos="2166" content="first" end_pos="2212"/>
+          <word beg_pos="2212" content="place" end_pos="2271"/>
+          <word beg_pos="2271" content="is" end_pos="2299"/>
+          <word beg_pos="2299" content="the" end_pos="2315"/>
+          <word beg_pos="2315" content="storm" end_pos="2365"/>
+          <word beg_pos="2365" content="the" end_pos="2441"/>
+          <word beg_pos="2441" content="lead" end_pos="2469"/>
+          <word beg_pos="2469" content="singer" end_pos="2531"/>
+          <word beg_pos="2531" content="had" end_pos="2557"/>
+          <word beg_pos="2557" content="a" end_pos="2573"/>
+          <word beg_pos="2573" content="great" end_pos="2611"/>
+          <word beg_pos="2611" content="voice" end_pos="2678"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </topic>
+
+</xml_result>

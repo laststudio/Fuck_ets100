@@ -81,7 +81,7 @@ plans/
 stitch_fe_material_3_interface/
 
 # ETS parsing files (test data)
-ets读取/
+
 
 # AI development tool directories
 .kilo/

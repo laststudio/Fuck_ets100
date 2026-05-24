@@ -15,6 +15,7 @@ object SettingsManager {
     private const val KEY_DEBUG_MODE = "debug_mode"  // 调试模式开关
     private const val KEY_FORCE_READ_MODE = "force_read_mode"  // 强执读取模式
     private const val KEY_HIDE_DEBUG_BUTTON = "hide_debug_button"  // 隐藏调试按钮
+    private const val KEY_LEGAL_ACCEPTED = "legal_accepted"
     
     private lateinit var prefs: SharedPreferences
     
@@ -109,5 +110,15 @@ object SettingsManager {
      */
     fun getHideDebugButton(): Boolean {
         return prefs.getBoolean(KEY_HIDE_DEBUG_BUTTON, true)
+    }
+
+    fun saveLegalAccepted(accepted: Boolean) {
+        prefs.edit {
+            putBoolean(KEY_LEGAL_ACCEPTED, accepted)
+        }
+    }
+
+    fun hasAcceptedLegal(): Boolean {
+        return prefs.getBoolean(KEY_LEGAL_ACCEPTED, false)
     }
 }

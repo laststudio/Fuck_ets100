@@ -1,0 +1,18 @@
+<xml_result>
+
+  <simple_expression_ufi lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
+    <rec_paper>
+      <rec_paper beg_pos="242" content="rec_paper" end_pos="535" except_info="0" is_rejected="false" keywords="pig spider|spider pig" phone_score="3.459471" reject_type="0" total_score="4.907254" word_hit_of_each_kw="1.00|0.50">
+        <sentence content="is about a pig and spider " index="0">
+          <word beg_pos="261" content="is" end_pos="296"/>
+          <word beg_pos="296" content="about" end_pos="347"/>
+          <word beg_pos="347" content="a" end_pos="361"/>
+          <word beg_pos="361" content="pig" end_pos="398"/>
+          <word beg_pos="398" content="and" end_pos="436"/>
+          <word beg_pos="436" content="spider" end_pos="516"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufi>
+
+</xml_result>

@@ -1,0 +1,18 @@
+<xml_result>
+
+  <simple_expression_ufj lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
+    <rec_paper>
+      <rec_paper beg_pos="271" content="rec_paper" end_pos="593" except_info="0" is_rejected="false" keywords="school green campus|school green|have green school" phone_score="3.428857" reject_type="0" total_score="4.606215" word_hit_of_each_kw="1.00|1.00|0.33">
+        <sentence content="is your school a green campus " index="0">
+          <word beg_pos="282" content="is" end_pos="325"/>
+          <word beg_pos="325" content="your" end_pos="380"/>
+          <word beg_pos="380" content="school" end_pos="434"/>
+          <word beg_pos="434" content="a" end_pos="450"/>
+          <word beg_pos="450" content="green" end_pos="489"/>
+          <word beg_pos="489" content="campus" end_pos="569"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufj>
+
+</xml_result>

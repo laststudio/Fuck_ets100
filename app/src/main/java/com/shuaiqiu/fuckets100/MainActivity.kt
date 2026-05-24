@@ -130,6 +130,7 @@ sealed class Screen(val route: String, val icon: ImageVector, val label: String)
     object Debug : Screen("debug", Icons.Default.BugReport, "调试")
     object Share : Screen("share", Icons.Default.Share, "分享")
     object CloudActivation : Screen("cloud_activation", Icons.Default.Cloud, "云端激活")
+    object Legal : Screen("legal", Icons.Default.Gavel, "法律")
 }
 
 // ============================================================================
@@ -193,6 +194,7 @@ fun FeAppMain() {
     // 更新弹窗状态 - 使用 snapshotFlow 监听 FeApplication.updateStatus 的变化喵~
     var showUpdateDialog by remember { mutableStateOf(false) }
     var updateDialogStatus by remember { mutableStateOf<com.shuaiqiu.fuckets100.UpdateStatus?>(null) }
+    var showLegalDialog by remember { mutableStateOf(!SettingsManager.hasAcceptedLegal()) }
     
     // 监听更新状态 Flow，确保每次都能收到通知喵~
     LaunchedEffect(Unit) {
@@ -280,6 +282,10 @@ fun FeAppMain() {
                 composable(Screen.GeneralSettings.route) { 
                     GeneralSettingsScreen(navController) 
                 }
+
+                composable(Screen.Legal.route) {
+                    LegalScreen(navController)
+                }
                 
                 composable(Screen.Activation.route) {
                     ActivationSettingsScreen(
@@ -356,6 +362,15 @@ fun FeAppMain() {
                     showUpdateDialog = false
                     updateDialogStatus = null
                     FeApplication.updateStatus = null
+                }
+            )
+        }
+
+        if (showLegalDialog) {
+            LegalAcceptanceDialog(
+                onAccepted = {
+                    SettingsManager.saveLegalAccepted(true)
+                    showLegalDialog = false
                 }
             )
         }

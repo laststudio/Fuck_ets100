@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<xml_result>
+
+  <simple_expression_ufk lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.38M5.81.38.0">
+    <rec_paper>
+      <rec_paper beg_pos="50" content="rec_paper" end_pos="354" except_info="0" is_rejected="false" keywords="about half hour|around half hour|half hour or so|about thirty minutes|around thirty minutes|thirty minutes or so|our" phone_score="3.501166" reject_type="0" total_score="4.905239" word_hit_of_each_kw="1.00|1.00|0.50|0.67|0.67|0.25|1.00">
+        <sentence content="for about half an hour " index="0">
+          <word beg_pos="96" content="for" end_pos="142"/>
+          <word beg_pos="142" content="about" end_pos="206"/>
+          <word beg_pos="206" content="half" end_pos="250"/>
+          <word beg_pos="250" content="an" end_pos="271"/>
+          <word beg_pos="271" content="hour" end_pos="328"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufk>
+
+</xml_result>

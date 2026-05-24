@@ -1,0 +1,16 @@
+<xml_result>
+      <simple_expression_ufk lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.34">
+          <rec_paper>
+              <rec_paper beg_pos="247" content="rec_paper" end_pos="669" except_info="0" is_rejected="false" keywords="selflessness bravery|selfless brave" phone_score="3.229081" reject_type="0" total_score="4.532189" word_hit_of_each_kw="1.00|1.00">
+                  <sentence content="for his selflessness and brave brave " index="0">
+                      <word beg_pos="251" content="for" end_pos="294"></word>
+                      <word beg_pos="294" content="his" end_pos="351"></word>
+                      <word beg_pos="351" content="selflessness" end_pos="491"></word>
+                      <word beg_pos="491" content="and" end_pos="520"></word>
+                      <word beg_pos="520" content="brave" end_pos="574"></word>
+                      <word beg_pos="574" content="brave" end_pos="637"></word>
+                  </sentence>
+              </rec_paper>
+          </rec_paper>
+      </simple_expression_ufk>
+  </xml_result>

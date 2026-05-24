@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<xml_result>
+
+  <simple_expression_ufi lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
+    <rec_paper>
+      <rec_paper beg_pos="111" content="rec_paper" end_pos="315" except_info="0" is_rejected="false" keywords="dadi cinema|dadi movie theatre" phone_score="4.108818" reject_type="0" total_score="4.967820" word_hit_of_each_kw="1.00|0.33">
+        <sentence content="in the dadi cinema " index="0">
+          <word beg_pos="127" content="in" end_pos="151"/>
+          <word beg_pos="151" content="the" end_pos="166"/>
+          <word beg_pos="166" content="dadi" end_pos="230"/>
+          <word beg_pos="230" content="cinema" end_pos="298"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufi>
+
+</xml_result>

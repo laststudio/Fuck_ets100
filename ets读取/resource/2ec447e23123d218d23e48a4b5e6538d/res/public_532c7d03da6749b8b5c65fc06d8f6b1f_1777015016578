@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<xml_result>
+
+  <topic lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
+    <rec_paper>
+      <rec_paper accuracy_score="4.793618" beg_pos="106" content="rec_paper" end_pos="3280" except_info="0" is_rejected="false" keypoints="last winter holiday tom made friends with his grandpa's pet in the countryside bob was white with two small eyes|when tom helped his grandpa water the flowers bob sang happily|for lunch tom fed bob some corn and fruit|at night bob slept on the desk when tom read books" phone_score="5.000000" reject_type="0" speeking_speed="115.427299" total_score="4.815948" word_hit_of_each_kp="1.00|0.82|0.78|0.64">
+        <sentence content="last winter holiday tom made friends with his grandpa's pet in the countryside bob was white with two small eyes " index="0">
+          <word beg_pos="115" content="last" end_pos="169"/>
+          <word beg_pos="169" content="winter" end_pos="213"/>
+          <word beg_pos="213" content="holiday" end_pos="283"/>
+          <word beg_pos="283" content="tom" end_pos="367"/>
+          <word beg_pos="367" content="made" end_pos="403"/>
+          <word beg_pos="403" content="friends" end_pos="451"/>
+          <word beg_pos="451" content="with" end_pos="481"/>
+          <word beg_pos="481" content="his" end_pos="511"/>
+          <word beg_pos="511" content="grandpa's" end_pos="585"/>
+          <word beg_pos="585" content="pet" end_pos="631"/>
+          <word beg_pos="631" content="in" end_pos="647"/>
+          <word beg_pos="647" content="the" end_pos="659"/>
+          <word beg_pos="659" content="countryside" end_pos="755"/>
+          <word beg_pos="755" content="bob" end_pos="861"/>
+          <word beg_pos="861" content="was" end_pos="926"/>
+          <word beg_pos="926" content="white" end_pos="977"/>
+          <word beg_pos="977" content="with" end_pos="1015"/>
+          <word beg_pos="1015" content="two" end_pos="1043"/>
+          <word beg_pos="1043" content="small" end_pos="1085"/>
+          <word beg_pos="1085" content="eyes" end_pos="1145"/>
+        </sentence>
+        <sentence content="bob when tom helped water the flowers bob bob sang happily " index="1">
+          <word beg_pos="1411" content="bob" end_pos="1442"/>
+          <word beg_pos="1442" content="when" end_pos="1488"/>
+          <word beg_pos="1488" content="tom" end_pos="1527"/>
+          <word beg_pos="1527" content="helped" end_pos="1569"/>
+          <word beg_pos="1569" content="water" end_pos="1617"/>
+          <word beg_pos="1617" content="the" end_pos="1637"/>
+          <word beg_pos="1637" content="flowers" end_pos="1719"/>
+          <word beg_pos="1719" content="bob" end_pos="1789"/>
+          <word beg_pos="1789" content="bob" end_pos="1837"/>
+          <word beg_pos="1837" content="sang" end_pos="1869"/>
+          <word beg_pos="1869" content="happily" end_pos="1937"/>
+        </sentence>
+        <sentence content="tom fed bob for lunch some corn and fruit when tom read books at night bob sleep " index="2">
+          <word beg_pos="2073" content="tom" end_pos="2121"/>
+          <word beg_pos="2121" content="fed" end_pos="2171"/>
+          <word beg_pos="2171" content="bob" end_pos="2227"/>
+          <word beg_pos="2227" content="for" end_pos="2257"/>
+          <word beg_pos="2257" content="lunch" end_pos="2297"/>
+          <word beg_pos="2297" content="some" end_pos="2343"/>
+          <word beg_pos="2343" content="corn" end_pos="2407"/>
+          <word beg_pos="2407" content="and" end_pos="2479"/>
+          <word beg_pos="2479" content="fruit" end_pos="2545"/>
+          <word beg_pos="2545" content="when" end_pos="2627"/>
+          <word beg_pos="2627" content="tom" end_pos="2671"/>
+          <word beg_pos="2671" content="read" end_pos="2709"/>
+          <word beg_pos="2709" content="books" end_pos="2781"/>
+          <word beg_pos="2781" content="at" end_pos="2803"/>
+          <word beg_pos="2803" content="night" end_pos="2861"/>
+          <word beg_pos="2861" content="bob" end_pos="2924"/>
+          <word beg_pos="2924" content="sleep" end_pos="3003"/>
+        </sentence>
+        <sentence content="slept on the desk " index="3">
+          <word beg_pos="3040" content="slept" end_pos="3134"/>
+          <word beg_pos="3134" content="on" end_pos="3175"/>
+          <word beg_pos="3175" content="the" end_pos="3191"/>
+          <word beg_pos="3191" content="desk" end_pos="3257"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </topic>
+
+</xml_result>

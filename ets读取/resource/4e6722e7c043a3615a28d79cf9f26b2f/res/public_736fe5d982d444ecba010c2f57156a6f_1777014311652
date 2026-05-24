@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<xml_result>
+
+  <simple_expression_ufi lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.38M5.81.38.0">
+    <rec_paper>
+      <rec_paper beg_pos="129" content="rec_paper" end_pos="325" except_info="0" is_rejected="false" keywords="mother|mum|mom" phone_score="3.275837" reject_type="0" total_score="4.991706" word_hit_of_each_kw="1.00|0.00|0.00">
+        <sentence content="his mother " index="0">
+          <word beg_pos="136" content="his" end_pos="193"/>
+          <word beg_pos="193" content="mother" end_pos="265"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufi>
+
+</xml_result>

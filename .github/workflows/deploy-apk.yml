@@ -1,0 +1,164 @@
+name: 发布正式版 APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: 构建并发布 APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 配置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 配置 Gradle 缓存
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 校验发布密钥
+        shell: bash
+        run: |
+          set -euo pipefail
+          required_secrets=(
+            "ANDROID_KEYSTORE_BASE64"
+            "ANDROID_KEYSTORE_PASSWORD"
+            "ANDROID_KEY_ALIAS"
+            "ANDROID_KEY_PASSWORD"
+            "GITEE_USERNAME"
+            "GITEE_TOKEN"
+          )
+          for secret_name in "${required_secrets[@]}"; do
+            if [ -z "${!secret_name:-}" ]; then
+              echo "缺少 GitHub Secret：${secret_name}，无法发布。" >&2
+              exit 1
+            fi
+          done
+          echo "发布密钥校验通过。"
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+
+      - name: 读取版本号
+        id: version
+        shell: bash
+        run: python scripts/release/read_version.py --github-output "$GITHUB_OUTPUT"
+
+      - name: 生成 APK 下载直链
+        id: download
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${{ steps.version.outputs.tag_name }}/${{ steps.version.outputs.apk_name }}"
+          echo "apk_url=${apk_url}" >> "$GITHUB_OUTPUT"
+          echo "APK 下载链接：${apk_url}"
+
+      - name: 生成发布说明
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/release/extract_changelog.py \
+            --version "${{ steps.version.outputs.version_name }}" \
+            --apk-url "${{ steps.download.outputs.apk_url }}" \
+            --release-notes release_notes.md \
+            --changelog-output current_changelog.md
+
+      - name: 还原签名文件
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fe-signing"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/fe-signing/release.keystore"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/fe-signing/release.keystore" >> "$GITHUB_ENV"
+          echo "release keystore 已写入临时目录。"
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+      - name: 授权 Gradle Wrapper
+        shell: bash
+        run: chmod +x ./gradlew
+
+      - name: 构建正式版 APK
+        shell: bash
+        run: ./gradlew assembleRelease
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: 整理 APK 产物
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk_source="app/build/outputs/apk/release/app-release.apk"
+          if [ ! -f "$apk_source" ]; then
+            apk_source="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          fi
+          if [ -z "${apk_source:-}" ] || [ ! -f "$apk_source" ]; then
+            echo "没有找到 release APK。" >&2
+            exit 1
+          fi
+          mkdir -p release
+          apk_target="release/${{ steps.version.outputs.apk_name }}"
+          cp "$apk_source" "$apk_target"
+          echo "apk_path=${apk_target}" >> "$GITHUB_OUTPUT"
+          echo "APK 已重命名为 ${apk_target}。"
+
+      - name: 上传 Actions 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.apk_name }}
+          path: ${{ steps.artifact.outputs.apk_path }}
+          if-no-files-found: error
+
+      - name: 发布 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag_name }}
+          name: Fe v${{ steps.version.outputs.version_name }}
+          body_path: release_notes.md
+          files: ${{ steps.artifact.outputs.apk_path }}
+          fail_on_unmatched_files: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 更新 Gitee 远程配置
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/release/update_remote_config.py \
+            --version-code "${{ steps.version.outputs.version_code }}" \
+            --version-name "${{ steps.version.outputs.version_name }}" \
+            --apk-url "${{ steps.download.outputs.apk_url }}" \
+            --message-file current_changelog.md
+        env:
+          GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_CONFIG_REPO: ${{ vars.GITEE_CONFIG_REPO || 'qiuqiqiuqid/fe_config' }}
+          GITEE_CONFIG_BRANCH: ${{ vars.GITEE_CONFIG_BRANCH || 'master' }}
+          GITEE_CONFIG_FILE: ${{ vars.GITEE_CONFIG_FILE || 'config.json' }}
+          RELEASE_FORCE_UPDATE: ${{ vars.RELEASE_FORCE_UPDATE || 'false' }}
+          RELEASE_NOTICE_MESSAGE: ${{ vars.RELEASE_NOTICE_MESSAGE || '' }}

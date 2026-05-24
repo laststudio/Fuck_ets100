@@ -7,6 +7,17 @@ android {
     namespace = "com.shuaiqiu.fuckets100"
     compileSdk = 37
 
+    val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+    val releaseKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+    val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+    val hasReleaseSigningConfig = listOf(
+        releaseKeystorePath,
+        releaseKeystorePassword,
+        releaseKeyAlias,
+        releaseKeyPassword
+    ).all { !it.isNullOrBlank() }
+
     defaultConfig {
         applicationId = "com.shuaiqiu.fuckets100"
         minSdk = 26
@@ -17,9 +28,25 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigningConfig) {
+                // CI injects release signing credentials through environment variables.
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasReleaseSigningConfig) {
+                // Release builds use the same signing key so users can upgrade in place.
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -32,7 +59,7 @@ android {
     }
     buildFeatures {
         compose = true
-        // 启用 BuildConfig 以便在 Application 中使用
+        // Remote update checks read version information from BuildConfig.
         buildConfig = true
     }
 }
@@ -49,11 +76,11 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
     
-    // Shizuku API
+    // Shizuku support allows file access without root where available.
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
 
-    // ZIP 解压（支持密码加密）
+    // ZIP extraction, including password-protected archives.
     implementation(libs.zip4j)
     
     testImplementation(libs.junit)

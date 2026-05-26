@@ -143,6 +143,20 @@ private fun cloudHomeworkCacheKey(status: String, homeworkName: String): String 
 private fun sortCloudQuestionsByOfficialOrder(
     questions: List<ETS100AnswerReader.Question>
 ): List<ETS100AnswerReader.Question> {
+    val displayOrders = questions.mapNotNull { it.displayOrder }
+    val hasReliableDisplayOrder = displayOrders.size == questions.size &&
+        displayOrders.distinct().size == questions.size &&
+        displayOrders.sorted() == (1..questions.size).toList()
+
+    if (!hasReliableDisplayOrder) {
+        return questions.mapIndexed { index, question ->
+            question.copy(
+                sectionOrder = index + 1,
+                displayOrder = index + 1
+            )
+        }
+    }
+
     return questions
         .withIndex()
         .sortedWith(
@@ -2354,10 +2368,10 @@ private fun QuestionBlock(
             Spacer(modifier = Modifier.height(12.dp))
             
             // 原文折叠项
-            if (!question.originalText.isNullOrEmpty()) {
+            if (question.formattedOriginalText.isNotEmpty()) {
                 CollapsibleItem(
                     title = "📖 原文",
-                    content = question.originalText!!,
+                    content = question.formattedOriginalText,
                     defaultExpanded = defaultOriginalExpanded
                 )
             }
@@ -2515,8 +2529,8 @@ private fun MergedQuestionBlock(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // 块头部 - 显示原文和题目数量
-            val originalText = questions.firstOrNull()?.originalText
-            if (!originalText.isNullOrBlank()) {
+            val originalText = questions.firstOrNull()?.formattedOriginalText.orEmpty()
+            if (originalText.isNotBlank()) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()

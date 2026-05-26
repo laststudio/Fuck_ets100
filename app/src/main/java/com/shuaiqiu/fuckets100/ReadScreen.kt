@@ -130,6 +130,14 @@ private fun cloudHomeworkStatusLabel(status: String): String {
     return if (status == CloudHomeworkState.STATUS_HISTORY) "历史作业" else "当前作业"
 }
 
+private fun cloudHomeworkRequestStatuses(status: String): List<String> {
+    return if (status == CloudHomeworkState.STATUS_HISTORY) {
+        listOf(CloudHomeworkState.STATUS_HISTORY, CloudHomeworkState.STATUS_EXPIRED)
+    } else {
+        listOf(status)
+    }
+}
+
 private fun cloudHomeworkCacheKey(status: String, homeworkName: String): String = "$status:$homeworkName"
 
 /**
@@ -307,18 +315,32 @@ fun ReadScreen(
             return
         }
 
-        val result = ETS100ApiClient.getHomeworkList(tokenForRequest, parentId, status)
-        result.onSuccess { response ->
-            homeworkListsByStatus = homeworkListsByStatus + (status to response.homeworks)
-            cloudBaseUrl = response.baseUrl
+        val requestStatuses = cloudHomeworkRequestStatuses(status)
+        val mergedHomeworks = mutableListOf<ETS100ApiClient.HomeworkInfo>()
+        var latestBaseUrl = cloudBaseUrl
+        var hasAnySuccessfulRequest = false
+
+        for (requestStatus in requestStatuses) {
+            val result = ETS100ApiClient.getHomeworkList(tokenForRequest, parentId, requestStatus)
+            result.onSuccess { response ->
+                hasAnySuccessfulRequest = true
+                mergedHomeworks.addAll(response.homeworks)
+                latestBaseUrl = response.baseUrl
+                addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ status=$requestStatus 获取到 ${response.homeworks.size} 个作业")
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 API 返回的 base_url = ${response.baseUrl}")
+            }.onFailure { e ->
+                lastError = e
+                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ status=$requestStatus 获取作业列表失败: ${e.message}")
+            }
+        }
+
+        if (hasAnySuccessfulRequest) {
+            homeworkListsByStatus = homeworkListsByStatus + (status to mergedHomeworks)
+            cloudBaseUrl = latestBaseUrl
             CloudHomeworkState.homeworkListsByStatus = homeworkListsByStatus
-            CloudHomeworkState.cloudBaseUrl = response.baseUrl
-            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 获取到 ${response.homeworks.size} 个${cloudHomeworkStatusLabel(status)}")
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 API 返回的 base_url = ${response.baseUrl}")
+            CloudHomeworkState.cloudBaseUrl = latestBaseUrl
+            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 合并得到 ${mergedHomeworks.size} 个${cloudHomeworkStatusLabel(status)}")
             success = true
-        }.onFailure { e ->
-            lastError = e
-            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取作业列表失败: ${e.message}")
         }
 
         if (!success) {
@@ -339,10 +361,6 @@ fun ReadScreen(
         selectedPaper = null
         showPaperDetail = false
         cloudHomeworkError = CloudHomeworkState.error
-
-        if (!homeworkListsByStatus.containsKey(status)) {
-            scope.launch { loadCloudHomeworkList(status) }
-        }
     }
 
     /**

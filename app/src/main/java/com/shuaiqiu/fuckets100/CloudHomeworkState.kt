@@ -7,6 +7,7 @@ package com.shuaiqiu.fuckets100
 object CloudHomeworkState {
     const val STATUS_CURRENT = "1"
     const val STATUS_HISTORY = "2"
+    const val STATUS_EXPIRED = "3"
 
     var selectedStatus: String = STATUS_CURRENT
     var homeworkListsByStatus: Map<String, List<ETS100ApiClient.HomeworkInfo>> = emptyMap()

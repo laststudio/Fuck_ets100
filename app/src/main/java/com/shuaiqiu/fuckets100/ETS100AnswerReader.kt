@@ -86,6 +86,11 @@ object ETS100AnswerReader {
         val question: String get() = questionText
         val answer: String get() = answers.firstOrNull() ?: ""
         val answerList: List<String> get() = answers
+        val formattedAnswer: String get() = answers
+            .flatMap { ETS100AnswerReader.cleanAnswerText(it).lines() }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
     }
 
     /**
@@ -159,12 +164,23 @@ object ETS100AnswerReader {
      */
     private fun cleanText(text: String): String {
         if (text.isEmpty()) return ""
-        return text
+        return cleanAnswerText(text
             .replace(Regex("ets_th\\d+\\s*"), "")  // 移除 ets_th 前缀
-            .replace("</p><p>", "\n")                // 替换 </p><p> 为换行
-            .replace(Regex("<[^>]+>"), "")            // 移除 HTML 标签
+        )
+    }
+
+    private fun cleanAnswerText(text: String): String {
+        if (text.isEmpty()) return ""
+        return text
+            .replace(Regex("</p>\\s*<p[^>]*>", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("<br\\s*/?>|</br>|</p>|<p[^>]*>", RegexOption.IGNORE_CASE), "\n")
+            .replace("|", "\n")
+            .replace(Regex("<[^>]+>"), "")            // 移除其他 HTML 标签
             .replace("\u200B", "")                    // 移除零宽空格
-            .trim()
+            .lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
     }
 
     /**
@@ -191,8 +207,11 @@ object ETS100AnswerReader {
         "index"
     )
 
-    private val questionNumberTextPatterns = listOf(
-        Regex("ets_th\\s*(\\d+)", RegexOption.IGNORE_CASE),
+    private val officialQuestionNumberTextPatterns = listOf(
+        Regex("ets_th\\s*(\\d+)", RegexOption.IGNORE_CASE)
+    )
+
+    private val fallbackQuestionNumberTextPatterns = listOf(
         Regex("\\u7b2c\\s*(\\d+)\\s*\\u9898"),
         Regex("^\\s*(\\d+)\\s*[.\\u3001\\uff0e)\\uff09]")
     )
@@ -201,10 +220,13 @@ object ETS100AnswerReader {
         return value.trim().toIntOrNull()?.takeIf { it > 0 }
     }
 
-    private fun extractQuestionNumberFromText(vararg texts: String?): Int? {
+    private fun extractQuestionNumberFromText(
+        patterns: List<Regex>,
+        vararg texts: String?
+    ): Int? {
         for (text in texts) {
             if (text.isNullOrBlank()) continue
-            for (pattern in questionNumberTextPatterns) {
+            for (pattern in patterns) {
                 val number = pattern.find(text)
                     ?.groupValues
                     ?.getOrNull(1)
@@ -216,12 +238,16 @@ object ETS100AnswerReader {
     }
 
     private fun extractQuestionNumber(item: JSONObject, vararg textKeys: String): Int? {
+        val keys = (textKeys.toList() + listOf("xt_nr", "ask", "question", "text", "topic", "value")).distinct()
+        val texts = keys.map { item.optString(it, "") }.toTypedArray()
+
+        extractQuestionNumberFromText(officialQuestionNumberTextPatterns, *texts)?.let { return it }
+
         for (field in questionNumberFields) {
             parsePositiveInt(item.optString(field, ""))?.let { return it }
         }
 
-        val keys = (textKeys.toList() + listOf("xt_nr", "ask", "question", "text", "topic", "value")).distinct()
-        return extractQuestionNumberFromText(*keys.map { item.optString(it, "") }.toTypedArray())
+        return extractQuestionNumberFromText(fallbackQuestionNumberTextPatterns, *texts)
     }
 
     private fun extractChooseQuestionNumber(item: JSONObject): Int? {

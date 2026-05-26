@@ -132,13 +132,60 @@ private fun cloudHomeworkStatusLabel(status: String): String {
 
 private fun cloudHomeworkRequestStatuses(status: String): List<String> {
     return if (status == CloudHomeworkState.STATUS_HISTORY) {
-        listOf(CloudHomeworkState.STATUS_HISTORY, CloudHomeworkState.STATUS_EXPIRED)
+        listOf(CloudHomeworkState.STATUS_EXPIRED, CloudHomeworkState.STATUS_HISTORY)
     } else {
         listOf(status)
     }
 }
 
 private fun cloudHomeworkCacheKey(status: String, homeworkName: String): String = "$status:$homeworkName"
+
+private fun sortCloudQuestionsByOfficialOrder(
+    questions: List<ETS100AnswerReader.Question>
+): List<ETS100AnswerReader.Question> {
+    return questions
+        .withIndex()
+        .sortedWith(
+            compareBy<IndexedValue<ETS100AnswerReader.Question>> {
+                it.value.displayOrder ?: Int.MAX_VALUE
+            }.thenBy { it.index }
+        )
+        .mapIndexed { index, indexedQuestion ->
+            indexedQuestion.value.copy(sectionOrder = index + 1)
+        }
+}
+
+private fun normalizeCloudParsedSections(
+    sections: List<ETS100AnswerReader.Section>
+): List<ETS100AnswerReader.Section> {
+    val chooseSections = sections.filter { it.category == ETS100AnswerReader.StructureType.COLLECTOR_CHOOSE }
+    if (chooseSections.size <= 1) {
+        return sections.map { section ->
+            if (section.category == ETS100AnswerReader.StructureType.COLLECTOR_CHOOSE) {
+                section.copy(questions = sortCloudQuestionsByOfficialOrder(section.questions))
+            } else {
+                section
+            }
+        }
+    }
+
+    val firstChooseIndex = sections.indexOfFirst { it.category == ETS100AnswerReader.StructureType.COLLECTOR_CHOOSE }
+    val mergedChooseSection = chooseSections.first().copy(
+        questions = sortCloudQuestionsByOfficialOrder(chooseSections.flatMap { it.questions }),
+        originalContent = chooseSections.firstNotNullOfOrNull { it.originalContent }
+    )
+
+    val normalizedSections = mutableListOf<ETS100AnswerReader.Section>()
+    for ((index, section) in sections.withIndex()) {
+        if (index == firstChooseIndex) {
+            normalizedSections.add(mergedChooseSection)
+        }
+        if (section.category != ETS100AnswerReader.StructureType.COLLECTOR_CHOOSE) {
+            normalizedSections.add(section)
+        }
+    }
+    return normalizedSections
+}
 
 /**
  * 阅读界面 - 显示ETS 100答案的阅读界面
@@ -548,14 +595,19 @@ fun ReadScreen(
                 throw Exception("未能解析到任何题目")
             }
 
-            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "📝 共解析到 ${allSections.size} 个题型，${questionIndex} 道题")
+            val normalizedSections = normalizeCloudParsedSections(allSections)
+            if (normalizedSections.size != allSections.size) {
+                addLog(LogLevel.INFO, LogCategory.SECTION, "🔀 已合并云端听后选择分包并按正式题号排序")
+            }
+
+            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "📝 共解析到 ${normalizedSections.size} 个题型，${questionIndex} 道题")
 
             val paper = ETS100AnswerReader.Paper(
                 paperId = cacheKey.hashCode().toLong(),
                 title = homeworkInfo.name,
                 dataFileName = cacheKey,
                 fileSize = 0L,
-                sections = allSections
+                sections = normalizedSections
             )
             downloadedPapers = downloadedPapers + (cacheKey to listOf(paper))
             downloadedHomeworkNames = downloadedHomeworkNames + cacheKey
@@ -1005,8 +1057,8 @@ fun ReadScreen(
                             // 本地模式：删除 data 和 resource 目录喵~
                             addLog(LogLevel.WARN, LogCategory.FILE, "🗑️ 开始删除 data 和 resource 目录...")
 
-                            // 获取当前模式
-                            val currentModeValue = ShizukuManager.getCurrentActivationMode()
+                            val currentModeValue = currentMode
+                            addLog(LogLevel.INFO, LogCategory.FILE, "   ├─ 删除模式: ${currentModeValue.title}")
 
                             // 删除 data 目录
                             val dataPath = ETS100FileReader.Path.getDataDir()
@@ -2150,7 +2202,7 @@ private fun QuestionDetailItem(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = question.answer,
+                            text = question.formattedAnswer,
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White,
                             fontWeight = FontWeight.Bold
@@ -2314,7 +2366,7 @@ private fun QuestionBlock(
             if (question.answerList.isNotEmpty()) {
                 CollapsibleItem(
                     title = "✅ 答案",
-                    content = question.answerList.joinToString("\n") { "${it}" },
+                    content = question.formattedAnswer,
                     defaultExpanded = defaultAnswerExpanded
                 )
             }
@@ -2598,7 +2650,7 @@ private fun QuestionItemSimple(
         if (question.answerList.isNotEmpty()) {
             CollapsibleItem(
                 title = "✅ 答案",
-                content = question.answerList.joinToString(" | "),
+                content = question.formattedAnswer,
                 defaultExpanded = false
             )
         } else {

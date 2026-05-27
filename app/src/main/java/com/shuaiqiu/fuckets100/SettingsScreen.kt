@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -78,7 +80,7 @@ fun SettingsScreen(navController: NavHostController) {
                     }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
                     val context = LocalContext.current
-                    SettingsListItem(Icons.Default.Help, "访问官网", "lastudio.cc", hideChevron = true) {
+                    SettingsListItem(Icons.AutoMirrored.Filled.Help, "访问官网", "lastudio.cc", hideChevron = true) {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://lastudio.cc"))
                         context.startActivity(intent)
                     }
@@ -218,7 +220,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                                 )
                             }
                             Icon(
-                                Icons.Default.OpenInNew,
+                                Icons.AutoMirrored.Filled.OpenInNew,
                                 contentDescription = "打开开源仓库",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(18.dp)

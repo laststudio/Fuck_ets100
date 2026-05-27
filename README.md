@@ -176,18 +176,20 @@ Fuck ets100 还会继续更新迭代，以下是一些计划中的功能 💡
 Fuck ets100 的诞生离不开这些"小伙伴"的帮助 💕
 
 **人类贡献者：**
+- [leitianshuo1337](https://github.com/code-leitianshuo) - 提供了全新api读取逻辑
 - [Shizuku](https://shizuku.rikka.app/) - 让你不用 Root 也能管理文件
 - [Jetpack Compose](https://developer.android.com/compose) - 让界面开发更简单
 - [hicccc77](https://github.com/hicccc77) - 提供了全新的读取逻辑([WeFlow](https://github.com/hicccc77/WeFlow)作者)
-- [leitianshuo1337](https://github.com/code-leitianshuo) - 提供了全新api读取逻辑
+
 
 
 ---
-## 参考文档和闲话
+## 📄 参考文档
 
 - [@ets_100_答案读取说明](./ets读取/ETS_100_答案提取说明.md)
 - [@云端模式读取说明](./ets读取/云端模式逻辑文档.md)
 - [@e听说api文档](./ets读取/API_DOC.md)
+- [@更新日志](/update.md)
 
 ---
 
@@ -197,4 +199,17 @@ Fuck ets100 的诞生离不开这些"小伙伴"的帮助 💕
 - b站:[b站主页](https://space.bilibili.com/2116040615h)
 
 
+
 祝你使用愉快 🎉
+
+---
+
+## 💰 捐赠支持
+
+如果这个项目对你有帮助，欢迎请作者喝杯奶茶 ☕，你的支持是持续更新的最大动力！
+
+| 支付宝 | 微信支付 |
+|:---:|:---:|
+| ![支付宝](./donate/alipay.png) | ![微信](./donate/wechat.png) |
+
+> 💖 每一份捐赠都是对开源精神的肯定，感谢你的支持！

@@ -2,7 +2,6 @@ package com.shuaiqiu.fuckets100
 
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -209,11 +208,20 @@ private fun normalizeCloudParsedSections(
 @Composable
 fun ReadScreen(
     currentMode: ActivationMode,
-    onNavigateToSettings: () -> Unit,
-    onNavigateToShare: () -> Unit = {}
+    onNavigateToSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    fun openPaperDetail(paper: ETS100AnswerReader.Paper) {
+        val paperKey = PaperStore.put(paper)
+        context.startActivity(AnswerActivity.createIntent(context, paperKey))
+    }
+
+    fun openShare(paper: ETS100AnswerReader.Paper) {
+        val paperKey = PaperStore.put(paper)
+        context.startActivity(ShareActivity.createIntent(context, paperKey))
+    }
     
     // 调试相关状态 - 使用结构化日志系统
     var showDebugPanel by remember { mutableStateOf(false) }
@@ -915,8 +923,7 @@ fun ReadScreen(
                                 },
                                 categoryColors = categoryColors,
                                 onShare = {
-                                    FeApplication.sharePaper = paper
-                                    onNavigateToShare()
+                                    openShare(paper)
                                 }
                             )
                         } else {
@@ -958,8 +965,7 @@ fun ReadScreen(
                                             if (isDownloaded) {
                                                 // 宝贝已下载，点击查看详情喵~
                                                 downloadedPapers[homeworkKey]?.firstOrNull()?.let { downloadedPaper ->
-                                                    selectedPaper = downloadedPaper
-                                                    showPaperDetail = true
+                                                    openPaperDetail(downloadedPaper)
                                                 }
                                             } else if (!isDownloading) {
                                                 // 宝贝未下载，开始下载喵~
@@ -1029,8 +1035,7 @@ fun ReadScreen(
                                 categoryColors = categoryColors,
                                 onShare = {
                                     // 保存试卷到 FeApplication 并跳转到分享页面
-                                    FeApplication.sharePaper = paper
-                                        onNavigateToShare()
+                                    openShare(paper)
                                 }
                             )
                         } else {
@@ -1045,8 +1050,7 @@ fun ReadScreen(
                                         paper = paper,
                                         paperIndex = paperIndex,
                                         onClick = {
-                                            selectedPaper = paper
-                                            showPaperDetail = true
+                                            openPaperDetail(paper)
                                         },
                                         categoryColors = categoryColors
                                     )
@@ -2394,16 +2398,21 @@ private fun QuestionBlock(
  * 已移除搜索功能，显示所有题目喵~
  */
 @Composable
-private fun PaperDetailScreen(
+fun PaperDetailScreen(
     paper: ETS100AnswerReader.Paper,
     onBack: () -> Unit,
     categoryColors: Map<String, Color>,
     onShare: () -> Unit = {}
 ) {
-    // 宝贝添加返回手势支持喵~
-    BackHandler(onBack = onBack)
-    
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+                )
+            )
+    ) {
         // 获取默认颜色 - 需要在 Composable 上下文中获取
         val defaultPrimaryColor = MaterialTheme.colorScheme.primary
         
@@ -2451,7 +2460,12 @@ private fun PaperDetailScreen(
         // 题目列表
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 16.dp,
+                end = 16.dp,
+                bottom = 16.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             paper.sections.forEachIndexed { sectionIndex, section ->

@@ -1,6 +1,7 @@
 package com.shuaiqiu.fuckets100
 
 import android.os.Build
+import android.os.SystemClock
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -27,6 +28,47 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private data class HomeRuntimeStatus(
+    val hasFilesPerm: Boolean,
+    val hasOverlayPerm: Boolean,
+    val hasAppListPerm: Boolean,
+    val hasRootAvailable: Boolean,
+    val hasDirectReadAvailable: Boolean,
+    val cloudLoggedIn: Boolean,
+    val etsAppInfo: Pair<Boolean, String>?
+)
+
+private object HomeRuntimeStatusStore {
+    private const val CACHE_TTL_MS = 30_000L
+
+    var cached = HomeRuntimeStatus(
+        hasFilesPerm = false,
+        hasOverlayPerm = false,
+        hasAppListPerm = false,
+        hasRootAvailable = false,
+        hasDirectReadAvailable = false,
+        cloudLoggedIn = false,
+        etsAppInfo = null
+    )
+    var hasLoaded = false
+    var lastRefreshTime = 0L
+    var lastMode: ActivationMode? = null
+
+    fun isFresh(): Boolean {
+        return hasLoaded && SystemClock.elapsedRealtime() - lastRefreshTime < CACHE_TTL_MS
+    }
+
+    fun update(status: HomeRuntimeStatus, mode: ActivationMode? = lastMode) {
+        cached = status
+        hasLoaded = true
+        lastRefreshTime = SystemClock.elapsedRealtime()
+        lastMode = mode
+    }
+}
 
 /**
  * 首页主屏幕
@@ -36,29 +78,24 @@ import androidx.navigation.NavHostController
 @Composable
 fun HomeScreen(mode: ActivationMode, shizukuState: ShizukuState, navController: NavHostController) {
     val context = LocalContext.current
+    val appContext = remember(context) { context.applicationContext }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+    val currentModeForRefresh by rememberUpdatedState(mode)
     
-    // 权限状态 - 使用 mutableStateOf 确保 UI 自动更新
-    var hasFilesPerm by remember { mutableStateOf(PermissionsHelper.hasAllFilesAccess()) }
-    var hasOverlayPerm by remember { mutableStateOf(PermissionsHelper.hasOverlayPermission(context)) }
-    var hasAppListPerm by remember { mutableStateOf(PermissionsHelper.hasAppListPermission()) }
-    var hasRootAvailable by remember { mutableStateOf(RootManager.isRootAvailable()) }
-    var cloudLoggedIn by remember { mutableStateOf(ETS100AuthManager.isLoggedIn(context)) }
-    
-    // ETS 应用信息状态
-    var etsAppInfo by remember { mutableStateOf<Pair<Boolean, String>?>(null) } // (已安装, 版本号)
+    var runtimeStatus by remember {
+        mutableStateOf(HomeRuntimeStatusStore.cached)
+    }
     
     // 生命周期监听 - 从系统设置返回时自动刷新权限状态
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                hasFilesPerm = PermissionsHelper.hasAllFilesAccess()
-                hasOverlayPerm = PermissionsHelper.hasOverlayPermission(context)
-                hasAppListPerm = PermissionsHelper.hasAppListPermission()
-                hasRootAvailable = RootManager.isRootAvailable()
-                cloudLoggedIn = ETS100AuthManager.isLoggedIn(context)
-                // 刷新 ETS 应用信息
-                etsAppInfo = getAppInfo(context)
+                scope.launch {
+                    val status = loadHomeRuntimeStatus(appContext, force = true)
+                    HomeRuntimeStatusStore.update(status, currentModeForRefresh)
+                    runtimeStatus = status
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -67,21 +104,27 @@ fun HomeScreen(mode: ActivationMode, shizukuState: ShizukuState, navController: 
         }
     }
     
-    // 首次加载时获取 ETS 应用信息
-    LaunchedEffect(Unit) {
-        etsAppInfo = getAppInfo(context)
+    LaunchedEffect(mode) {
+        val status = loadHomeRuntimeStatus(
+            context = appContext,
+            force = HomeRuntimeStatusStore.lastMode != mode
+        )
+        HomeRuntimeStatusStore.update(status, mode)
+        runtimeStatus = status
     }
     
     // 检查基础权限是否全部获取
-    val hasAllBasicPermissions = hasFilesPerm && hasOverlayPerm && hasAppListPerm
+    val hasAllBasicPermissions = runtimeStatus.hasFilesPerm &&
+        runtimeStatus.hasOverlayPerm &&
+        runtimeStatus.hasAppListPerm
     
     // 判断是否真正激活 - 根据不同模式判断激活条件
     // Direct Read 模式会检测零宽字符漏洞绕过限制，而其他模式需要相应的权限和配置
     val isTrulyActivated = when {
         mode == ActivationMode.SHIZUKU -> shizukuState.isRunning && shizukuState.permissionGranted && hasAllBasicPermissions
-        mode == ActivationMode.ROOT -> hasAllBasicPermissions && hasRootAvailable
-        mode == ActivationMode.DIRECT_READ -> hasAllBasicPermissions && ZWCHelper.isDirectReadAvailable()
-        mode == ActivationMode.CLOUD -> cloudLoggedIn
+        mode == ActivationMode.ROOT -> hasAllBasicPermissions && runtimeStatus.hasRootAvailable
+        mode == ActivationMode.DIRECT_READ -> hasAllBasicPermissions && runtimeStatus.hasDirectReadAvailable
+        mode == ActivationMode.CLOUD -> runtimeStatus.cloudLoggedIn
         mode != ActivationMode.DEFAULT -> hasAllBasicPermissions
         else -> false
     }
@@ -123,11 +166,37 @@ fun HomeScreen(mode: ActivationMode, shizukuState: ShizukuState, navController: 
                 shizukuState = shizukuState, 
                 isTrulyActivated = isTrulyActivated, 
                 activeColor = activeColor, 
-                cloudLoggedIn = cloudLoggedIn,
+                cloudLoggedIn = runtimeStatus.cloudLoggedIn,
+                hasFilesPerm = runtimeStatus.hasFilesPerm,
+                hasOverlayPerm = runtimeStatus.hasOverlayPerm,
+                hasAppListPerm = runtimeStatus.hasAppListPerm,
+                hasAllBasicPermissions = hasAllBasicPermissions,
+                hasRootAvailable = runtimeStatus.hasRootAvailable,
                 navController = navController
             )
-            DeviceCard(activeColor = activeColor, etsAppInfo = etsAppInfo)
+            DeviceCard(activeColor = activeColor, etsAppInfo = runtimeStatus.etsAppInfo)
         }
+    }
+}
+
+private suspend fun loadHomeRuntimeStatus(
+    context: android.content.Context,
+    force: Boolean
+): HomeRuntimeStatus {
+    if (!force && HomeRuntimeStatusStore.isFresh()) {
+        return HomeRuntimeStatusStore.cached
+    }
+
+    return withContext(Dispatchers.IO) {
+        HomeRuntimeStatus(
+            hasFilesPerm = PermissionsHelper.hasAllFilesAccess(),
+            hasOverlayPerm = PermissionsHelper.hasOverlayPermission(context),
+            hasAppListPerm = PermissionsHelper.hasAppListPermission(),
+            hasRootAvailable = RootManager.isRootAvailable(),
+            hasDirectReadAvailable = ZWCHelper.isDirectReadAvailable(),
+            cloudLoggedIn = ETS100AuthManager.isLoggedIn(context),
+            etsAppInfo = getAppInfo(context)
+        )
     }
 }
 
@@ -160,16 +229,14 @@ fun StatusCard(
     isTrulyActivated: Boolean,
     activeColor: Color,
     cloudLoggedIn: Boolean,
+    hasFilesPerm: Boolean,
+    hasOverlayPerm: Boolean,
+    hasAppListPerm: Boolean,
+    hasAllBasicPermissions: Boolean,
+    hasRootAvailable: Boolean,
     navController: NavHostController
 ) {
-    val context = LocalContext.current
     val animatedColor by animateColorAsState(targetValue = activeColor, animationSpec = tween(600))
-    
-    // 重新检查基础权限状态
-    val hasFilesPerm = PermissionsHelper.hasAllFilesAccess()
-    val hasOverlayPerm = PermissionsHelper.hasOverlayPermission(context)
-    val hasAppListPerm = PermissionsHelper.hasAppListPermission()
-    val hasAllBasicPermissions = hasFilesPerm && hasOverlayPerm && hasAppListPerm
 
     // 根据当前状态显示不同的标题
     val displayTitle = when {
@@ -179,7 +246,7 @@ fun StatusCard(
         !hasAllBasicPermissions -> "等待授权"
         mode == ActivationMode.SHIZUKU && shizukuState.isRunning && !shizukuState.permissionGranted -> "Shizuku 等待授权"
         mode == ActivationMode.SHIZUKU && !shizukuState.isRunning -> "Shizuku 未运行"
-        mode == ActivationMode.ROOT && !RootManager.isRootAvailable() -> "Root 未获取"
+        mode == ActivationMode.ROOT && !hasRootAvailable -> "Root 未获取"
         else -> mode.title
     }
 
@@ -278,7 +345,7 @@ fun StatusCard(
                         )
                     } else if (mode == ActivationMode.ROOT) {
                         val subText = when {
-                            !RootManager.isRootAvailable() -> "未检测到Root权限，请先获取Root"
+                            !hasRootAvailable -> "未检测到Root权限，请先获取Root"
                             else -> "Root 权限已获取"
                         }
                         Text(

@@ -1,4 +1,4 @@
-package com.shuaiqiu.fuckets100
+﻿package com.shuaiqiu.fuckets100
 
 import android.content.Intent
 import android.net.Uri
@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -34,23 +35,22 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.*
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.navigation.NavBackStackEntry
 
 // ============================================================================
-// 字体定义 - 用于应用标题的醒目展示效果
-// ============================================================================
+// 瀛椾綋瀹氫箟 - 鐢ㄤ簬搴旂敤鏍囬鐨勯啋鐩睍绀烘晥鏋?// ============================================================================
 val RighteousFont = FontFamily(
     Font(resId = R.font.righteous, weight = FontWeight.Normal)
 )
 
 // ============================================================================
-// 字体定义 - 用于应用标题的醒目展示效果
-// ============================================================================
+// 瀛椾綋瀹氫箟 - 鐢ㄤ簬搴旂敤鏍囬鐨勯啋鐩睍绀烘晥鏋?// ============================================================================
 
 /**
- * 激活模式枚举
- * 定义应用的不同运行授权模式
- */
+ * 婵€娲绘ā寮忔灇涓? * 瀹氫箟搴旂敤鐨勪笉鍚岃繍琛屾巿鏉冩ā寮? */
 enum class ActivationMode(
     val title: String,
     val desc: String,
@@ -60,51 +60,42 @@ enum class ActivationMode(
     val hexColor: Color,
     val isSysOffline: Boolean
 ) {
-    // 默认模式 - 未激活状态
     DEFAULT(
-        "未激活", 
-        "请选择授权模式以启用核心功能", 
-        "SYS_OFFLINE", 
-        "Inactive", 
-        Icons.Default.Warning, 
-        Color(0xFFFFB4AB), 
+        "未激活",
+        "请选择授权模式以启用核心功能",
+        "SYS_OFFLINE",
+        "Inactive",
+        Icons.Default.Warning,
+        Color(0xFFFFB4AB),
         true
     ),
-    
-    // Shizuku 模式 - 推荐使用
     SHIZUKU(
-        "Shizuku 已连接", 
-        "借助 Shizuku 在 Root 环境下以系统级 API 实现答题增强功能", 
-        "SYS_READY", 
-        "Recommended", 
-        Icons.Default.CheckCircle, 
-        Color(0xFF4ADE80), 
+        "Shizuku 已连接",
+        "借助 Shizuku 在 Root 环境下以系统级 API 实现答题增强功能",
+        "SYS_READY",
+        "Recommended",
+        Icons.Default.CheckCircle,
+        Color(0xFF4ADE80),
         false
     ),
-    
-    // Root 模式 - 最高权限
     ROOT(
-        "Root 权限已获取", 
-        "通过 Root 权限直接访问应用数据文件实现答题增强功能", 
-        "SYS_READY", 
-        "Highest Perm", 
-        Icons.Default.Security, 
-        Color(0xFFFFB4AB), 
+        "Root 权限已获取",
+        "通过 Root 权限直接访问应用数据文件实现答题增强功能",
+        "SYS_READY",
+        "Highest Perm",
+        Icons.Default.Security,
+        Color(0xFFFFB4AB),
         false
     ),
-    
-    // 直读模式 - 漏洞读取
     DIRECT_READ(
-        "Direct Read 漏洞直读", 
-        "利用零宽字符漏洞绕过 Android 限制直接读取应用内部存储实现答题增强", 
-        "SYS_DIRECT_READ", 
-        "Legacy", 
-        Icons.Default.Bolt, 
-        Color(0xFFFBBF24), 
+        "Direct Read 漏洞直读",
+        "利用零宽字符漏洞绕过 Android 限制直接读取应用内部存储实现答题增强",
+        "SYS_DIRECT_READ",
+        "Legacy",
+        Icons.Default.Bolt,
+        Color(0xFFFBBF24),
         false
     ),
-    
-    // 云端模式 - 在线获取作业和答案
     CLOUD(
         "云端模式",
         "通过 ETS100 云端 API 在线获取作业列表和答案",
@@ -116,10 +107,6 @@ enum class ActivationMode(
     )
 }
 
-/**
- * 屏幕路由密封类
- * 定义应用的所有导航屏幕
- */
 sealed class Screen(val route: String, val icon: ImageVector, val label: String) {
     object Home : Screen("home", Icons.Default.Home, "首页")
     object Read : Screen("read", Icons.Default.MenuBook, "答题")
@@ -128,21 +115,19 @@ sealed class Screen(val route: String, val icon: ImageVector, val label: String)
     object GeneralSettings : Screen("general_settings", Icons.Default.Tune, "通用")
     object ThemeSettings : Screen("theme_settings", Icons.Default.Palette, "主题")
     object Debug : Screen("debug", Icons.Default.BugReport, "调试")
-    object Share : Screen("share", Icons.Default.Share, "分享")
     object CloudActivation : Screen("cloud_activation", Icons.Default.Cloud, "云端激活")
     object Legal : Screen("legal", Icons.Default.Gavel, "法律")
 }
-
 // ============================================================================
-// 主要活动类 - 应用入口
+// 涓昏娲诲姩绫?- 搴旂敤鍏ュ彛
 // ============================================================================
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge() // 启用沉浸式边缘到边缘布局
+        enableEdgeToEdge() // 鍚敤娌夋蹈寮忚竟缂樺埌杈圭紭甯冨眬
         
-        // 初始化 ThemeManager
+        // 鍒濆鍖?ThemeManager
         ThemeManager.init(this)
         
         setContent {
@@ -152,8 +137,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * 应用主题包装器
- */
+ * 搴旂敤涓婚鍖呰鍣? */
 @Composable
 fun FeTheme(content: @Composable () -> Unit) {
     val theme = ThemeManager.getSavedTheme()
@@ -175,31 +159,80 @@ fun FeTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = colorScheme, content = content)
 }
 
+private val rootTabRoutes = setOf(Screen.Home.route, Screen.Read.route, Screen.Settings.route)
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.isRootTabTransition(): Boolean {
+    return initialState.destination.route in rootTabRoutes && targetState.destination.route in rootTabRoutes
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.slideEnterTransition(): EnterTransition {
+    if (isRootTabTransition()) {
+        return EnterTransition.None
+    }
+
+    return slideInHorizontally(
+        initialOffsetX = { it },
+        animationSpec = tween(300, easing = FastOutSlowInEasing)
+    ) + fadeIn(
+        initialAlpha = 0.85f,
+        animationSpec = tween(120, easing = FastOutSlowInEasing)
+    )
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.slideExitTransition(): ExitTransition {
+    if (isRootTabTransition()) {
+        return ExitTransition.None
+    }
+
+    return ExitTransition.None
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.slidePopEnterTransition(): EnterTransition {
+    if (isRootTabTransition()) {
+        return EnterTransition.None
+    }
+
+    return EnterTransition.None
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.slidePopExitTransition(): ExitTransition {
+    if (isRootTabTransition()) {
+        return ExitTransition.None
+    }
+
+    return slideOutHorizontally(
+        targetOffsetX = { it },
+        animationSpec = tween(300, easing = FastOutSlowInEasing)
+    ) + fadeOut(
+        targetAlpha = 0.85f,
+        animationSpec = tween(120, easing = FastOutSlowInEasing)
+    )
+}
+
 /**
- * 应用主界面组合函数
- */
+ * 搴旂敤涓荤晫闈㈢粍鍚堝嚱鏁? */
 @Composable
 fun FeAppMain() {
     val context = LocalContext.current
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val rootContentAlpha = remember { Animatable(1f) }
+    var previousRouteForRootAnimation by remember { mutableStateOf<String?>(null) }
 
-    // 监听 Shizuku 状态变化
     val shizukuState = rememberShizukuState()
     
-    // 主题状态 - 主题变更时自动刷新界面
     var currentTheme by remember { mutableStateOf(ThemeManager.getSavedTheme()) }
     
-    // 更新弹窗状态 - 使用 snapshotFlow 监听 FeApplication.updateStatus 的变化喵~
+    // 鏇存柊寮圭獥鐘舵€?- 浣跨敤 snapshotFlow 鐩戝惉 FeApplication.updateStatus 鐨勫彉鍖栧柕~
     var showUpdateDialog by remember { mutableStateOf(false) }
     var updateDialogStatus by remember { mutableStateOf<com.shuaiqiu.fuckets100.UpdateStatus?>(null) }
     var showLegalDialog by remember { mutableStateOf(!SettingsManager.hasAcceptedLegal()) }
     
-    // 监听更新状态 Flow，确保每次都能收到通知喵~
+    // 鐩戝惉鏇存柊鐘舵€?Flow锛岀‘淇濇瘡娆￠兘鑳芥敹鍒伴€氱煡鍠祣
     LaunchedEffect(Unit) {
         FeApplication.updateStatusFlow.collect { status ->
-            Log.d("FeAppMain", "updateStatusFlow 收到: $status")
+            Log.d("FeAppMain", "updateStatusFlow 鏀跺埌: $status")
             if (status != null && status.showDialog) {
                 updateDialogStatus = status
                 showUpdateDialog = true
@@ -207,18 +240,36 @@ fun FeAppMain() {
         }
     }
     
-    // 当前激活模式 - 从保存的设置或自动检测获取
-    var currentMode by remember { 
+    var currentMode by remember {
         mutableStateOf(
             SettingsManager.getSavedActivationMode() ?: ShizukuManager.getCurrentActivationMode()
         )
     }
     
-    // 自动检测 Shizuku 状态并更新激活模式
     LaunchedEffect(shizukuState.isRunning, shizukuState.isSui) {
         if (!SettingsManager.hasUserSelectedMode()) {
             currentMode = ShizukuManager.getCurrentActivationMode()
         }
+    }
+
+    LaunchedEffect(currentRoute) {
+        val previousRoute = previousRouteForRootAnimation
+        val isRootSwitch = previousRoute != null &&
+            previousRoute != currentRoute &&
+            previousRoute in rootTabRoutes &&
+            currentRoute in rootTabRoutes
+
+        if (isRootSwitch) {
+            rootContentAlpha.snapTo(0.05f)
+            rootContentAlpha.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(650, easing = FastOutSlowInEasing)
+            )
+        } else if (rootContentAlpha.value != 1f) {
+            rootContentAlpha.snapTo(1f)
+        }
+
+        previousRouteForRootAnimation = currentRoute
     }
 
     FeThemeWrapper(theme = currentTheme) {
@@ -241,7 +292,11 @@ fun FeAppMain() {
                                 selected = currentRoute == screen.route,
                                 onClick = {
                                     navController.navigate(screen.route) {
+                                        popUpTo(navController.graph.startDestinationId) {
+                                            saveState = true
+                                        }
                                         launchSingleTop = true
+                                        restoreState = true
                                     }
                                 },
                                 colors = NavigationBarItemDefaults.colors(
@@ -258,9 +313,17 @@ fun FeAppMain() {
             }
             ) { innerPadding ->
             NavHost(
-                navController = navController, 
-                startDestination = Screen.Home.route, 
-                modifier = Modifier.padding(innerPadding)
+                navController = navController,
+                startDestination = Screen.Home.route,
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .graphicsLayer {
+                        alpha = rootContentAlpha.value
+                    },
+                enterTransition = { slideEnterTransition() },
+                exitTransition = { slideExitTransition() },
+                popEnterTransition = { slidePopEnterTransition() },
+                popExitTransition = { slidePopExitTransition() }
             ) {
 
                 composable(Screen.Home.route) { 
@@ -270,8 +333,7 @@ fun FeAppMain() {
                 composable(Screen.Read.route) {
                     ReadScreen(
                         currentMode = currentMode,
-                        onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
-                        onNavigateToShare = { navController.navigate(Screen.Share.route) }
+                        onNavigateToSettings = { navController.navigate(Screen.Settings.route) }
                     )
                 }
                 
@@ -310,40 +372,11 @@ fun FeAppMain() {
                     DebugScreen(navController = navController)
                 }
                 
-                composable(
-                    route = Screen.Share.route,
-                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) },
-                    exitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) }
-                ) {
-                    // 使用 FeApplication.sharePaper 获取试卷数据
-                    val paper = FeApplication.sharePaper
-                    if (paper != null) {
-                        ShareScreen(
-                            paper = paper,
-                            isDarkMode = currentTheme.isDark,
-                            onBack = {
-                                FeApplication.sharePaper = null
-                                navController.popBackStack()
-                            }
-                        )
-                    } else {
-                        // 试卷不存在，返回
-                        LaunchedEffect(Unit) {
-                            navController.popBackStack()
-                        }
-                    }
-                }
-                
-                // 云端激活页面
-                composable(
-                    route = Screen.CloudActivation.route,
-                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) },
-                    exitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) }
-                ) {
+                composable(Screen.CloudActivation.route) {
                     CloudActivationScreen(
                         navController = navController,
                         onLoginSuccess = {
-                            // 宝贝登录成功后设置 CLOUD 模式并返回上一页（ActivationScreen）喵~
+                            // 瀹濊礉鐧诲綍鎴愬姛鍚庤缃?CLOUD 妯″紡骞惰繑鍥炰笂涓€椤碉紙ActivationScreen锛夊柕~
                             currentMode = ActivationMode.CLOUD
                             SettingsManager.saveActivationMode(ActivationMode.CLOUD)
                             navController.popBackStack()
@@ -353,9 +386,9 @@ fun FeAppMain() {
             }
         }
         
-        // 更新弹窗 - 放在 Scaffold 外面确保能覆盖其他内容喵~
+        // 鏇存柊寮圭獥 - 鏀惧湪 Scaffold 澶栭潰纭繚鑳借鐩栧叾浠栧唴瀹瑰柕~
         if (showUpdateDialog && updateDialogStatus != null) {
-            Log.d("FeAppMain", "显示更新弹窗: ${updateDialogStatus!!.message}")
+            Log.d("FeAppMain", "鏄剧ず鏇存柊寮圭獥: ${updateDialogStatus!!.message}")
             UpdateDialog(
                 status = updateDialogStatus!!,
                 onDismiss = {
@@ -378,8 +411,7 @@ fun FeAppMain() {
 }
 
 /**
- * 主题包装器组件
- */
+ * 涓婚鍖呰鍣ㄧ粍浠? */
 @Composable
 fun FeThemeWrapper(theme: AppTheme, content: @Composable () -> Unit) {
     val colorScheme = if (theme.isDark) {
@@ -427,18 +459,15 @@ fun FeThemeWrapper(theme: AppTheme, content: @Composable () -> Unit) {
 }
 
 // ============================================================================
-// UI 组件定义 - 顶部应用栏和设置项
-// ============================================================================
+// UI 缁勪欢瀹氫箟 - 椤堕儴搴旂敤鏍忓拰璁剧疆椤?// ============================================================================
 
 /**
- * 应用顶部导航栏
- */
+ * 搴旂敤椤堕儴瀵艰埅鏍? */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeTopAppBar(title: String) {
     CenterAlignedTopAppBar(
         title = {
-            // 应用标题带发光效果
             val glowColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
             val feGlowShadow = Shadow(
                 color = glowColor,
@@ -470,8 +499,7 @@ fun FeTopAppBar(title: String) {
 }
 
 /**
- * 设置列表项组件
- */
+ * 璁剧疆鍒楄〃椤圭粍浠? */
 @Composable
 fun SettingsListItem(
     icon: ImageVector,
@@ -507,3 +535,4 @@ fun SettingsListItem(
         }
     }
 }
+

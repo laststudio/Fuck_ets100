@@ -32,6 +32,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
             android:theme="@style/Theme.Fe">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -39,6 +40,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".AnswerActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.Fe" />
+
+        <activity
+            android:name=".ShareActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.Fe" />
         
         <!-- Shizuku Provider - 必须添加 -->
         <provider

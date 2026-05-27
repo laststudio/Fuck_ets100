@@ -3,6 +3,7 @@ package com.shuaiqiu.fuckets100
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -77,8 +78,8 @@ fun SettingsScreen(navController: NavHostController) {
                     }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
                     val context = LocalContext.current
-                    SettingsListItem(Icons.Default.Help, "帮助", "使用说明与常见问题", hideChevron = true) {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/qiuqiqiuqid/Fuck_ets100"))
+                    SettingsListItem(Icons.Default.Help, "访问官网", "lastudio.cc", hideChevron = true) {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://lastudio.cc"))
                         context.startActivity(intent)
                     }
                 }
@@ -96,6 +97,8 @@ fun SettingsScreen(navController: NavHostController) {
 
 @Composable
 fun AboutDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+
     Dialog(onDismissRequest = onDismiss) {
         ElevatedCard(
             modifier = Modifier.fillMaxWidth(),
@@ -178,6 +181,49 @@ fun AboutDialog(onDismiss: () -> Unit) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
+                                .clickable {
+                                val intent = Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://github.com/qiuqiqiuqid/Fuck_ets100")
+                                )
+                                context.startActivity(intent)
+                                }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Code,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "开源地址",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    "查看项目仓库",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                Icons.Default.OpenInNew,
+                                contentDescription = "打开开源仓库",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
                 

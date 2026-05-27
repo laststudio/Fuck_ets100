@@ -59,7 +59,9 @@ class DonateActivity : ComponentActivity() {
                 isDarkMode = effectiveDarkMode,
                 useDynamicColor = ThemeManager.getSavedDynamicColor()
             ) {
-                DonateScreen(onBack = { finish() })
+                AospPredictiveBackContent(onBack = { finish() }) {
+                    DonateScreen(onBack = { finish() })
+                }
             }
         }
     }

@@ -39,14 +39,16 @@ class AnswerActivity : ComponentActivity() {
                 isDarkMode = effectiveDarkMode,
                 useDynamicColor = ThemeManager.getSavedDynamicColor()
             ) {
-                PaperDetailScreen(
-                    paper = paper,
-                    onBack = { finish() },
-                    categoryColors = answerCategoryColors(),
-                    onShare = {
-                        startActivity(ShareActivity.createIntent(this, paperKey!!))
-                    }
-                )
+                AospPredictiveBackContent(onBack = { finish() }) {
+                    PaperDetailScreen(
+                        paper = paper,
+                        onBack = { finish() },
+                        categoryColors = answerCategoryColors(),
+                        onShare = {
+                            startActivity(ShareActivity.createIntent(this, paperKey!!))
+                        }
+                    )
+                }
             }
         }
     }

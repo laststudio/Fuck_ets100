@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -263,6 +264,7 @@ fun FeAppMain() {
     val currentRoute = navBackStackEntry?.destination?.route
     val rootContentAlpha = remember { Animatable(1f) }
     var previousRouteForRootAnimation by remember { mutableStateOf<String?>(null) }
+    val predictiveBackState = rememberAospPredictiveBackState()
 
     val shizukuState = rememberShizukuState()
     
@@ -382,48 +384,70 @@ fun FeAppMain() {
                 }
             }
             ) { innerPadding ->
-            NavHost(
-                navController = navController,
-                startDestination = Screen.Home.route,
+            BoxWithConstraints(
                 modifier = Modifier
                     .padding(innerPadding)
                     .graphicsLayer {
                         alpha = rootContentAlpha.value
-                    },
-                enterTransition = { slideEnterTransition() },
-                exitTransition = { slideExitTransition() },
-                popEnterTransition = { slidePopEnterTransition() },
-                popExitTransition = { slidePopExitTransition() }
+                    }
             ) {
+                val density = LocalDensity.current
+                val containerHeightPx = with(density) { maxHeight.toPx() }
+                val predictiveBackOffsetPx = with(density) { 96.dp.toPx() }
+                val deviceCornerRadius = rememberDeviceCornerRadius()
 
-                composable(Screen.Home.route) { 
-                    HomeScreen(
-                        mode = currentMode,
-                        shizukuState = shizukuState,
-                        onNavigateToActivation = {
-                            context.startActivity(ActivationActivity.createIntent(context))
-                        }
-                    )
-                }
-                
-                composable(Screen.Read.route) {
-                    ReadScreen(
-                        currentMode = currentMode,
-                        onNavigateToActivation = {
-                            context.startActivity(ActivationActivity.createIntent(context))
-                        }
-                    )
-                }
-                
-                composable(Screen.Settings.route) { 
-                    SettingsScreen(navController) 
-                }
-                
-                composable(Screen.Debug.route) {
-                    DebugScreen(navController = navController)
+                NavHost(
+                    navController = navController,
+                    startDestination = Screen.Home.route,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .aospPredictiveBackAnimation(
+                            state = predictiveBackState,
+                            containerHeightPx = containerHeightPx,
+                            exitingOffsetPx = predictiveBackOffsetPx,
+                            deviceCornerRadius = deviceCornerRadius
+                        ),
+                    enterTransition = { slideEnterTransition() },
+                    exitTransition = { slideExitTransition() },
+                    popEnterTransition = { slidePopEnterTransition() },
+                    popExitTransition = { slidePopExitTransition() }
+                ) {
+
+                    composable(Screen.Home.route) { 
+                        HomeScreen(
+                            mode = currentMode,
+                            shizukuState = shizukuState,
+                            onNavigateToActivation = {
+                                context.startActivity(ActivationActivity.createIntent(context))
+                            }
+                        )
+                    }
+                    
+                    composable(Screen.Read.route) {
+                        ReadScreen(
+                            currentMode = currentMode,
+                            onNavigateToActivation = {
+                                context.startActivity(ActivationActivity.createIntent(context))
+                            }
+                        )
+                    }
+                    
+                    composable(Screen.Settings.route) { 
+                        SettingsScreen(navController) 
+                    }
+                    
+                    composable(Screen.Debug.route) {
+                        DebugScreen(navController = navController)
+                    }
                 }
             }
         }
+
+        AospPredictiveBackHandler(
+            state = predictiveBackState,
+            enabled = navController.previousBackStackEntry != null,
+            onBack = { navController.popBackStack() }
+        )
         
         // 鏇存柊寮圭獥 - 鏀惧湪 Scaffold 澶栭潰纭繚鑳借鐩栧叾浠栧唴瀹瑰柕~
         if (showUpdateDialog && updateDialogStatus != null) {

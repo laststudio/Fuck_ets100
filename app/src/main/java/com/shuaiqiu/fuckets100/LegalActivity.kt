@@ -15,7 +15,9 @@ class LegalActivity : ComponentActivity() {
 
         setContent {
             FeTheme {
-                LegalScreen(onBack = { finish() })
+                AospPredictiveBackContent(onBack = { finish() }) {
+                    LegalScreen(onBack = { finish() })
+                }
             }
         }
     }

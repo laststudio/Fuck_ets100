@@ -76,10 +76,12 @@ class RemoteContentActivity : ComponentActivity() {
                 theme = ThemeManager.getSavedTheme(),
                 isDarkMode = effectiveDarkMode
             ) {
-                RemoteContentScreen(
-                    content = content,
-                    onBack = { finish() }
-                )
+                AospPredictiveBackContent(onBack = { finish() }) {
+                    RemoteContentScreen(
+                        content = content,
+                        onBack = { finish() }
+                    )
+                }
             }
         }
     }

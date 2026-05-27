@@ -26,6 +26,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.Fe">
         
         <activity
@@ -46,63 +47,63 @@
             android:exported="false"
             android:label="@string/app_name"
             android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.Fe" />
+            android:theme="@style/Theme.Fe.Transparent" />
 
         <activity
             android:name=".ShareActivity"
             android:exported="false"
             android:label="@string/app_name"
             android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.Fe" />
+            android:theme="@style/Theme.Fe.Transparent" />
 
         <activity
             android:name=".DonateActivity"
             android:exported="false"
             android:label="@string/app_name"
             android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.Fe" />
+            android:theme="@style/Theme.Fe.Transparent" />
 
         <activity
             android:name=".RemoteContentActivity"
             android:exported="false"
             android:label="@string/app_name"
             android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.Fe" />
+            android:theme="@style/Theme.Fe.Transparent" />
 
         <activity
             android:name=".ActivationActivity"
             android:exported="false"
             android:label="@string/app_name"
             android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.Fe" />
+            android:theme="@style/Theme.Fe.Transparent" />
 
         <activity
             android:name=".CloudActivationActivity"
             android:exported="false"
             android:label="@string/app_name"
             android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.Fe" />
+            android:theme="@style/Theme.Fe.Transparent" />
 
         <activity
             android:name=".GeneralSettingsActivity"
             android:exported="false"
             android:label="@string/app_name"
             android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.Fe" />
+            android:theme="@style/Theme.Fe.Transparent" />
 
         <activity
             android:name=".ThemeSettingsActivity"
             android:exported="false"
             android:label="@string/app_name"
             android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.Fe" />
+            android:theme="@style/Theme.Fe.Transparent" />
 
         <activity
             android:name=".LegalActivity"
             android:exported="false"
             android:label="@string/app_name"
             android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.Fe" />
+            android:theme="@style/Theme.Fe.Transparent" />
         
         <!-- Shizuku Provider - 必须添加 -->
         <provider

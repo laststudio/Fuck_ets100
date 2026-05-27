@@ -15,7 +15,9 @@ class GeneralSettingsActivity : ComponentActivity() {
 
         setContent {
             FeTheme {
-                GeneralSettingsScreen(onBack = { finish() })
+                AospPredictiveBackContent(onBack = { finish() }) {
+                    GeneralSettingsScreen(onBack = { finish() })
+                }
             }
         }
     }

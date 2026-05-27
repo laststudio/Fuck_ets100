@@ -31,13 +31,15 @@ class ThemeSettingsActivity : ComponentActivity() {
                 isDarkMode = effectiveDarkMode,
                 useDynamicColor = useDynamicColor
             ) {
-                ThemeSettingsScreen(
-                    onBack = { finish() },
-                    onThemeChanged = { currentTheme = it },
-                    onDarkModeChanged = { isDarkMode = it },
-                    onAutoDarkModeChanged = { isAutoDarkMode = it },
-                    onDynamicColorChanged = { useDynamicColor = it }
-                )
+                AospPredictiveBackContent(onBack = { finish() }) {
+                    ThemeSettingsScreen(
+                        onBack = { finish() },
+                        onThemeChanged = { currentTheme = it },
+                        onDarkModeChanged = { isDarkMode = it },
+                        onAutoDarkModeChanged = { isAutoDarkMode = it },
+                        onDynamicColorChanged = { useDynamicColor = it }
+                    )
+                }
             }
         }
     }

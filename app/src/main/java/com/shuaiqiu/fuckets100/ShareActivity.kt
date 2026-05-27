@@ -37,11 +37,13 @@ class ShareActivity : ComponentActivity() {
                 isDarkMode = effectiveDarkMode,
                 useDynamicColor = ThemeManager.getSavedDynamicColor()
             ) {
-                ShareScreen(
-                    paper = paper,
-                    isDarkMode = effectiveDarkMode,
-                    onBack = { finish() }
-                )
+                AospPredictiveBackContent(onBack = { finish() }) {
+                    ShareScreen(
+                        paper = paper,
+                        isDarkMode = effectiveDarkMode,
+                        onBack = { finish() }
+                    )
+                }
             }
         }
     }

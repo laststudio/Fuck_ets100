@@ -46,22 +46,24 @@ class ActivationActivity : ComponentActivity() {
             }
 
             FeTheme {
-                ActivationSettingsScreen(
-                    currentMode = currentMode,
-                    shizukuState = shizukuState,
-                    onModeSelected = { mode ->
-                        currentMode = mode
-                        SettingsManager.saveActivationMode(mode)
-                    },
-                    onBack = { finish() },
-                    onNavigateToCloudActivation = {
-                        cloudActivationLauncher.launch(CloudActivationActivity.createIntent(this))
-                    },
-                    onNavigateToRead = {
-                        startActivity(MainActivity.createIntent(this, Screen.Read.route))
-                        finish()
-                    }
-                )
+                AospPredictiveBackContent(onBack = { finish() }) {
+                    ActivationSettingsScreen(
+                        currentMode = currentMode,
+                        shizukuState = shizukuState,
+                        onModeSelected = { mode ->
+                            currentMode = mode
+                            SettingsManager.saveActivationMode(mode)
+                        },
+                        onBack = { finish() },
+                        onNavigateToCloudActivation = {
+                            cloudActivationLauncher.launch(CloudActivationActivity.createIntent(this))
+                        },
+                        onNavigateToRead = {
+                            startActivity(MainActivity.createIntent(this, Screen.Read.route))
+                            finish()
+                        }
+                    )
+                }
             }
         }
     }

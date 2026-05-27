@@ -16,14 +16,16 @@ class CloudActivationActivity : ComponentActivity() {
 
         setContent {
             FeTheme {
-                CloudActivationScreen(
-                    onBack = { finish() },
-                    onLoginSuccess = {
-                        SettingsManager.saveActivationMode(ActivationMode.CLOUD)
-                        setResult(Activity.RESULT_OK)
-                        finish()
-                    }
-                )
+                AospPredictiveBackContent(onBack = { finish() }) {
+                    CloudActivationScreen(
+                        onBack = { finish() },
+                        onLoginSuccess = {
+                            SettingsManager.saveActivationMode(ActivationMode.CLOUD)
+                            setResult(Activity.RESULT_OK)
+                            finish()
+                        }
+                    )
+                }
             }
         }
     }

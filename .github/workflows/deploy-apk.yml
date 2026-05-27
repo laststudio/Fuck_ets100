@@ -171,16 +171,25 @@ jobs:
           set -euo pipefail
           echo "RELEASE_FORCE_UPDATE=${RELEASE_FORCE_UPDATE}"
           echo "RELEASE_KILL_SWITCH=${RELEASE_KILL_SWITCH}"
+          echo "RELEASE_DONATE_ENABLED=${RELEASE_DONATE_ENABLED}"
+          echo "GITEE_CHANGELOG_FILE=${GITEE_CHANGELOG_FILE}"
           if [ -n "${RELEASE_NOTICE_MESSAGE}" ]; then
             echo "RELEASE_NOTICE_MESSAGE 已配置。"
           else
             echo "RELEASE_NOTICE_MESSAGE 为空。"
           fi
+          if [ -n "${RELEASE_ANNOUNCEMENT_MESSAGE}" ]; then
+            echo "RELEASE_ANNOUNCEMENT_MESSAGE 已配置。"
+          else
+            echo "RELEASE_ANNOUNCEMENT_MESSAGE 为空，将使用 RELEASE_NOTICE_MESSAGE 兜底。"
+          fi
           python scripts/release/update_remote_config.py \
             --version-code "${{ steps.version.outputs.version_code }}" \
             --version-name "${{ steps.version.outputs.version_name }}" \
             --apk-url "${{ steps.download.outputs.apk_url }}" \
-            --message-file current_changelog.md
+            --message-file current_changelog.md \
+            --source-changelog-file update.md \
+            --changelog-file "${GITEE_CHANGELOG_FILE}"
         env:
           GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
@@ -190,3 +199,12 @@ jobs:
           RELEASE_FORCE_UPDATE: ${{ vars.RELEASE_FORCE_UPDATE || 'false' }}
           RELEASE_KILL_SWITCH: ${{ vars.RELEASE_KILL_SWITCH || 'false' }}
           RELEASE_NOTICE_MESSAGE: ${{ vars.RELEASE_NOTICE_MESSAGE || '' }}
+          RELEASE_ANNOUNCEMENT_TITLE: ${{ vars.RELEASE_ANNOUNCEMENT_TITLE || '' }}
+          RELEASE_ANNOUNCEMENT_MESSAGE: ${{ vars.RELEASE_ANNOUNCEMENT_MESSAGE || '' }}
+          RELEASE_ANNOUNCEMENT_UPDATED_AT: ${{ vars.RELEASE_ANNOUNCEMENT_UPDATED_AT || '' }}
+          RELEASE_ANNOUNCEMENT_URL: ${{ vars.RELEASE_ANNOUNCEMENT_URL || '' }}
+          RELEASE_CHANGELOG_URL: ${{ vars.RELEASE_CHANGELOG_URL || '' }}
+          RELEASE_CHANGELOG_TITLE: ${{ vars.RELEASE_CHANGELOG_TITLE || '更新日志' }}
+          RELEASE_CHANGELOG_SUMMARY: ${{ vars.RELEASE_CHANGELOG_SUMMARY || '' }}
+          GITEE_CHANGELOG_FILE: ${{ vars.GITEE_CHANGELOG_FILE || 'update.md' }}
+          RELEASE_DONATE_ENABLED: ${{ vars.RELEASE_DONATE_ENABLED || 'true' }}

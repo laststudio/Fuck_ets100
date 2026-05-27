@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.Color
 
 class AnswerActivity : ComponentActivity() {
@@ -27,9 +28,16 @@ class AnswerActivity : ComponentActivity() {
         }
 
         setContent {
+            val effectiveDarkMode = if (ThemeManager.getSavedAutoDarkMode()) {
+                isSystemInDarkTheme()
+            } else {
+                ThemeManager.getSavedDarkMode()
+            }
+
             FeThemeWrapper(
                 theme = ThemeManager.getSavedTheme(),
-                isDarkMode = ThemeManager.getSavedDarkMode()
+                isDarkMode = effectiveDarkMode,
+                useDynamicColor = ThemeManager.getSavedDynamicColor()
             ) {
                 PaperDetailScreen(
                     paper = paper,

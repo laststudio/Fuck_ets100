@@ -114,6 +114,8 @@ object ThemeManager {
     private const val PREFS_NAME = "fe_settings"
     private const val KEY_THEME = "app_theme"
     private const val KEY_DARK_MODE = "dark_mode"
+    private const val KEY_AUTO_DARK_MODE = "auto_dark_mode"
+    private const val KEY_DYNAMIC_COLOR = "dynamic_color"
     
     private var prefs: SharedPreferences? = null
     
@@ -141,6 +143,22 @@ object ThemeManager {
 
     fun saveDarkMode(isDarkMode: Boolean) {
         prefs?.edit()?.putBoolean(KEY_DARK_MODE, isDarkMode)?.apply()
+    }
+
+    fun getSavedAutoDarkMode(): Boolean {
+        return prefs?.getBoolean(KEY_AUTO_DARK_MODE, true) ?: true
+    }
+
+    fun saveAutoDarkMode(isAutoDarkMode: Boolean) {
+        prefs?.edit()?.putBoolean(KEY_AUTO_DARK_MODE, isAutoDarkMode)?.apply()
+    }
+
+    fun getSavedDynamicColor(): Boolean {
+        return prefs?.getBoolean(KEY_DYNAMIC_COLOR, false) ?: false
+    }
+
+    fun saveDynamicColor(useDynamicColor: Boolean) {
+        prefs?.edit()?.putBoolean(KEY_DYNAMIC_COLOR, useDynamicColor)?.apply()
     }
     
     // 获取莫奈系列主题

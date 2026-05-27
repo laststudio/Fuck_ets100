@@ -1,8 +1,10 @@
 package com.shuaiqiu.fuckets100
 
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -15,11 +17,14 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,11 +35,18 @@ import androidx.navigation.NavHostController
 fun ThemeSettingsScreen(
     navController: NavHostController,
     onThemeChanged: ((AppTheme) -> Unit)? = null,
-    onDarkModeChanged: ((Boolean) -> Unit)? = null
+    onDarkModeChanged: ((Boolean) -> Unit)? = null,
+    onAutoDarkModeChanged: ((Boolean) -> Unit)? = null,
+    onDynamicColorChanged: ((Boolean) -> Unit)? = null
 ) {
     val currentTheme = ThemeManager.getSavedTheme()
     var selectedTheme by remember { mutableStateOf(currentTheme) }
     var isDarkMode by remember { mutableStateOf(ThemeManager.getSavedDarkMode()) }
+    var isAutoDarkMode by remember { mutableStateOf(ThemeManager.getSavedAutoDarkMode()) }
+    var useDynamicColor by remember { mutableStateOf(ThemeManager.getSavedDynamicColor()) }
+    val dynamicColorAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val systemDarkMode = isSystemInDarkTheme()
+    val effectiveDarkMode = if (isAutoDarkMode) systemDarkMode else isDarkMode
     
     val colorThemes = ThemeManager.getColorThemes()
     
@@ -79,6 +91,7 @@ fun ThemeSettingsScreen(
                     ThemeCard(
                         theme = theme,
                         isSelected = selectedTheme == theme,
+                        enabled = !(useDynamicColor && dynamicColorAvailable),
                         onClick = {
                             selectedTheme = theme
                             ThemeManager.saveTheme(theme)
@@ -87,6 +100,35 @@ fun ThemeSettingsScreen(
                     )
                 }
             }
+
+            ListItem(
+                headlineContent = { Text("从壁纸提取主题色") },
+                supportingContent = {
+                    Text(
+                        if (dynamicColorAvailable) {
+                            "使用系统 Material You 动态配色"
+                        } else {
+                            "需要 Android 12 或更高版本"
+                        }
+                    )
+                },
+                leadingContent = {
+                    Icon(Icons.Default.Wallpaper, contentDescription = null)
+                },
+                trailingContent = {
+                    Switch(
+                        checked = useDynamicColor && dynamicColorAvailable,
+                        enabled = dynamicColorAvailable,
+                        onCheckedChange = { checked ->
+                            useDynamicColor = checked
+                            ThemeManager.saveDynamicColor(checked)
+                            onDynamicColorChanged?.invoke(checked)
+                        }
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
             
             Spacer(Modifier.height(24.dp))
             
@@ -103,6 +145,26 @@ fun ThemeSettingsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
             )
 
+            ListItem(
+                headlineContent = { Text("跟随系统") },
+                supportingContent = { Text(if (systemDarkMode) "当前系统为夜间模式" else "当前系统为日间模式") },
+                leadingContent = {
+                    Icon(Icons.Default.Sync, contentDescription = null)
+                },
+                trailingContent = {
+                    Switch(
+                        checked = isAutoDarkMode,
+                        onCheckedChange = { checked ->
+                            isAutoDarkMode = checked
+                            ThemeManager.saveAutoDarkMode(checked)
+                            onAutoDarkModeChanged?.invoke(checked)
+                        }
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
             SingleChoiceSegmentedButtonRow(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -110,23 +172,27 @@ fun ThemeSettingsScreen(
             ) {
                 SegmentedButton(
                     selected = !isDarkMode,
+                    enabled = !isAutoDarkMode,
                     onClick = {
                         isDarkMode = false
                         ThemeManager.saveDarkMode(false)
                         onDarkModeChanged?.invoke(false)
                     },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    colors = themeModeSegmentedButtonColors(),
                     icon = { Icon(Icons.Default.LightMode, contentDescription = null) },
                     label = { Text("日间") }
                 )
                 SegmentedButton(
                     selected = isDarkMode,
+                    enabled = !isAutoDarkMode,
                     onClick = {
                         isDarkMode = true
                         ThemeManager.saveDarkMode(true)
                         onDarkModeChanged?.invoke(true)
                     },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    colors = themeModeSegmentedButtonColors(),
                     icon = { Icon(Icons.Default.DarkMode, contentDescription = null) },
                     label = { Text("夜间") }
                 )
@@ -146,7 +212,7 @@ fun ThemeSettingsScreen(
             
             ThemePreviewCard(
                 theme = selectedTheme,
-                isDarkMode = isDarkMode,
+                isDarkMode = effectiveDarkMode,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
             
@@ -159,12 +225,16 @@ fun ThemeSettingsScreen(
 fun ThemeCard(
     theme: AppTheme,
     isSelected: Boolean,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .width(100.dp)
-            .clickable(onClick = onClick),
+            .graphicsLayer {
+                alpha = if (enabled) 1f else 0.45f
+            }
+            .clickable(enabled = enabled, onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) {
@@ -216,10 +286,15 @@ fun ThemePreviewCard(theme: AppTheme, isDarkMode: Boolean, modifier: Modifier = 
     } else {
         previewBlend(theme.primary, Color.White, 0.78f)
     }
-    val surface = if (isDarkMode) {
-        previewBlend(Color(0xFF141218), theme.primary, 0.04f)
+    val background = if (isDarkMode) {
+        previewBlend(Color(0xFF111014), theme.primary, 0.055f)
     } else {
-        previewBlend(Color(0xFFFFFBFE), theme.primary, 0.025f)
+        previewBlend(Color(0xFFFFFBFE), theme.primary, 0.045f)
+    }
+    val surface = if (isDarkMode) {
+        previewBlend(Color(0xFF141218), theme.primary, 0.05f)
+    } else {
+        previewBlend(Color(0xFFFFFBFE), theme.primary, 0.03f)
     }
     val onSurface = if (isDarkMode) Color(0xFFE6E0E9) else Color(0xFF1C1B1F)
     val onSurfaceVariant = if (isDarkMode) Color(0xFFCAC4D0) else Color(0xFF49454F)
@@ -227,9 +302,14 @@ fun ThemePreviewCard(theme: AppTheme, isDarkMode: Boolean, modifier: Modifier = 
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = surface)
+        colors = CardDefaults.cardColors(containerColor = background)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(surface, RoundedCornerShape(12.dp))
+                .padding(16.dp)
+        ) {
             // 标题预览
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -294,6 +374,20 @@ fun ThemePreviewCard(theme: AppTheme, isDarkMode: Boolean, modifier: Modifier = 
             }
         }
     }
+}
+
+@Composable
+private fun themeModeSegmentedButtonColors(): SegmentedButtonColors {
+    return SegmentedButtonDefaults.colors(
+        activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        inactiveContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        disabledActiveContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        disabledActiveContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        disabledInactiveContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        disabledInactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f)
+    )
 }
 
 private fun previewBlend(from: Color, to: Color, amount: Float): Color {

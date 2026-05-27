@@ -2,6 +2,7 @@
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -9,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -141,9 +143,18 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun FeTheme(content: @Composable () -> Unit) {
     val theme = ThemeManager.getSavedTheme()
+    val systemDarkMode = isSystemInDarkTheme()
+    val effectiveDarkMode = if (ThemeManager.getSavedAutoDarkMode()) {
+        systemDarkMode
+    } else {
+        ThemeManager.getSavedDarkMode()
+    }
+    val useDynamicColor = ThemeManager.getSavedDynamicColor()
+
     FeThemeWrapper(
         theme = theme,
-        isDarkMode = ThemeManager.getSavedDarkMode(),
+        isDarkMode = effectiveDarkMode,
+        useDynamicColor = useDynamicColor,
         content = content
     )
 }
@@ -213,6 +224,10 @@ fun FeAppMain() {
     
     var currentTheme by remember { mutableStateOf(ThemeManager.getSavedTheme()) }
     var isDarkMode by remember { mutableStateOf(ThemeManager.getSavedDarkMode()) }
+    var isAutoDarkMode by remember { mutableStateOf(ThemeManager.getSavedAutoDarkMode()) }
+    var useDynamicColor by remember { mutableStateOf(ThemeManager.getSavedDynamicColor()) }
+    val systemDarkMode = isSystemInDarkTheme()
+    val effectiveDarkMode = if (isAutoDarkMode) systemDarkMode else isDarkMode
     
     // 鏇存柊寮圭獥鐘舵€?- 浣跨敤 snapshotFlow 鐩戝惉 FeApplication.updateStatus 鐨勫彉鍖栧柕~
     var showUpdateDialog by remember { mutableStateOf(false) }
@@ -262,7 +277,11 @@ fun FeAppMain() {
         previousRouteForRootAnimation = currentRoute
     }
 
-    FeThemeWrapper(theme = currentTheme, isDarkMode = isDarkMode) {
+    FeThemeWrapper(
+        theme = currentTheme,
+        isDarkMode = effectiveDarkMode,
+        useDynamicColor = useDynamicColor
+    ) {
         Scaffold(
             bottomBar = {
                 if (currentRoute in listOf(
@@ -355,7 +374,9 @@ fun FeAppMain() {
                     ThemeSettingsScreen(
                         navController = navController,
                         onThemeChanged = { newTheme -> currentTheme = newTheme },
-                        onDarkModeChanged = { darkMode -> isDarkMode = darkMode }
+                        onDarkModeChanged = { darkMode -> isDarkMode = darkMode },
+                        onAutoDarkModeChanged = { autoDarkMode -> isAutoDarkMode = autoDarkMode },
+                        onDynamicColorChanged = { dynamicColor -> useDynamicColor = dynamicColor }
                     )
                 }
                 
@@ -407,10 +428,15 @@ fun FeAppMain() {
 fun FeThemeWrapper(
     theme: AppTheme,
     isDarkMode: Boolean = ThemeManager.getSavedDarkMode(),
+    useDynamicColor: Boolean = ThemeManager.getSavedDynamicColor(),
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (isDarkMode) {
-        val surface = monetBlend(Color(0xFF141218), theme.primary, 0.04f)
+    val context = LocalContext.current
+    val colorScheme = if (useDynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (isDarkMode) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    } else if (isDarkMode) {
+        val background = monetBlend(Color(0xFF111014), theme.primary, 0.055f)
+        val surface = monetBlend(Color(0xFF141218), theme.primary, 0.05f)
         val surfaceContainerLow = monetBlend(Color(0xFF1D1B20), theme.primary, 0.06f)
         val surfaceContainer = monetBlend(Color(0xFF211F26), theme.primary, 0.08f)
         val surfaceContainerHigh = monetBlend(Color(0xFF2B2930), theme.primary, 0.09f)
@@ -421,7 +447,7 @@ fun FeThemeWrapper(
             primaryContainer = theme.primaryContainer,
             onPrimary = theme.onPrimary,
             onPrimaryContainer = Color(0xFFEADDFF),
-            background = surface,
+            background = background,
             surface = surface,
             surfaceContainerLow = surfaceContainerLow,
             surfaceContainer = surfaceContainer,
@@ -441,7 +467,8 @@ fun FeThemeWrapper(
         val primaryContainer = monetBlend(theme.primary, Color.White, 0.78f)
         val secondary = monetBlend(theme.primary, Color.Black, 0.50f)
         val secondaryContainer = monetBlend(theme.primary, Color.White, 0.84f)
-        val surface = monetBlend(Color(0xFFFFFBFE), theme.primary, 0.025f)
+        val background = monetBlend(Color(0xFFFFFBFE), theme.primary, 0.045f)
+        val surface = monetBlend(Color(0xFFFFFBFE), theme.primary, 0.03f)
         val surfaceContainerLow = monetBlend(Color(0xFFF7F2FA), theme.primary, 0.035f)
         val surfaceContainer = monetBlend(Color(0xFFF3EDF7), theme.primary, 0.045f)
         val surfaceContainerHigh = monetBlend(Color(0xFFECE6F0), theme.primary, 0.055f)
@@ -452,7 +479,7 @@ fun FeThemeWrapper(
             primaryContainer = primaryContainer,
             onPrimary = Color.White,
             onPrimaryContainer = monetBlend(primary, Color.Black, 0.35f),
-            background = surface,
+            background = background,
             surface = surface,
             surfaceContainerLow = surfaceContainerLow,
             surfaceContainer = surfaceContainer,

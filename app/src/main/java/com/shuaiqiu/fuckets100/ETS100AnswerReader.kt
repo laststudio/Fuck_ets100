@@ -2,6 +2,11 @@ package com.shuaiqiu.fuckets100
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
 
 /**
@@ -23,6 +28,7 @@ import org.json.JSONObject
 object ETS100AnswerReader {
 
     private const val TAG = "ETS100AnswerReader"
+    private const val PARALLEL_PARSE_LIMIT = 4
 
     /**
      * structure_type 常量
@@ -361,53 +367,155 @@ object ETS100AnswerReader {
         val groupedFolders = groupByTime(resourceFolders, thresholdMs = 2000)
         Log.i(TAG, "readPapers: Step2 时间分组得到 ${groupedFolders.size} 组")
 
-        // 用于 Step 5 去重：记录已处理的 content.json 路径
-        val processedContentPaths = mutableSetOf<String>()
         val exerciseGroupPapers = mutableListOf<Paper>()
 
         // Step 3 & 4: 根据文件夹数量路由，遍历每组的 content.json
         for ((groupIndex, folderGroup) in groupedFolders.withIndex()) {
             val orderedFolderGroup = orderResourceFoldersByPaperStructure(folderGroup, resourceOrderMap)
-            val folderCount = orderedFolderGroup.size
-            
-            // 宝贝添加详细日志：显示每组的文件夹名称和时间
-            val folderNames = orderedFolderGroup.joinToString(", ") { "${it.name}(${it.lastModified})" }
-            Log.d(TAG, "╔═══ Step3&4 第 ${groupIndex + 1} 组路由日志 ═══")
-            Log.d(TAG, "║ 文件夹数量: $folderCount")
-            Log.d(TAG, "║ 文件夹列表: $folderNames")
-            
-            // 根据文件夹数量路由
-            val papers = when (folderCount) {
-                3 -> {
-                    Log.d(TAG, "║ 路由: 广东高中解析器 (3个文件夹)")
-                    parseGuangdongHighPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
-                }
-                7 -> {
-                    Log.d(TAG, "║ 路由: 广东初中解析器 (7个文件夹)")
-                    parseGuangdongJuniorPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
-                }
-                10 -> {
-                    Log.d(TAG, "║ 路由: 北京初中解析器 (10个文件夹)")
-                    parseBeijingJuniorPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
-                }
-                13 -> {
-                    Log.d(TAG, "║ 路由: 北京高中解析器 (13个文件夹)")
-                    parseBeijingHighPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
-                }
-                else -> {
-                    Log.d(TAG, "║ 路由: 通用解析器 (${folderCount}个文件夹，不匹配预设)")
-                    parseGenericPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
-                }
-            }
-            Log.d(TAG, "║ 解析得到 ${papers.size} 份试卷")
-            Log.d(TAG, "╚═══ Step3&4 路由日志结束 ═══")
-            
-            exerciseGroupPapers.addAll(papers)
+            exerciseGroupPapers.addAll(parseResourceGroup(reader, orderedFolderGroup, groupIndex))
         }
 
         Log.i(TAG, "readPapers: 完成，共 ${exerciseGroupPapers.size} 份试卷")
 
         return exerciseGroupPapers
+    }
+
+    fun readPaperSummaries(context: Context, mode: ActivationMode): List<Paper> {
+        if (!ETS100FileReader.isModeAvailable(mode, context)) {
+            Log.w(TAG, "Mode $mode is not available")
+            return emptyList()
+        }
+
+        val reader = try {
+            ETS100FileReader.getReader(mode, context)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get reader", e)
+            return emptyList()
+        }
+
+        val resourceOrderMap = buildResourceOrderMap(reader)
+        val resourceFolders = scanResourceFolders(reader)
+        val groupedFolders = groupByTime(resourceFolders, thresholdMs = 2000)
+
+        return groupedFolders.mapIndexed { groupIndex, folderGroup ->
+            val orderedFolderGroup = orderResourceFoldersByPaperStructure(folderGroup, resourceOrderMap)
+            createPaperSummary(orderedFolderGroup, groupIndex)
+        }
+    }
+
+    suspend fun readPapersParallel(context: Context, mode: ActivationMode): List<Paper> = coroutineScope {
+        if (!ETS100FileReader.isModeAvailable(mode, context)) {
+            Log.w(TAG, "Mode $mode is not available")
+            return@coroutineScope emptyList()
+        }
+
+        val reader = try {
+            ETS100FileReader.getReader(mode, context)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get reader", e)
+            return@coroutineScope emptyList()
+        }
+
+        val resourceOrderMap = buildResourceOrderMap(reader)
+        val resourceFolders = scanResourceFolders(reader)
+        Log.i(TAG, "readPapersParallel: Step1 扫描 resource/ 获取 ${resourceFolders.size} 个文件夹")
+
+        val groupedFolders = groupByTime(resourceFolders, thresholdMs = 2000)
+        Log.i(TAG, "readPapersParallel: Step2 时间分组得到 ${groupedFolders.size} 组")
+
+        val semaphore = Semaphore(PARALLEL_PARSE_LIMIT)
+        groupedFolders.mapIndexed { groupIndex, folderGroup ->
+            val orderedFolderGroup = orderResourceFoldersByPaperStructure(folderGroup, resourceOrderMap)
+            async {
+                semaphore.withPermit {
+                    val localReader = ETS100FileReader.getReader(mode, context)
+                    GroupParseResult(
+                        groupIndex = groupIndex,
+                        papers = parseResourceGroup(localReader, orderedFolderGroup, groupIndex)
+                    )
+                }
+            }
+        }.awaitAll()
+            .sortedBy { it.groupIndex }
+            .flatMap { it.papers }
+            .also { Log.i(TAG, "readPapersParallel: 完成，共 ${it.size} 份试卷") }
+    }
+
+    private data class GroupParseResult(
+        val groupIndex: Int,
+        val papers: List<Paper>
+    )
+
+    private fun createPaperSummary(
+        folders: List<ETS100FileReader.FileItem>,
+        groupIndex: Int
+    ): Paper {
+        val folderCount = folders.size
+        val (titlePrefix, regionLabel) = when (folderCount) {
+            3 -> "广东高中" to "广东高中"
+            7 -> "广东初中" to "广东初中"
+            10 -> "北京初中" to "北京初中"
+            13 -> "北京高中" to "北京高中"
+            else -> "练习" to "未知"
+        }
+        val firstFolder = folders.firstOrNull()
+        return Paper(
+            paperId = (firstFolder?.name ?: "paper_$groupIndex").hashCode().toLong(),
+            title = "$titlePrefix #${groupIndex + 1}",
+            dataFileName = firstFolder?.name.orEmpty(),
+            fileSize = folders.sumOf { it.size },
+            sections = listOf(
+                Section(
+                    caption = "答案解析中",
+                    category = "local_loading",
+                    typeName = "解析中",
+                    questions = emptyList(),
+                    originalContent = null
+                )
+            ),
+            downloadTime = firstFolder?.lastModified ?: 0L,
+            regionLabel = regionLabel,
+            paperName = null
+        )
+    }
+
+    private fun parseResourceGroup(
+        reader: ETS100FileReader.Reader,
+        orderedFolderGroup: List<ETS100FileReader.FileItem>,
+        groupIndex: Int
+    ): List<Paper> {
+        val processedContentPaths = mutableSetOf<String>()
+        val folderCount = orderedFolderGroup.size
+        val folderNames = orderedFolderGroup.joinToString(", ") { "${it.name}(${it.lastModified})" }
+        Log.d(TAG, "╔═══ Step3&4 第 ${groupIndex + 1} 组路由日志 ═══")
+        Log.d(TAG, "║ 文件夹数量: $folderCount")
+        Log.d(TAG, "║ 文件夹列表: $folderNames")
+
+        val papers = when (folderCount) {
+            3 -> {
+                Log.d(TAG, "║ 路由: 广东高中解析器 (3个文件夹)")
+                parseGuangdongHighPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+            }
+            7 -> {
+                Log.d(TAG, "║ 路由: 广东初中解析器 (7个文件夹)")
+                parseGuangdongJuniorPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+            }
+            10 -> {
+                Log.d(TAG, "║ 路由: 北京初中解析器 (10个文件夹)")
+                parseBeijingJuniorPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+            }
+            13 -> {
+                Log.d(TAG, "║ 路由: 北京高中解析器 (13个文件夹)")
+                parseBeijingHighPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+            }
+            else -> {
+                Log.d(TAG, "║ 路由: 通用解析器 (${folderCount}个文件夹，不匹配预设)")
+                parseGenericPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+            }
+        }
+        Log.d(TAG, "║ 解析得到 ${papers.size} 份试卷")
+        Log.d(TAG, "╚═══ Step3&4 路由日志结束 ═══")
+        return papers
     }
 
     /**

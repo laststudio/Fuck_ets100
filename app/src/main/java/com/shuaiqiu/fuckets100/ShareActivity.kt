@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 
 class ShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -24,12 +25,21 @@ class ShareActivity : ComponentActivity() {
         }
 
         val theme = ThemeManager.getSavedTheme()
-        val isDarkMode = ThemeManager.getSavedDarkMode()
         setContent {
-            FeThemeWrapper(theme = theme, isDarkMode = isDarkMode) {
+            val effectiveDarkMode = if (ThemeManager.getSavedAutoDarkMode()) {
+                isSystemInDarkTheme()
+            } else {
+                ThemeManager.getSavedDarkMode()
+            }
+
+            FeThemeWrapper(
+                theme = theme,
+                isDarkMode = effectiveDarkMode,
+                useDynamicColor = ThemeManager.getSavedDynamicColor()
+            ) {
                 ShareScreen(
                     paper = paper,
-                    isDarkMode = isDarkMode,
+                    isDarkMode = effectiveDarkMode,
                     onBack = { finish() }
                 )
             }

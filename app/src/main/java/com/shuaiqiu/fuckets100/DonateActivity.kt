@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,9 +48,16 @@ class DonateActivity : ComponentActivity() {
         ThemeManager.init(this)
 
         setContent {
+            val effectiveDarkMode = if (ThemeManager.getSavedAutoDarkMode()) {
+                isSystemInDarkTheme()
+            } else {
+                ThemeManager.getSavedDarkMode()
+            }
+
             FeThemeWrapper(
                 theme = ThemeManager.getSavedTheme(),
-                isDarkMode = ThemeManager.getSavedDarkMode()
+                isDarkMode = effectiveDarkMode,
+                useDynamicColor = ThemeManager.getSavedDynamicColor()
             ) {
                 DonateScreen(onBack = { finish() })
             }
@@ -93,17 +101,19 @@ private fun DonateScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
             ) {
                 Column(
-                    modifier = Modifier.padding(20.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Icon(
                         Icons.Default.Favorite,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.size(36.dp)
                     )
                     Spacer(Modifier.height(12.dp))
@@ -111,14 +121,17 @@ private fun DonateScreen(onBack: () -> Unit) {
                         "感谢支持 Fe",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "如果这个项目帮到了你，可以请作者喝杯咖啡。",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }

@@ -35,6 +35,7 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 
 private const val TAG = "ReadScreen"
+private const val LOCAL_PAPER_LOADING_CATEGORY = "local_loading"
 
 // ============================================================================
 // 调试日志系统 - 用于跟踪应用内数据和答案的读取过程
@@ -96,6 +97,10 @@ private sealed class InitResult {
     ) : InitResult()
     
     data class Error(val message: String) : InitResult()
+}
+
+private fun ETS100AnswerReader.Paper.isLocalAnswerLoading(): Boolean {
+    return sections.any { it.category == LOCAL_PAPER_LOADING_CATEGORY }
 }
 
 // ========== 云端模式辅助函数喵~ ==========
@@ -212,6 +217,21 @@ fun ReadScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val cachedLocalSnapshot = remember { ReadPageStateStore.loadLocal(context) }
+    val cachedCloudSnapshot = remember {
+        ReadPageStateStore.loadCloud(context)?.also { snapshot ->
+            if (CloudHomeworkState.homeworkListsByStatus.isEmpty() &&
+                CloudHomeworkState.downloadedPapers.isEmpty()
+            ) {
+                CloudHomeworkState.selectedStatus = snapshot.selectedStatus
+                CloudHomeworkState.homeworkListsByStatus = snapshot.homeworkListsByStatus
+                CloudHomeworkState.cloudBaseUrl = snapshot.cloudBaseUrl
+                CloudHomeworkState.downloadedPapers = snapshot.downloadedPapers
+                CloudHomeworkState.downloadedHomeworkNames = snapshot.downloadedHomeworkNames
+                CloudHomeworkState.failedCloudHomeworks = snapshot.failedCloudHomeworks
+            }
+        }
+    }
 
     fun openPaperDetail(paper: ETS100AnswerReader.Paper) {
         val paperKey = PaperStore.put(paper)
@@ -229,12 +249,20 @@ fun ReadScreen(
     var showDataDetails by remember { mutableStateOf(false) }  // 是否显示详细数据信息
     
     // 文件列表状态
-    var dataFiles by remember { mutableStateOf<List<ETS100FileReader.FileItem>>(emptyList()) }
-    var resourceFiles by remember { mutableStateOf<List<ETS100FileReader.FileItem>>(emptyList()) }
-    var readerInfo by remember { mutableStateOf("") }
+    var dataFiles by remember {
+        mutableStateOf(if (currentMode != ActivationMode.CLOUD) cachedLocalSnapshot?.dataFiles.orEmpty() else emptyList())
+    }
+    var resourceFiles by remember {
+        mutableStateOf(if (currentMode != ActivationMode.CLOUD) cachedLocalSnapshot?.resourceFiles.orEmpty() else emptyList())
+    }
+    var readerInfo by remember {
+        mutableStateOf(if (currentMode != ActivationMode.CLOUD) cachedLocalSnapshot?.readerInfo.orEmpty() else "")
+    }
     
     // 试卷和题目状态
-    var papers by remember { mutableStateOf<List<ETS100AnswerReader.Paper>>(emptyList()) }
+    var papers by remember {
+        mutableStateOf(if (currentMode != ActivationMode.CLOUD) cachedLocalSnapshot?.papers.orEmpty() else emptyList())
+    }
     var selectedPaper by remember { mutableStateOf<ETS100AnswerReader.Paper?>(null) }
     var selectedSectionIndex by remember { mutableIntStateOf(-1) }
     var selectedQuestionIndex by remember { mutableIntStateOf(-1) }
@@ -243,7 +271,10 @@ fun ReadScreen(
     var showPaperDetail by remember { mutableStateOf(false) }
     
     // 加载状态
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember {
+        mutableStateOf(currentMode != ActivationMode.CLOUD && cachedLocalSnapshot == null)
+    }
+    var isParsingLocalAnswers by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var reloadTrigger by remember { mutableIntStateOf(0) }  // 宝贝添加了重新加载触发器喵~
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }  // 宝贝添加了删除确认对话框状态喵~
@@ -311,6 +342,20 @@ fun ReadScreen(
         val timestamp = timeFormatter.format(java.util.Date())
         val entry = LogEntry(timestamp = timestamp, level = level, category = category, message = message)
         debugLog = debugLog + entry
+    }
+
+    fun saveCloudReadState() {
+        ReadPageStateStore.saveCloud(
+            context,
+            ReadPageStateStore.CloudSnapshot(
+                selectedStatus = selectedCloudHomeworkStatus,
+                homeworkListsByStatus = homeworkListsByStatus,
+                cloudBaseUrl = cloudBaseUrl,
+                downloadedPapers = downloadedPapers,
+                downloadedHomeworkNames = downloadedHomeworkNames,
+                failedCloudHomeworks = failedCloudHomeworks
+            )
+        )
     }
 
     // ========== 云端模式辅助函数喵~ ==========
@@ -408,6 +453,7 @@ fun ReadScreen(
             cloudBaseUrl = latestBaseUrl
             CloudHomeworkState.homeworkListsByStatus = homeworkListsByStatus
             CloudHomeworkState.cloudBaseUrl = latestBaseUrl
+            saveCloudReadState()
             addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 合并得到 ${mergedHomeworks.size} 个${cloudHomeworkStatusLabel(status)}")
             success = true
         }
@@ -430,6 +476,7 @@ fun ReadScreen(
         selectedPaper = null
         showPaperDetail = false
         cloudHomeworkError = CloudHomeworkState.error
+        saveCloudReadState()
     }
 
     /**
@@ -448,6 +495,7 @@ fun ReadScreen(
         homeworkListsByStatus = emptyMap()
         selectedCloudHomeworkStatus = CloudHomeworkState.STATUS_CURRENT
         CloudHomeworkState.clear()
+        ReadPageStateStore.clearCloud(context)
         Toast.makeText(context, "已清除所有云端缓存", Toast.LENGTH_SHORT).show()
     }
 
@@ -637,6 +685,7 @@ fun ReadScreen(
             CloudHomeworkState.downloadedPapers = downloadedPapers
             CloudHomeworkState.downloadedHomeworkNames = downloadedHomeworkNames
             CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
+            saveCloudReadState()
             // 宝贝下载成功后不再切换页面，只标记已下载，停留作业列表喵~
             Toast.makeText(context, "下载并解析成功！", Toast.LENGTH_SHORT).show()
 
@@ -647,6 +696,7 @@ fun ReadScreen(
             failedCloudHomeworks = failedCloudHomeworks + cacheKey
             CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
             CloudHomeworkState.failedCloudHomeworks = failedCloudHomeworks
+            saveCloudReadState()
         }
     }
 
@@ -660,6 +710,19 @@ fun ReadScreen(
         if (currentMode == ActivationMode.CLOUD) {
             addLog(LogLevel.INFO, LogCategory.SYSTEM, "☁️ 云端模式，等待用户点击读取按钮加载作业列表")
             isLoading = false
+            isParsingLocalAnswers = false
+            return@LaunchedEffect
+        }
+
+        if (reloadTrigger == 0 && cachedLocalSnapshot != null) {
+            readerInfo = cachedLocalSnapshot.readerInfo
+            dataFiles = cachedLocalSnapshot.dataFiles
+            resourceFiles = cachedLocalSnapshot.resourceFiles
+            papers = cachedLocalSnapshot.papers
+            errorMessage = null
+            isLoading = false
+            isParsingLocalAnswers = false
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "已恢复上次读取的本地试卷内容")
             return@LaunchedEffect
         }
         
@@ -689,9 +752,9 @@ fun ReadScreen(
             }
             addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 模式检查通过" + if (forceReadMode) " (强执模式跳过检查)" else "")
             
-            // 在 IO 线程执行文件操作
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "开始 IO 操作...")
-            val result = withContext(Dispatchers.IO) {
+            // 在 IO 线程执行文件扫描，先把试卷列表显示出来
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "开始扫描试卷列表...")
+            val summaryResult = withContext(Dispatchers.IO) {
                 try {
                     // 获取阅读器
                     addLog(LogLevel.DEBUG, LogCategory.FILE, "获取文件阅读器...")
@@ -719,54 +782,11 @@ fun ReadScreen(
                     val resourceFilesList = reader.listFiles(resourceDirPath)
                     addLog(LogLevel.SUCCESS, LogCategory.FILE, "✓ 找到 ${resourceFilesList.size} 个资源文件")
                     
-                    // 读取试卷
+                    // 先轻量读取试卷列表，不在这里解析完整答案
                     addLog(LogLevel.INFO, LogCategory.PAPER, "=" .repeat(40))
-                    addLog(LogLevel.INFO, LogCategory.PAPER, "📚 开始读取试卷数据...")
-                    val paperList = ETS100AnswerReader.readPapers(context, currentMode)
-                    addLog(LogLevel.SUCCESS, LogCategory.PAPER, "✓ 成功读取 ${paperList.size} 份试卷")
-                    
-                    // 详细遍历每份试卷
-                    if (paperList.isNotEmpty()) {
-                        addLog(LogLevel.INIT, LogCategory.PAPER, "-".repeat(40))
-                        paperList.forEachIndexed { paperIndex, paper ->
-                            addLog(LogLevel.INIT, LogCategory.PAPER, "📄 试卷 #${paperIndex + 1}: ${paper.title} [${paper.regionLabel}]")
-                            addLog(LogLevel.DEBUG, LogCategory.PAPER, "   ID: ${paper.paperId}")
-                            addLog(LogLevel.DEBUG, LogCategory.PAPER, "   分区数: ${paper.sections.size}")
-                            
-                            // 详细遍历每个分区
-                            paper.sections.forEachIndexed { sectionIndex, section ->
-                                addLog(LogLevel.DEBUG, LogCategory.SECTION, "   ├─ Section #${sectionIndex + 1}: ${section.title}")
-                                addLog(LogLevel.DEBUG, LogCategory.SECTION, "   │   Category: ${section.category}")
-                                addLog(LogLevel.DEBUG, LogCategory.SECTION, "   │   题目数: ${section.questions.size}")
-                                
-                                // 详细遍历每道题目
-                                section.questions.take(3).forEachIndexed { qIndex, question ->
-                                    val answerStatus = if (question.answer.isNotEmpty()) "✓" else "✗"
-                                    addLog(
-                                        if (question.answer.isNotEmpty()) LogLevel.SUCCESS else LogLevel.WARN,
-                                        LogCategory.QUESTION,
-                                        "   │   ├─ Q${qIndex + 1}: ${question.question.take(30)}... [答案: $answerStatus]"
-                                    )
-                                    if (question.answer.isNotEmpty()) {
-                                        addLog(LogLevel.DEBUG, LogCategory.ANSWER, "   │   │   答案: ${question.answer.take(50)}")
-                                    }
-                                }
-                                if (section.questions.size > 3) {
-                                    addLog(LogLevel.WARN, LogCategory.QUESTION, "   │   └─ ... 还有 ${section.questions.size - 3} 道题目")
-                                }
-                            }
-                            addLog(LogLevel.INIT, LogCategory.PAPER, "-".repeat(40))
-                        }
-                    }
-                    
-                    addLog(LogLevel.INIT, LogCategory.PAPER, "📊 试卷统计:")
-                    addLog(LogLevel.INIT, LogCategory.PAPER, "   总试卷数: ${paperList.size}")
-                    val totalSections = paperList.sumOf { it.sections.size }
-                    val totalQuestions = paperList.sumOf { it.sections.sumOf { s -> s.questions.size } }
-                    val answeredQuestions = paperList.sumOf { it.sections.sumOf { s -> s.questions.count { q -> q.answer.isNotEmpty() } } }
-                    addLog(LogLevel.INIT, LogCategory.SECTION, "   总分区数: $totalSections")
-                    addLog(LogLevel.INIT, LogCategory.QUESTION, "   总题目数: $totalQuestions")
-                    addLog(LogLevel.SUCCESS, LogCategory.ANSWER, "   已答题目: $answeredQuestions (${(answeredQuestions * 100.0 / totalQuestions).toInt()}%)")
+                    addLog(LogLevel.INFO, LogCategory.PAPER, "📚 开始读取试卷列表...")
+                    val paperList = ETS100AnswerReader.readPaperSummaries(context, currentMode)
+                    addLog(LogLevel.SUCCESS, LogCategory.PAPER, "✓ 成功扫描到 ${paperList.size} 份试卷")
                     
                     InitResult.Success(
                         readerInfo = reader.toString(),
@@ -780,18 +800,76 @@ fun ReadScreen(
                 }
             }
             
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "处理加载结果...")
-            when (result) {
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "处理试卷列表扫描结果...")
+            when (summaryResult) {
                 is InitResult.Success -> {
-                    readerInfo = result.readerInfo
-                    dataFiles = result.dataFiles
-                    resourceFiles = result.resourceFiles
-                    papers = result.papers
-                    addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 初始化完成！数据加载成功~")
+                    readerInfo = summaryResult.readerInfo
+                    dataFiles = summaryResult.dataFiles
+                    resourceFiles = summaryResult.resourceFiles
+                    papers = summaryResult.papers
+                    errorMessage = null
+                    isLoading = false
+                    addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 已显示 ${summaryResult.papers.size} 份试卷，开始后台解析答案")
+
+                    if (summaryResult.papers.isNotEmpty()) {
+                        isParsingLocalAnswers = true
+                        val fullResult = withContext(Dispatchers.IO) {
+                            try {
+                                val paperList = ETS100AnswerReader.readPapersParallel(context, currentMode)
+                                InitResult.Success(
+                                    readerInfo = summaryResult.readerInfo,
+                                    dataFiles = summaryResult.dataFiles,
+                                    resourceFiles = summaryResult.resourceFiles,
+                                    papers = paperList
+                                )
+                            } catch (e: Exception) {
+                                InitResult.Error(e.message ?: "未知错误")
+                            }
+                        }
+
+                        when (fullResult) {
+                            is InitResult.Success -> {
+                                if (fullResult.papers.isNotEmpty()) {
+                                    papers = fullResult.papers
+                                    ReadPageStateStore.saveLocal(
+                                        context,
+                                        ReadPageStateStore.LocalSnapshot(
+                                            readerInfo = fullResult.readerInfo,
+                                            dataFiles = fullResult.dataFiles,
+                                            resourceFiles = fullResult.resourceFiles,
+                                            papers = fullResult.papers
+                                        )
+                                    )
+
+                                    addLog(LogLevel.INIT, LogCategory.PAPER, "📊 试卷统计:")
+                                    addLog(LogLevel.INIT, LogCategory.PAPER, "   总试卷数: ${fullResult.papers.size}")
+                                    val totalSections = fullResult.papers.sumOf { it.sections.size }
+                                    val totalQuestions = fullResult.papers.sumOf { it.sections.sumOf { s -> s.questions.size } }
+                                    val answeredQuestions = fullResult.papers.sumOf { it.sections.sumOf { s -> s.questions.count { q -> q.answer.isNotEmpty() } } }
+                                    val answeredPercent = if (totalQuestions > 0) {
+                                        (answeredQuestions * 100.0 / totalQuestions).toInt()
+                                    } else {
+                                        0
+                                    }
+                                    addLog(LogLevel.INIT, LogCategory.SECTION, "   总分区数: $totalSections")
+                                    addLog(LogLevel.INIT, LogCategory.QUESTION, "   总题目数: $totalQuestions")
+                                    addLog(LogLevel.SUCCESS, LogCategory.ANSWER, "   已答题目: $answeredQuestions ($answeredPercent%)")
+                                    addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 答案后台解析完成")
+                                } else {
+                                    addLog(LogLevel.WARN, LogCategory.SYSTEM, "后台解析未返回完整试卷，保留当前试卷列表")
+                                }
+                            }
+                            is InitResult.Error -> {
+                                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 后台解析答案失败: ${fullResult.message}")
+                            }
+                        }
+                    } else {
+                        addLog(LogLevel.WARN, LogCategory.SYSTEM, "未扫描到试卷，跳过后台答案解析")
+                    }
                 }
                 is InitResult.Error -> {
-                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 加载失败: ${result.message}")
-                    errorMessage = "加载失败: ${result.message}"
+                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 加载失败: ${summaryResult.message}")
+                    errorMessage = "加载失败: ${summaryResult.message}"
                 }
             }
         } catch (e: Exception) {
@@ -799,6 +877,7 @@ fun ReadScreen(
             errorMessage = "初始化异常: ${e.message}"
         } finally {
             isLoading = false
+            isParsingLocalAnswers = false
             addLog(LogLevel.INIT, LogCategory.SYSTEM, "初始化流程结束喵~")
         }
     }
@@ -1045,14 +1124,24 @@ fun ReadScreen(
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
+                                if (isParsingLocalAnswers) {
+                                    item {
+                                        LocalAnswerParsingCard()
+                                    }
+                                }
                                 itemsIndexed(papers) { paperIndex, paper ->
+                                    val isLocalAnswerLoading = paper.isLocalAnswerLoading()
                                     PaperListItem(
                                         paper = paper,
                                         paperIndex = paperIndex,
                                         onClick = {
-                                            openPaperDetail(paper)
+                                            if (!isLocalAnswerLoading) {
+                                                openPaperDetail(paper)
+                                            }
                                         },
-                                        categoryColors = categoryColors
+                                        categoryColors = categoryColors,
+                                        isLoading = isLocalAnswerLoading,
+                                        isClickEnabled = !isLocalAnswerLoading
                                     )
                                 }
                             }
@@ -1096,6 +1185,11 @@ fun ReadScreen(
                                 addLog(LogLevel.ERROR, LogCategory.FILE, "❌ resource 目录删除失败")
                             }
 
+                            ReadPageStateStore.clearLocal(context)
+                            papers = emptyList()
+                            selectedPaper = null
+                            showPaperDetail = false
+
                             // 刷新页面重新读取
                             reloadTrigger++
                         }
@@ -1114,6 +1208,45 @@ fun ReadScreen(
                     }
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun LocalAnswerParsingCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "正在后台解析答案",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "试卷列表已可查看，答案完成后会自动更新",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -1160,6 +1293,7 @@ private fun CloudHomeworkStatusToggle(
             selected = !isHistory,
             onClick = { onStatusChange(CloudHomeworkState.STATUS_CURRENT) },
             shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+            colors = cloudHomeworkSegmentedButtonColors(),
             icon = {}
         ) {
             Text("当前作业")
@@ -1168,11 +1302,26 @@ private fun CloudHomeworkStatusToggle(
             selected = isHistory,
             onClick = { onStatusChange(CloudHomeworkState.STATUS_HISTORY) },
             shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+            colors = cloudHomeworkSegmentedButtonColors(),
             icon = {}
         ) {
             Text("历史作业")
         }
     }
+}
+
+@Composable
+private fun cloudHomeworkSegmentedButtonColors(): SegmentedButtonColors {
+    return SegmentedButtonDefaults.colors(
+        activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        inactiveContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        disabledActiveContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        disabledActiveContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        disabledInactiveContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        disabledInactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f)
+    )
 }
 
 /**
@@ -2737,7 +2886,8 @@ private fun PaperListItem(
     categoryColors: Map<String, Color>,
     isLoading: Boolean = false,
     isFailed: Boolean = false,
-    isDownloaded: Boolean = false  // 宝贝标记是否已下载喵~
+    isDownloaded: Boolean = false,  // 宝贝标记是否已下载喵~
+    isClickEnabled: Boolean = true
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     
@@ -2767,7 +2917,10 @@ private fun PaperListItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(
+                enabled = isClickEnabled,
+                onClick = onClick
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),

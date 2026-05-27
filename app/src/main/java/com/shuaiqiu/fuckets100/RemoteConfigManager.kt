@@ -16,12 +16,39 @@ import java.net.URLConnection
 object RemoteConfigManager {
     private const val TAG = "RemoteConfigManager"
     private const val CONFIG_URL = "https://raw.giteeusercontent.com/qiuqiqiuqid/fe_config/raw/master/config.json"
+    private const val DEFAULT_CHANGELOG_URL = "https://raw.giteeusercontent.com/qiuqiqiuqid/fe_config/raw/master/update.md"
     private const val TIMEOUT_MS = 5000L  // 5秒超时喵~
     
     /**
      * 网络异常 - 用于标识网络问题导致配置获取失败
      */
     class NetworkException(message: String) : Exception(message)
+
+    private fun RemoteConfig.toUpdateStatus(
+        isKillSwitch: Boolean,
+        showDialog: Boolean,
+        message: String,
+        isForce: Boolean,
+        updateUrl: String,
+        noticeMessage: String
+    ): UpdateStatus {
+        return UpdateStatus(
+            isKillSwitch = isKillSwitch,
+            showDialog = showDialog,
+            message = message,
+            isForce = isForce,
+            updateUrl = updateUrl,
+            noticeMessage = noticeMessage,
+            announcementTitle = announcementTitle,
+            announcementMessage = announcementMessage,
+            announcementUpdatedAt = announcementUpdatedAt,
+            announcementUrl = announcementUrl,
+            changelogUrl = changelogUrl,
+            changelogTitle = changelogTitle,
+            changelogSummary = changelogSummary,
+            donateEnabled = donateEnabled
+        )
+    }
     
     /**
      * 获取远程配置
@@ -63,13 +90,30 @@ object RemoteConfigManager {
                 
                 val json = JSONObject(response)
                 
+                val noticeMessage = json.optString("noticeMessage", "")
+                val announcementMessage = json.optString("announcementMessage", noticeMessage)
+                val changelogSummary = json.optString("changelogSummary", "")
+                val changelogUrl = json.optString("changelogUrl", DEFAULT_CHANGELOG_URL)
+
                 val config = RemoteConfig(
                     latestVersionCode = json.optInt("latestVersionCode", BuildConfig.VERSION_CODE),
                     updateUrl = json.optString("updateUrl", ""),
                     isKillSwitchOn = json.optBoolean("isKillSwitchOn", false),
                     isForce = json.optBoolean("isForce", false),
                     updateMessage = json.optString("updateMessage", ""),
-                    noticeMessage = json.optString("noticeMessage", "")
+                    noticeMessage = noticeMessage,
+                    announcementTitle = json.optString("announcementTitle", "").ifBlank {
+                        if (announcementMessage.isNotBlank()) "公告" else ""
+                    },
+                    announcementMessage = announcementMessage,
+                    announcementUpdatedAt = json.optString("announcementUpdatedAt", ""),
+                    announcementUrl = json.optString("announcementUrl", ""),
+                    changelogUrl = changelogUrl,
+                    changelogTitle = json.optString("changelogTitle", "").ifBlank {
+                        if (changelogSummary.isNotBlank() || changelogUrl.isNotBlank()) "更新日志" else ""
+                    },
+                    changelogSummary = changelogSummary,
+                    donateEnabled = json.optBoolean("donateEnabled", true)
                 )
                 
                 Log.d(TAG, "📋 解析后的配置:")
@@ -77,8 +121,16 @@ object RemoteConfigManager {
                 Log.d(TAG, "   - updateUrl: ${config.updateUrl}")
                 Log.d(TAG, "   - isKillSwitchOn: ${config.isKillSwitchOn}")
                 Log.d(TAG, "   - isForce: ${config.isForce}")
-                Log.d(TAG, "   - updateMessage: ${config.updateMessage}")
-                Log.d(TAG, "   - noticeMessage: ${config.noticeMessage}")
+                Log.d(TAG, "   - updateMessage: ${config.updateMessage.take(120)}")
+                Log.d(TAG, "   - noticeMessage: ${config.noticeMessage.take(120)}")
+                Log.d(TAG, "   - announcementTitle: ${config.announcementTitle}")
+                Log.d(TAG, "   - announcementMessage: ${config.announcementMessage.take(120)}")
+                Log.d(TAG, "   - announcementUpdatedAt: ${config.announcementUpdatedAt}")
+                Log.d(TAG, "   - announcementUrl: ${config.announcementUrl}")
+                Log.d(TAG, "   - changelogUrl: ${config.changelogUrl}")
+                Log.d(TAG, "   - changelogTitle: ${config.changelogTitle}")
+                Log.d(TAG, "   - changelogSummary: ${config.changelogSummary.take(120)}")
+                Log.d(TAG, "   - donateEnabled: ${config.donateEnabled}")
                 Log.d(TAG, "   - 当前版本: ${BuildConfig.VERSION_CODE}")
                 Log.d(TAG, "═══════════════════════════════════════════")
                 
@@ -115,7 +167,7 @@ object RemoteConfigManager {
             config.isKillSwitchOn -> {
                 Log.w(TAG, "🚨 KillSwitch 开启! 应用即将退出")
                 // KillSwitch 开启，显示"程序异常"并退出
-                UpdateStatus(
+                config.toUpdateStatus(
                     isKillSwitch = true,
                     showDialog = false,
                     message = "",
@@ -128,7 +180,7 @@ object RemoteConfigManager {
                 Log.i(TAG, "📢 发现新版本: ${config.latestVersionCode} (当前: ${BuildConfig.VERSION_CODE})")
                 Log.d(TAG, "📢 updateMessage: '${config.updateMessage}', updateUrl: '${config.updateUrl}'")
                 // 有新版本，显示更新弹窗，消息使用云端返回的 updateMessage
-                UpdateStatus(
+                config.toUpdateStatus(
                     isKillSwitch = false,
                     showDialog = true,
                     message = config.updateMessage.ifEmpty { "发现新版本: ${config.latestVersionCode}" },
@@ -140,7 +192,7 @@ object RemoteConfigManager {
             config.noticeMessage.isNotEmpty() -> {
                 Log.i(TAG, "📢 收到公告: ${config.noticeMessage}")
                 // 有公告，只显示 Toast，不弹窗
-                UpdateStatus(
+                config.toUpdateStatus(
                     isKillSwitch = false,
                     showDialog = false,
                     message = "",
@@ -151,7 +203,7 @@ object RemoteConfigManager {
             }
             else -> {
                 Log.d(TAG, "✅ 已是最新版本，无需更新")
-                UpdateStatus(
+                config.toUpdateStatus(
                     isKillSwitch = false,
                     showDialog = false,
                     message = "",

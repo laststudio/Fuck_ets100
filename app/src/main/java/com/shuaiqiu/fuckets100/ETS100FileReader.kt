@@ -23,6 +23,93 @@ import java.security.MessageDigest
 object ETS100FileReader {
 
     private const val TAG = "ETS100FileReader"
+    private const val LIST_FIELD_SEPARATOR = "\t"
+
+    private fun shellQuote(value: String): String {
+        return "'" + value.replace("'", "'\"'\"'") + "'"
+    }
+
+    private fun buildFastListCommand(path: String): String {
+        val quotedPath = shellQuote(path)
+        return """
+            dir=$quotedPath
+            [ -d "${'$'}dir" ] || exit 0
+            for f in "${'$'}dir"/* "${'$'}dir"/.[!.]* "${'$'}dir"/..?*; do
+              [ -e "${'$'}f" ] || continue
+              name=${'$'}{f##*/}
+              if [ "${'$'}name" = "." ] || [ "${'$'}name" = ".." ]; then continue; fi
+              if [ -d "${'$'}f" ]; then type=d; else type=f; fi
+              size=${'$'}(stat -c %s "${'$'}f" 2>/dev/null || echo 0)
+              mtime=${'$'}(stat -c %Y "${'$'}f" 2>/dev/null || echo 0)
+              mtime_text=${'$'}(stat -c %y "${'$'}f" 2>/dev/null | tr '\t' ' ')
+              printf '%s\t%s\t%s\t%s\t%s\n' "${'$'}type" "${'$'}size" "${'$'}mtime" "${'$'}mtime_text" "${'$'}name"
+            done
+        """.trimIndent()
+    }
+
+    private fun buildFastContentFolderCommand(path: String): String {
+        val quotedPath = shellQuote(path)
+        return """
+            dir=$quotedPath
+            [ -d "${'$'}dir" ] || exit 0
+            for f in "${'$'}dir"/* "${'$'}dir"/.[!.]* "${'$'}dir"/..?*; do
+              [ -d "${'$'}f" ] || continue
+              [ -f "${'$'}f/content.json" ] || continue
+              name=${'$'}{f##*/}
+              if [ "${'$'}name" = "." ] || [ "${'$'}name" = ".." ]; then continue; fi
+              size=${'$'}(stat -c %s "${'$'}f/content.json" 2>/dev/null || echo 0)
+              mtime=${'$'}(stat -c %Y "${'$'}f" 2>/dev/null || echo 0)
+              mtime_text=${'$'}(stat -c %y "${'$'}f" 2>/dev/null | tr '\t' ' ')
+              printf '%s\t%s\t%s\t%s\t%s\n' "d" "${'$'}size" "${'$'}mtime" "${'$'}mtime_text" "${'$'}name"
+            done
+        """.trimIndent()
+    }
+
+    private fun parseFastListOutput(output: String): List<FileItem> {
+        return output.lineSequence()
+            .map { it.trimEnd() }
+            .filter { it.isNotBlank() }
+            .mapNotNull { line ->
+                val parts = line.split(LIST_FIELD_SEPARATOR, limit = 5)
+                if (parts.size < 4) return@mapNotNull null
+                val name = if (parts.size >= 5) parts[4] else parts[3]
+                if (name == "." || name == "..") return@mapNotNull null
+                FileItem(
+                    name = name,
+                    path = "",
+                    isDirectory = parts[0] == "d",
+                    size = parts[1].toLongOrNull() ?: 0L,
+                    lastModified = parseShellStatTimeMillis(
+                        secondsText = parts[2],
+                        fullTimeText = parts.getOrNull(3).takeIf { parts.size >= 5 }
+                    )
+                )
+            }
+            .toList()
+    }
+
+    private fun parseShellStatTimeMillis(secondsText: String, fullTimeText: String?): Long {
+        val secondsMillis = (secondsText.toLongOrNull() ?: 0L) * 1000L
+        val text = fullTimeText?.trim().orEmpty()
+        if (text.isEmpty()) return secondsMillis
+
+        val match = Regex(
+            """^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?\s+([+-]\d{4}).*$"""
+        ).find(text) ?: return secondsMillis
+
+        return try {
+            val baseText = "${match.groupValues[1]} ${match.groupValues[2]} ${match.groupValues[4]}"
+            val baseMillis = java.text.SimpleDateFormat(
+                "yyyy-MM-dd HH:mm:ss Z",
+                java.util.Locale.US
+            ).parse(baseText)?.time ?: secondsMillis
+            val fraction = match.groupValues.getOrNull(3).orEmpty()
+            val millis = fraction.padEnd(3, '0').take(3).toLongOrNull() ?: 0L
+            baseMillis + millis
+        } catch (e: Exception) {
+            secondsMillis
+        }
+    }
 
     /**
      * 文件数据类
@@ -122,31 +209,29 @@ object ETS100FileReader {
         fun getMode(): ActivationMode
     }
 
+    interface ContentFolderReader {
+        fun listContentFolders(path: String): List<FileItem>
+    }
+
     /**
      * Shizuku 文件读取器
      * 使用 Shizuku API 执行命令，而非 Root 方式
      */
-    class ShizukuReader : Reader {
+    class ShizukuReader : Reader, ContentFolderReader {
         override fun listFiles(path: String): List<FileItem> {
             return try {
-                // 宝贝这里改用 Shizuku 专用命令执行方式喵~
-                val lsResult = execShizukuCommand("ls -la \"$path\" 2>/dev/null")
-                val items = parseLsOutput(lsResult ?: "")
-                
-                items.map { item ->
-                    if (item.name.isNotEmpty()) {
-                        // 喵~ 为所有文件/目录获取 lastModified 时间戳！
-                        val filePath = "$path/${item.name}"
-                        val sanitizedPath = filePath.replace("\"", "\\\"")
-                        val statResult = execShizukuCommand("stat -c %Y \"$sanitizedPath\" 2>/dev/null")
-                        val timestamp = statResult?.trim()?.toLongOrNull() ?: 0L
-                        item.copy(lastModified = timestamp)
-                    } else {
-                        item
-                    }
-                }
+                parseFastListOutput(execShizukuCommand(buildFastListCommand(path)) ?: "")
             } catch (e: Exception) {
                 Log.e(TAG, "Shizuku listFiles failed", e)
+                emptyList()
+            }
+        }
+
+        override fun listContentFolders(path: String): List<FileItem> {
+            return try {
+                parseFastListOutput(execShizukuCommand(buildFastContentFolderCommand(path)) ?: "")
+            } catch (e: Exception) {
+                Log.e(TAG, "Shizuku listContentFolders failed", e)
                 emptyList()
             }
         }
@@ -350,26 +435,21 @@ object ETS100FileReader {
     /**
      * Root 文件读取器
      */
-    class RootReader : Reader {
+    class RootReader : Reader, ContentFolderReader {
         override fun listFiles(path: String): List<FileItem> {
             return try {
-                val lsResult = RootManager.execAsRoot("ls -la \"$path\" 2>/dev/null")
-                val items = parseLsOutput(lsResult ?: "")
-                
-                items.map { item ->
-                    if (item.name.isNotEmpty()) {
-                        // 喵~ 为所有文件/目录获取 lastModified 时间戳！
-                        val filePath = "$path/${item.name}"
-                        val sanitizedPath = filePath.replace("\"", "\\\"")
-                        val statResult = RootManager.execAsRoot("stat -c %Y \"$sanitizedPath\" 2>/dev/null")
-                        val timestamp = statResult?.trim()?.toLongOrNull() ?: 0L
-                        item.copy(lastModified = timestamp)
-                    } else {
-                        item
-                    }
-                }
+                parseFastListOutput(RootManager.execAsRoot(buildFastListCommand(path)) ?: "")
             } catch (e: Exception) {
                 Log.e(TAG, "Root listFiles failed", e)
+                emptyList()
+            }
+        }
+
+        override fun listContentFolders(path: String): List<FileItem> {
+            return try {
+                parseFastListOutput(RootManager.execAsRoot(buildFastContentFolderCommand(path)) ?: "")
+            } catch (e: Exception) {
+                Log.e(TAG, "Root listContentFolders failed", e)
                 emptyList()
             }
         }
@@ -461,7 +541,7 @@ object ETS100FileReader {
      * ZWC 绕过读取器 (Android 11+)
      * 宝贝这里修复了路径转换问题，所有方法都要先转换路径再访问喵！
      */
-    class DirectReadReader : Reader {
+    class DirectReadReader : Reader, ContentFolderReader {
         
         override fun listFiles(path: String): List<FileItem> {
             return try {
@@ -483,6 +563,31 @@ object ETS100FileReader {
                 } ?: emptyList()
             } catch (e: Exception) {
                 Log.e(TAG, "DirectRead listFiles failed", e)
+                emptyList()
+            }
+        }
+
+        override fun listContentFolders(path: String): List<FileItem> {
+            return try {
+                val actualPath = toZWCPath(path)
+                val dir = File(actualPath)
+                if (!dir.exists() || !dir.isDirectory) {
+                    return emptyList()
+                }
+                dir.listFiles()
+                    ?.filter { it.isDirectory && File(it, "content.json").isFile }
+                    ?.map { file ->
+                        FileItem(
+                            name = file.name,
+                            path = file.absolutePath,
+                            isDirectory = true,
+                            size = File(file, "content.json").length(),
+                            lastModified = file.lastModified()
+                        )
+                    }
+                    ?: emptyList()
+            } catch (e: Exception) {
+                Log.e(TAG, "DirectRead listContentFolders failed", e)
                 emptyList()
             }
         }

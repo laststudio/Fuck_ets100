@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.*
@@ -218,7 +219,7 @@ private fun normalizeCloudParsedSections(
 @Composable
 fun ReadScreen(
     currentMode: ActivationMode,
-    onNavigateToSettings: () -> Unit
+    onNavigateToActivation: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1054,8 +1055,8 @@ fun ReadScreen(
                                 color = MaterialTheme.colorScheme.error
                             )
                             Spacer(modifier = Modifier.height(24.dp))
-                            Button(onClick = onNavigateToSettings) {
-                                Text("前往设置")
+                            Button(onClick = onNavigateToActivation) {
+                                Text("前往激活")
                             }
                         }
                     }
@@ -2724,7 +2725,7 @@ fun PaperDetailScreen(
             ) {
                 IconButton(onClick = onBack) {
                     Icon(
-                        Icons.Default.ArrowBack,
+                        Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回"
                     )
                 }
@@ -2987,7 +2988,7 @@ private fun QuestionItemSimple(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    Icons.Default.HelpOutline,
+                    Icons.AutoMirrored.Filled.HelpOutline,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(16.dp)

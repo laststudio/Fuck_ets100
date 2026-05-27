@@ -13,6 +13,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,12 +26,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.navigation.NavHostController
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,7 +38,9 @@ fun ActivationSettingsScreen(
     currentMode: ActivationMode,
     shizukuState: ShizukuState,
     onModeSelected: (ActivationMode) -> Unit,
-    navController: NavHostController
+    onBack: () -> Unit,
+    onNavigateToCloudActivation: () -> Unit,
+    onNavigateToRead: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -93,7 +98,7 @@ fun ActivationSettingsScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("运行授权与权限", style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, null) } }
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } }
             )
         }
     ) { p ->
@@ -237,10 +242,11 @@ fun ActivationSettingsScreen(
                                     ActivationMode.CLOUD -> {
                                         FeCloudActivationPanel(
                                             context = context,
-                                            navController = navController,
                                             isLoggedIn = cloudLoggedIn,
                                             phone = cloudPhone,
-                                            onCloudAuthChanged = { refreshCloudAuthState() }
+                                            onCloudAuthChanged = { refreshCloudAuthState() },
+                                            onNavigateToCloudActivation = onNavigateToCloudActivation,
+                                            onNavigateToRead = onNavigateToRead
                                         )
                                     }
                                     else -> {
@@ -762,7 +768,7 @@ fun FeShizukuActivationPanel(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
                     modifier = Modifier.weight(1f).height(40.dp)
                 ) {
-                    Icon(Icons.Default.OpenInNew, null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("打开 Shizuku 去启动", fontWeight = FontWeight.Bold)
                 }
@@ -896,10 +902,11 @@ fun FeRootActivationPanel(context: android.content.Context) {
 @Composable
 fun FeCloudActivationPanel(
     context: android.content.Context,
-    navController: NavHostController,
     isLoggedIn: Boolean,
     phone: String?,
-    onCloudAuthChanged: () -> Unit
+    onCloudAuthChanged: () -> Unit,
+    onNavigateToCloudActivation: () -> Unit,
+    onNavigateToRead: () -> Unit
 ) {
     val cloudColor = Color(0xFF60A5FA)
     val successColor = Color(0xFF4ADE80)
@@ -948,7 +955,7 @@ fun FeCloudActivationPanel(
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.weight(1f).height(40.dp)
                 ) {
-                    Icon(Icons.Default.Logout, null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.Logout, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("退出登录", fontWeight = FontWeight.Bold)
                 }
@@ -956,7 +963,7 @@ fun FeCloudActivationPanel(
                 Button(
                     onClick = {
                         // 宝贝直接跳转到答题页面，云端模式入口喵~
-                        navController.navigate(Screen.Read.route)
+                        onNavigateToRead()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = cloudColor, contentColor = Color.White),
                     modifier = Modifier.weight(1f).height(40.dp)
@@ -971,12 +978,12 @@ fun FeCloudActivationPanel(
             Button(
                 onClick = {
                     // 跳转到登录页面
-                    navController.navigate(Screen.CloudActivation.route)
+                    onNavigateToCloudActivation()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = cloudColor, contentColor = Color.White),
                 modifier = Modifier.fillMaxWidth().height(40.dp)
             ) {
-                Icon(Icons.Default.Login, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.Login, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("登录 ETS100 账号", fontWeight = FontWeight.Bold)
             }

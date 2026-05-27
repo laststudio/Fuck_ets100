@@ -27,7 +27,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.navigation.NavHostController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -74,7 +73,11 @@ private object HomeRuntimeStatusStore {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(mode: ActivationMode, shizukuState: ShizukuState, navController: NavHostController) {
+fun HomeScreen(
+    mode: ActivationMode,
+    shizukuState: ShizukuState,
+    onNavigateToActivation: () -> Unit
+) {
     val context = LocalContext.current
     val appContext = remember(context) { context.applicationContext }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -179,7 +182,7 @@ fun HomeScreen(mode: ActivationMode, shizukuState: ShizukuState, navController: 
                 hasAppListPerm = runtimeStatus.hasAppListPerm,
                 hasAllBasicPermissions = hasAllBasicPermissions,
                 hasRootAvailable = runtimeStatus.hasRootAvailable,
-                navController = navController
+                onNavigateToActivation = onNavigateToActivation
             )
             HomeRemoteContent(status = remoteStatus)
         }
@@ -222,7 +225,7 @@ fun StatusCard(
     hasAppListPerm: Boolean,
     hasAllBasicPermissions: Boolean,
     hasRootAvailable: Boolean,
-    navController: NavHostController
+    onNavigateToActivation: () -> Unit
 ) {
     val animatedColor by animateColorAsState(targetValue = activeColor, animationSpec = tween(600))
 
@@ -244,7 +247,7 @@ fun StatusCard(
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { navController.navigate(Screen.Activation.route) },
+            .clickable(onClick = onNavigateToActivation),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {

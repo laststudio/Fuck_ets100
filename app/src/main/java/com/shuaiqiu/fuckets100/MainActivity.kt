@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.foundation.layout.Box
@@ -35,12 +36,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.compose.*
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 
 // ============================================================================
 // 瀛椾綋瀹氫箟 - 鐢ㄤ簬搴旂敤鏍囬鐨勯啋鐩睍绀烘晥鏋?// ============================================================================
@@ -111,7 +117,7 @@ enum class ActivationMode(
 
 sealed class Screen(val route: String, val icon: ImageVector, val label: String) {
     object Home : Screen("home", Icons.Default.Home, "首页")
-    object Read : Screen("read", Icons.Default.MenuBook, "答题")
+    object Read : Screen("read", Icons.AutoMirrored.Filled.MenuBook, "答题")
     object Settings : Screen("settings", Icons.Default.Settings, "设置")
     object Activation : Screen("activation", Icons.Default.Build, "激活")
     object GeneralSettings : Screen("general_settings", Icons.Default.Tune, "通用")
@@ -125,15 +131,42 @@ sealed class Screen(val route: String, val icon: ImageVector, val label: String)
 // ============================================================================
 
 class MainActivity : ComponentActivity() {
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(EXTRA_TARGET_ROUTE)?.let { route ->
+            pendingTargetRoute = route
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge() // 鍚敤娌夋蹈寮忚竟缂樺埌杈圭紭甯冨眬
+        intent.getStringExtra(EXTRA_TARGET_ROUTE)?.let { route ->
+            pendingTargetRoute = route
+        }
         
         // 鍒濆鍖?ThemeManager
         ThemeManager.init(this)
         
         setContent {
             FeAppMain()
+        }
+    }
+
+    companion object {
+        private const val EXTRA_TARGET_ROUTE = "target_route"
+
+        var pendingTargetRoute: String? = null
+
+        fun createIntent(context: android.content.Context, targetRoute: String? = null): Intent {
+            return Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                if (targetRoute != null) {
+                    putExtra(EXTRA_TARGET_ROUTE, targetRoute)
+                    pendingTargetRoute = targetRoute
+                }
+            }
         }
     }
 }
@@ -160,6 +193,16 @@ fun FeTheme(content: @Composable () -> Unit) {
 }
 
 private val rootTabRoutes = setOf(Screen.Home.route, Screen.Read.route, Screen.Settings.route)
+
+fun NavHostController.navigateRootTab(route: String) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id) {
+            saveState = true
+        }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isRootTabTransition(): Boolean {
     return initialState.destination.route in rootTabRoutes && targetState.destination.route in rootTabRoutes
@@ -214,6 +257,7 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.slidePopExitTransi
 @Composable
 fun FeAppMain() {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -249,6 +293,31 @@ fun FeAppMain() {
         mutableStateOf(
             SettingsManager.getSavedActivationMode() ?: ShizukuManager.getCurrentActivationMode()
         )
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                currentMode = SettingsManager.getSavedActivationMode() ?: ShizukuManager.getCurrentActivationMode()
+                currentTheme = ThemeManager.getSavedTheme()
+                isDarkMode = ThemeManager.getSavedDarkMode()
+                isAutoDarkMode = ThemeManager.getSavedAutoDarkMode()
+                useDynamicColor = ThemeManager.getSavedDynamicColor()
+                MainActivity.pendingTargetRoute?.let { route ->
+                    MainActivity.pendingTargetRoute = null
+                    navController.navigateRootTab(route)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(Unit) {
+        MainActivity.pendingTargetRoute?.let { route ->
+            MainActivity.pendingTargetRoute = null
+            navController.navigateRootTab(route)
+        }
     }
     
     LaunchedEffect(shizukuState.isRunning, shizukuState.isSui) {
@@ -287,9 +356,7 @@ fun FeAppMain() {
                 if (currentRoute in listOf(
                 Screen.Home.route,
                 Screen.Read.route,
-                Screen.Settings.route,
-                Screen.Activation.route,
-                Screen.CloudActivation.route
+                Screen.Settings.route
             )) {
                     NavigationBar(
                         containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
@@ -300,13 +367,7 @@ fun FeAppMain() {
                                 icon = { Icon(screen.icon, contentDescription = screen.label) },
                                 selected = currentRoute == screen.route,
                                 onClick = {
-                                    navController.navigate(screen.route) {
-                                        popUpTo(navController.graph.startDestinationId) {
-                                            saveState = true
-                                        }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
+                                    navController.navigateRootTab(screen.route)
                                 },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = MaterialTheme.colorScheme.onPrimary,
@@ -336,13 +397,21 @@ fun FeAppMain() {
             ) {
 
                 composable(Screen.Home.route) { 
-                    HomeScreen(currentMode, shizukuState, navController) 
+                    HomeScreen(
+                        mode = currentMode,
+                        shizukuState = shizukuState,
+                        onNavigateToActivation = {
+                            context.startActivity(ActivationActivity.createIntent(context))
+                        }
+                    )
                 }
                 
                 composable(Screen.Read.route) {
                     ReadScreen(
                         currentMode = currentMode,
-                        onNavigateToSettings = { navController.navigate(Screen.Settings.route) }
+                        onNavigateToActivation = {
+                            context.startActivity(ActivationActivity.createIntent(context))
+                        }
                     )
                 }
                 
@@ -350,50 +419,8 @@ fun FeAppMain() {
                     SettingsScreen(navController) 
                 }
                 
-                composable(Screen.GeneralSettings.route) { 
-                    GeneralSettingsScreen(navController) 
-                }
-
-                composable(Screen.Legal.route) {
-                    LegalScreen(navController)
-                }
-                
-                composable(Screen.Activation.route) {
-                    ActivationSettingsScreen(
-                        currentMode = currentMode,
-                        shizukuState = shizukuState,
-                        onModeSelected = { mode -> 
-                            currentMode = mode
-                            SettingsManager.saveActivationMode(mode)
-                        },
-                        navController = navController
-                    )
-                }
-                
-                composable(Screen.ThemeSettings.route) {
-                    ThemeSettingsScreen(
-                        navController = navController,
-                        onThemeChanged = { newTheme -> currentTheme = newTheme },
-                        onDarkModeChanged = { darkMode -> isDarkMode = darkMode },
-                        onAutoDarkModeChanged = { autoDarkMode -> isAutoDarkMode = autoDarkMode },
-                        onDynamicColorChanged = { dynamicColor -> useDynamicColor = dynamicColor }
-                    )
-                }
-                
                 composable(Screen.Debug.route) {
                     DebugScreen(navController = navController)
-                }
-                
-                composable(Screen.CloudActivation.route) {
-                    CloudActivationScreen(
-                        navController = navController,
-                        onLoginSuccess = {
-                            // 瀹濊礉鐧诲綍鎴愬姛鍚庤缃?CLOUD 妯″紡骞惰繑鍥炰笂涓€椤碉紙ActivationScreen锛夊柕~
-                            currentMode = ActivationMode.CLOUD
-                            SettingsManager.saveActivationMode(ActivationMode.CLOUD)
-                            navController.popBackStack()
-                        }
-                    )
                 }
             }
         }
@@ -544,7 +571,7 @@ fun FeTopAppBar(title: String) {
                 tint = MaterialTheme.colorScheme.primary
             )
         },
-        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
     )
 }
 
@@ -585,4 +612,3 @@ fun SettingsListItem(
         }
     }
 }
-

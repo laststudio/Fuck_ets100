@@ -28,12 +28,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavHostController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ThemeSettingsScreen(
-    navController: NavHostController,
+    onBack: () -> Unit,
     onThemeChanged: ((AppTheme) -> Unit)? = null,
     onDarkModeChanged: ((Boolean) -> Unit)? = null,
     onAutoDarkModeChanged: ((Boolean) -> Unit)? = null,
@@ -55,7 +54,7 @@ fun ThemeSettingsScreen(
             CenterAlignedTopAppBar(
                 title = { Text("主题设置", style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.Default.Palette, null)
                     }
                 }

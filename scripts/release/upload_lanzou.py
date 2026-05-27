@@ -61,10 +61,8 @@ def login(username: str, password: str) -> tuple[requests.Session, str]:
     cookies = session.cookies.get_dict()
     uid = cookies.get("ylogin")
     if not uid:
-        raise RuntimeError(
-            f"LanZouCloud login failed, status={response.status_code}, "
-            f"body={compact_response_text(response.text)}"
-        )
+        snippet = compact_response_text(response.text)
+        raise RuntimeError(f"LanZouCloud login failed, status={response.status_code}, body={snippet}")
 
     return session, uid
 

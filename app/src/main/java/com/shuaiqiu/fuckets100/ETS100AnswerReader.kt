@@ -44,6 +44,45 @@ object ETS100AnswerReader {
         val folders: List<ETS100FileReader.FileItem>
     )
 
+    private enum class ResourceGroupTemplate(
+        val titlePrefix: String,
+        val regionLabel: String
+    ) {
+        GUANGDONG_HIGH("广东高中", "广东高中"),
+        GUANGDONG_JUNIOR("广东初中", "广东初中"),
+        BEIJING_JUNIOR("北京初中", "北京初中"),
+        BEIJING_HIGH("北京高中", "北京高中"),
+        GENERIC("练习", "未知")
+    }
+
+    private data class ResourceGroupProfile(
+        val structureTypes: Set<String>,
+        val folderCount: Int,
+        val structureTypeCounts: Map<String, Int>,
+        val hasBeijingChooseData: Boolean,
+        val hasBeijingFillData: Boolean,
+        val hasBeijingDialogueData: Boolean
+    ) {
+        val hasBeijingData: Boolean
+            get() = hasBeijingChooseData || hasBeijingFillData || hasBeijingDialogueData
+
+        val roleCount: Int
+            get() = structureTypeCounts[StructureType.COLLECTOR_ROLE] ?: 0
+
+        val pictureCount: Int
+            get() = structureTypeCounts[StructureType.COLLECTOR_PICTURE] ?: 0
+
+        val hasGuangdongHighData: Boolean
+            get() = StructureType.COLLECTOR_3Q5A in structureTypes
+
+        val hasGuangdongJuniorData: Boolean
+            get() = !hasBeijingFillData &&
+                !hasBeijingDialogueData &&
+                roleCount > 0 &&
+                pictureCount > 0 &&
+                (folderCount == 7 || !hasBeijingChooseData)
+    }
+
     private fun logVerbose(message: String) {
         if (VERBOSE_PARSE_LOGS) {
             Log.d(TAG, message)
@@ -378,7 +417,7 @@ object ETS100AnswerReader {
 
         val resourceFolders = scanResourceFolders(reader)
         val resourceOrderMap = emptyMap<String, Int>()
-        val groupedFolders = groupResourceFolders(resourceFolders)
+        val groupedFolders = groupResourceFolders(reader, resourceFolders)
         Log.i(TAG, "readPapers: 得到 ${groupedFolders.size} 组试卷")
 
         val exerciseGroupPapers = mutableListOf<Paper>()
@@ -409,11 +448,11 @@ object ETS100AnswerReader {
 
         val resourceFolders = scanResourceFolders(reader)
         val resourceOrderMap = emptyMap<String, Int>()
-        val groupedFolders = groupResourceFolders(resourceFolders)
+        val groupedFolders = groupResourceFolders(reader, resourceFolders)
 
         return groupedFolders.mapIndexed { groupIndex, folderGroup ->
             val orderedFolderGroup = orderResourceFoldersByPaperStructure(folderGroup, resourceOrderMap)
-            createPaperSummary(orderedFolderGroup, groupIndex)
+            createPaperSummary(reader, orderedFolderGroup, groupIndex)
         }
     }
 
@@ -436,7 +475,7 @@ object ETS100AnswerReader {
 
         val resourceFolders = scanResourceFolders(reader)
         val resourceOrderMap = emptyMap<String, Int>()
-        val groupedFolders = groupResourceFolders(resourceFolders)
+        val groupedFolders = groupResourceFolders(reader, resourceFolders)
         Log.i(TAG, "readPapersParallel: 得到 ${groupedFolders.size} 组试卷")
 
         val parallelLimit = when (mode) {
@@ -481,22 +520,109 @@ object ETS100AnswerReader {
         val papers: List<Paper>
     )
 
+    private fun detectResourceGroupTemplate(
+        reader: ETS100FileReader.Reader,
+        folders: List<ETS100FileReader.FileItem>
+    ): ResourceGroupTemplate {
+        val profile = readResourceGroupProfile(reader, folders)
+        return detectResourceGroupTemplate(profile)
+    }
+
+    private fun detectResourceGroupTemplate(
+        profile: ResourceGroupProfile
+    ): ResourceGroupTemplate {
+        return when {
+            profile.hasBeijingFillData || profile.hasBeijingDialogueData -> ResourceGroupTemplate.BEIJING_HIGH
+            profile.hasGuangdongHighData -> ResourceGroupTemplate.GUANGDONG_HIGH
+            profile.hasGuangdongJuniorData -> ResourceGroupTemplate.GUANGDONG_JUNIOR
+            profile.hasBeijingChooseData -> ResourceGroupTemplate.BEIJING_JUNIOR
+            else -> ResourceGroupTemplate.GENERIC
+        }
+    }
+
+    private fun scoreResourceGroupCandidate(
+        reader: ETS100FileReader.Reader,
+        folders: List<ETS100FileReader.FileItem>
+    ): Int {
+        val profile = readResourceGroupProfile(reader, folders)
+        val template = detectResourceGroupTemplate(profile)
+        val baseScore = when (template) {
+            ResourceGroupTemplate.BEIJING_HIGH -> 100
+            ResourceGroupTemplate.BEIJING_JUNIOR -> 96
+            ResourceGroupTemplate.GUANGDONG_JUNIOR -> 92
+            ResourceGroupTemplate.GUANGDONG_HIGH -> 90
+            ResourceGroupTemplate.GENERIC -> 0
+        }
+        val exactSizeBonus = when (template) {
+            ResourceGroupTemplate.BEIJING_HIGH -> if (folders.size == 13) 20 else 0
+            ResourceGroupTemplate.BEIJING_JUNIOR -> if (folders.size == 10) 20 else 0
+            ResourceGroupTemplate.GUANGDONG_JUNIOR -> if (folders.size == 7) 20 else 0
+            ResourceGroupTemplate.GUANGDONG_HIGH -> if (folders.size == 3) 20 else 0
+            ResourceGroupTemplate.GENERIC -> 0
+        }
+        return baseScore + exactSizeBonus
+    }
+
+    private fun readResourceGroupProfile(
+        reader: ETS100FileReader.Reader,
+        folders: List<ETS100FileReader.FileItem>
+    ): ResourceGroupProfile {
+        val structureTypes = mutableSetOf<String>()
+        val structureTypeCounts = mutableMapOf<String, Int>()
+        var hasBeijingChooseData = false
+        var hasBeijingFillData = false
+        var hasBeijingDialogueData = false
+
+        for (folder in folders) {
+            val contentPath = "${ETS100FileReader.Path.getResourceDir()}/${folder.name}/content.json"
+            val json = runCatching {
+                val content = reader.readFile(contentPath) ?: return@runCatching null
+                JSONObject(content)
+            }.getOrNull() ?: continue
+
+            val structureType = json.optString("structure_type", "")
+            if (structureType.isNotEmpty()) {
+                structureTypes.add(structureType)
+                structureTypeCounts[structureType] = (structureTypeCounts[structureType] ?: 0) + 1
+            }
+
+            val infoObj = json.optJSONObject("info") ?: continue
+            when (structureType) {
+                StructureType.COLLECTOR_CHOOSE -> {
+                    hasBeijingChooseData = hasBeijingChooseData ||
+                        ((infoObj.optJSONArray("xtlist")?.length() ?: 0) > 0)
+                }
+                StructureType.COLLECTOR_FILL -> {
+                    hasBeijingFillData = hasBeijingFillData ||
+                        ((infoObj.optJSONArray("std")?.length() ?: 0) > 0)
+                }
+                StructureType.COLLECTOR_DIALOGUE -> {
+                    hasBeijingDialogueData = hasBeijingDialogueData ||
+                        ((infoObj.optJSONArray("question")?.length() ?: 0) > 0)
+                }
+            }
+        }
+
+        return ResourceGroupProfile(
+            structureTypes = structureTypes,
+            folderCount = folders.size,
+            structureTypeCounts = structureTypeCounts,
+            hasBeijingChooseData = hasBeijingChooseData,
+            hasBeijingFillData = hasBeijingFillData,
+            hasBeijingDialogueData = hasBeijingDialogueData
+        )
+    }
+
     private fun createPaperSummary(
+        reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         groupIndex: Int
     ): Paper {
-        val folderCount = folders.size
-        val (titlePrefix, regionLabel) = when (folderCount) {
-            3 -> "广东高中" to "广东高中"
-            7 -> "广东初中" to "广东初中"
-            10 -> "北京初中" to "北京初中"
-            13 -> "北京高中" to "北京高中"
-            else -> "练习" to "未知"
-        }
+        val template = detectResourceGroupTemplate(reader, folders)
         val firstFolder = folders.firstOrNull()
         return Paper(
             paperId = (firstFolder?.name ?: "paper_$groupIndex").hashCode().toLong(),
-            title = "$titlePrefix #${groupIndex + 1}",
+            title = "${template.titlePrefix} #${groupIndex + 1}",
             dataFileName = firstFolder?.name.orEmpty(),
             fileSize = folders.sumOf { it.size },
             sections = listOf(
@@ -509,7 +635,7 @@ object ETS100AnswerReader {
                 )
             ),
             downloadTime = firstFolder?.lastModified ?: 0L,
-            regionLabel = regionLabel,
+            regionLabel = template.regionLabel,
             paperName = null
         )
     }
@@ -526,24 +652,30 @@ object ETS100AnswerReader {
         logVerbose("║ 文件夹数量: $folderCount")
         logVerbose("║ 文件夹列表: $folderNames")
 
-        val papers = when (folderCount) {
-            3 -> {
-                logVerbose("║ 路由: 广东高中解析器 (3个文件夹)")
+        val template = detectResourceGroupTemplate(reader, orderedFolderGroup)
+        Log.i(
+            TAG,
+            "parseResourceGroup: group=${groupIndex + 1}, folders=$folderCount, template=$template"
+        )
+
+        val papers = when (template) {
+            ResourceGroupTemplate.GUANGDONG_HIGH -> {
+                logVerbose("║ 路由: 广东高中解析器 (${folderCount}个文件夹)")
                 parseGuangdongHighPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
             }
-            7 -> {
-                logVerbose("║ 路由: 广东初中解析器 (7个文件夹)")
+            ResourceGroupTemplate.GUANGDONG_JUNIOR -> {
+                logVerbose("║ 路由: 广东初中解析器 (${folderCount}个文件夹)")
                 parseGuangdongJuniorPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
             }
-            10 -> {
-                logVerbose("║ 路由: 北京初中解析器 (10个文件夹)")
+            ResourceGroupTemplate.BEIJING_JUNIOR -> {
+                logVerbose("║ 路由: 北京初中解析器 (${folderCount}个文件夹)")
                 parseBeijingJuniorPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
             }
-            13 -> {
-                logVerbose("║ 路由: 北京高中解析器 (13个文件夹)")
+            ResourceGroupTemplate.BEIJING_HIGH -> {
+                logVerbose("║ 路由: 北京高中解析器 (${folderCount}个文件夹)")
                 parseBeijingHighPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
             }
-            else -> {
+            ResourceGroupTemplate.GENERIC -> {
                 logVerbose("║ 路由: 通用解析器 (${folderCount}个文件夹，不匹配预设)")
                 parseGenericPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
             }
@@ -609,6 +741,7 @@ object ETS100AnswerReader {
     }
 
     private fun groupResourceFolders(
+        reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>
     ): List<List<ETS100FileReader.FileItem>> {
         if (folders.isEmpty()) return emptyList()
@@ -622,27 +755,32 @@ object ETS100AnswerReader {
         )
 
         if (hasReliableTime) {
-            return normalizeResourceGroups(groupByTime(folders, thresholdMs = 2000L))
+            return normalizeResourceGroups(reader, groupByTime(folders, thresholdMs = 2000L))
         }
 
-        Log.w(TAG, "groupResourceFolders: resource 修改时间不可靠，按已知试卷包数量兜底拆分")
-        return groupByKnownPaperFolderCounts(folders)
+        Log.w(TAG, "groupResourceFolders: resource 修改时间不可靠，按 content.json 结构兜底拆分")
+        return groupByKnownPaperFolderCounts(reader, folders)
     }
 
     private fun normalizeResourceGroups(
+        reader: ETS100FileReader.Reader,
         groups: List<List<ETS100FileReader.FileItem>>
     ): List<List<ETS100FileReader.FileItem>> {
         return groups.flatMap { group ->
-            if (group.size <= 13) {
-                listOf(group)
+            val shouldSplitGuangdongJuniorPrefix = group.size > 7 &&
+                detectResourceGroupTemplate(reader, group.take(7)) == ResourceGroupTemplate.GUANGDONG_JUNIOR
+
+            if (group.size > 13 || shouldSplitGuangdongJuniorPrefix) {
+                Log.w(TAG, "normalizeResourceGroups: 时间分组过大(${group.size})，按 content.json 结构二次拆分")
+                groupByKnownPaperFolderCounts(reader, group)
             } else {
-                Log.w(TAG, "normalizeResourceGroups: 时间分组过大(${group.size})，按已知试卷包数量二次拆分")
-                groupByKnownPaperFolderCounts(group)
+                listOf(group)
             }
         }
     }
 
     private fun groupByKnownPaperFolderCounts(
+        reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>
     ): List<List<ETS100FileReader.FileItem>> {
         val groupSizes = listOf(13, 10, 7, 3)
@@ -651,13 +789,35 @@ object ETS100AnswerReader {
 
         while (index < folders.size) {
             val remaining = folders.size - index
-            val size = groupSizes.firstOrNull { remaining >= it && (remaining == it || (remaining - it) >= 3) }
-                ?: remaining
+            val candidateSizes = groupSizes
+                .filter { remaining >= it && (remaining == it || (remaining - it) >= 3) }
+                .ifEmpty { listOf(remaining.coerceAtMost(13)) }
+            val size = candidateSizes
+                .map { candidateSize ->
+                    val candidate = folders.subList(index, index + candidateSize)
+                    val baseScore = scoreResourceGroupCandidate(reader, candidate)
+                    val exactGuangdongJuniorBonus = if (
+                        remaining >= 10 &&
+                        candidateSize == 7 &&
+                        detectResourceGroupTemplate(reader, candidate) == ResourceGroupTemplate.GUANGDONG_JUNIOR
+                    ) {
+                        30
+                    } else {
+                        0
+                    }
+                    candidateSize to (baseScore + exactGuangdongJuniorBonus)
+                }
+                .maxWithOrNull(
+                    compareBy<Pair<Int, Int>> { it.second }
+                        .thenByDescending { it.first }
+                )
+                ?.first
+                ?: remaining.coerceAtMost(13)
             groups.add(folders.subList(index, index + size))
             index += size
         }
 
-        Log.d(TAG, "groupByKnownPaperFolderCounts: ${folders.size} 个文件夹兜底拆成 ${groups.size} 组")
+        Log.d(TAG, "groupByKnownPaperFolderCounts: ${folders.size} 个文件夹按结构兜底拆成 ${groups.size} 组")
         return groups
     }
 
@@ -811,11 +971,8 @@ object ETS100AnswerReader {
 
     /**
      * 广东初中解析器（7个文件夹）
-     * 遍历每个 content.json：
-     * - collector.role → 遍历 info.question[]，按 askaudio/中文条件分为听选信息、回答问题、提问
-     * - collector.picture → 从 info.std[].value 提取信息转述答案
-     * - collector.read → 跳过
-     * 输出顺序：听选信息 → 回答问题 → 信息转述 → 提问
+     * 本地 resource 没有云端 homework content 的 group_name，因此这里按 content.json 特征推断题型名，
+     * 再复用云端同款的 parseContentJson 逐包生成 Section。
      */
     private fun parseGuangdongJuniorPapers(
         reader: ETS100FileReader.Reader,
@@ -824,10 +981,7 @@ object ETS100AnswerReader {
         processedPaths: MutableSet<String>
     ): List<Paper> {
         Log.d(TAG, "parseGuangdongJuniorPapers: 第 $groupIndex 组，${folders.size} 个文件夹")
-        val listeningSelectQuestions = mutableListOf<Question>()  // 听选信息
-        val answerQuestions = mutableListOf<Question>()          // 回答问题
-        val pictureQuestions = mutableListOf<Question>()         // 信息转述
-        val askQuestions = mutableListOf<Question>()            // 提问
+        val sections = mutableListOf<Section>()
         var questionIndex = 0
 
         for (folder in folders) {
@@ -837,121 +991,34 @@ object ETS100AnswerReader {
             val content = reader.readFile(contentPath) ?: continue
             val json = JSONObject(content)
             val structureType = json.optString("structure_type", "")
+            if (structureType.isEmpty()) continue
 
-            when (structureType) {
-                "collector.role" -> {
-                    // 需要进一步根据 askaudio/中文条件细分
-                    val infoObj = json.optJSONObject("info") ?: continue
-                    val questionsArray = infoObj.optJSONArray("question") ?: continue
+            val inferred = inferGuangdongJuniorSectionInfo(json)
+            val (questions, originalContent) = parseContentJson(
+                json = json,
+                startIndex = questionIndex,
+                category = inferred.category,
+                typeName = inferred.groupName,
+                sectionCaption = inferred.groupName
+            )
 
-                    for (i in 0 until questionsArray.length()) {
-                        val q = questionsArray.getJSONObject(i)
-                        val ask = q.optString("ask", "")
-                        val askaudio = q.optString("askaudio", "")
-                        val hasBr = ask.contains("<br>")
-                        val hasChinese = containsChinese(ask)
-
-                        val stdArray = q.optJSONArray("std")
-                        val answers = if (stdArray != null && stdArray.length() > 0) {
-                            (0 until stdArray.length()).map { idx ->
-                                cleanText(stdArray.getJSONObject(idx).optString("value", ""))
-                            }
-                        } else listOf("暂无标准答案")
-
-                        val questionText = ask.substringAfter(" ").ifEmpty { ask }
-                        val displayOrder = extractQuestionNumber(q, "ask", "question", "text")
-
-                        when {
-                            hasBr && askaudio.isNotEmpty() -> {
-                                // 听选信息
-                                listeningSelectQuestions.add(Question(
-                                    order = questionIndex + 1,
-                                    sectionOrder = listeningSelectQuestions.size + 1,
-                                    sectionCaption = "听选信息",
-                                    typeName = "听选信息",
-                                    questionText = questionText,
-                                    answers = answers,
-                                    originalText = null,
-                                    category = "simple_expression_ufi",
-                                    displayOrder = displayOrder
-                                ))
-                            }
-                            askaudio.isNotEmpty() && !hasBr -> {
-                                // 回答问题
-                                answerQuestions.add(Question(
-                                    order = questionIndex + 1,
-                                    sectionOrder = answerQuestions.size + 1,
-                                    sectionCaption = "回答问题",
-                                    typeName = "回答问题",
-                                    questionText = questionText,
-                                    answers = answers,
-                                    originalText = null,
-                                    category = "simple_expression_ufk",
-                                    displayOrder = displayOrder
-                                ))
-                            }
-                            askaudio.isEmpty() && hasChinese -> {
-                                // 提问
-                                askQuestions.add(Question(
-                                    order = questionIndex + 1,
-                                    sectionOrder = askQuestions.size + 1,
-                                    sectionCaption = "提问",
-                                    typeName = "提问",
-                                    questionText = questionText,
-                                    answers = answers,
-                                    originalText = null,
-                                    category = "simple_expression_ufj",
-                                    displayOrder = displayOrder
-                                ))
-                            }
-                        }
-                        questionIndex++
-                    }
-                }
-                "collector.picture" -> {
-                    // 信息转述
-                    val infoObj = json.optJSONObject("info") ?: continue
-                    val stdArray = infoObj.optJSONArray("std")
-                    val answers = if (stdArray != null && stdArray.length() > 0) {
-                        (0 until stdArray.length()).map { idx ->
-                            cleanText(stdArray.getJSONObject(idx).optString("value", ""))
-                        }
-                    } else listOf("暂无标准答案")
-                    val topicTitle = infoObj.optString("topic", "信息转述")
-
-                    pictureQuestions.add(Question(
-                        order = questionIndex + 1,
-                        sectionOrder = pictureQuestions.size + 1,
-                        sectionCaption = "信息转述",
-                        typeName = "信息转述",
-                        questionText = topicTitle,
-                        answers = answers,
-                        originalText = infoObj.optString("value", ""),
-                        category = "topic",
-                        displayOrder = extractQuestionNumber(infoObj, "topic", "value")
-                    ))
-                    questionIndex++
-                }
-                // collector.read 跳过
+            if (questions.isNotEmpty()) {
+                sections.add(
+                    Section(
+                        caption = inferred.groupName,
+                        category = inferred.sectionCategory.ifEmpty { structureType },
+                        typeName = inferred.groupName,
+                        questions = sortQuestionsByOfficialOrder(questions),
+                        originalContent = originalContent
+                    )
+                )
+                questionIndex += questions.size
             }
         }
 
-        // 按文档顺序组装：听选信息 → 回答问题 → 信息转述 → 提问
-        val sections = mutableListOf<Section>()
-        if (listeningSelectQuestions.isNotEmpty()) {
-            sections.add(Section("听选信息", "simple_expression_ufi", "听选信息", sortQuestionsByOfficialOrder(listeningSelectQuestions), null))
-        }
-        if (answerQuestions.isNotEmpty()) {
-            sections.add(Section("回答问题", "simple_expression_ufk", "回答问题", sortQuestionsByOfficialOrder(answerQuestions), null))
-        }
-        if (pictureQuestions.isNotEmpty()) {
-            sections.add(Section("信息转述", "topic", "信息转述", sortQuestionsByOfficialOrder(pictureQuestions), null))
-        }
-        if (askQuestions.isNotEmpty()) {
-            sections.add(Section("提问", "simple_expression_ufj", "提问", sortQuestionsByOfficialOrder(askQuestions), null))
-        }
-
         if (sections.isEmpty()) return emptyList()
+
+        val orderedSections = orderGuangdongJuniorSections(sections)
 
         val paperId = folders.first().name.hashCode().toLong()
         return listOf(Paper(
@@ -959,11 +1026,94 @@ object ETS100AnswerReader {
             title = "广东初中 #${groupIndex + 1}",
             dataFileName = folders.first().name,
             fileSize = folders.sumOf { it.size },
-            sections = sections,
+            sections = orderedSections,
             downloadTime = folders.first().lastModified,
             regionLabel = "广东初中",
             paperName = null
         ))
+    }
+
+    private data class InferredSectionInfo(
+        val groupName: String,
+        val category: String,
+        val sectionCategory: String
+    )
+
+    private fun inferGuangdongJuniorSectionInfo(json: JSONObject): InferredSectionInfo {
+        val structureType = json.optString("structure_type", "")
+        val infoObj = json.optJSONObject("info")
+
+        return when (structureType) {
+            StructureType.COLLECTOR_READ -> InferredSectionInfo(
+                groupName = "模仿朗读",
+                category = "read_chapter",
+                sectionCategory = StructureType.COLLECTOR_READ
+            )
+            StructureType.COLLECTOR_CHOOSE -> InferredSectionInfo(
+                groupName = "听选信息",
+                category = "simple_expression_ufi",
+                sectionCategory = StructureType.COLLECTOR_CHOOSE
+            )
+            StructureType.COLLECTOR_PICTURE -> InferredSectionInfo(
+                groupName = "信息转述",
+                category = "topic",
+                sectionCategory = StructureType.COLLECTOR_PICTURE
+            )
+            StructureType.COLLECTOR_ROLE -> {
+                val firstQuestion = infoObj
+                    ?.optJSONArray("question")
+                    ?.optJSONObject(0)
+                val ask = firstQuestion?.optString("ask", "").orEmpty()
+                val askaudio = firstQuestion?.optString("askaudio", "").orEmpty()
+                val hasBr = ask.contains("<br>", ignoreCase = true)
+                val hasChinese = containsChinese(ask)
+
+                when {
+                    hasBr && askaudio.isNotEmpty() -> InferredSectionInfo(
+                        groupName = "听选信息",
+                        category = "simple_expression_ufi",
+                        sectionCategory = StructureType.COLLECTOR_ROLE
+                    )
+                    askaudio.isNotEmpty() -> InferredSectionInfo(
+                        groupName = "回答问题",
+                        category = "simple_expression_ufk",
+                        sectionCategory = StructureType.COLLECTOR_ROLE
+                    )
+                    hasChinese -> InferredSectionInfo(
+                        groupName = "询问信息",
+                        category = "simple_expression_ufj",
+                        sectionCategory = StructureType.COLLECTOR_ROLE
+                    )
+                    else -> InferredSectionInfo(
+                        groupName = "听说信息",
+                        category = "simple_expression_ufi",
+                        sectionCategory = StructureType.COLLECTOR_ROLE
+                    )
+                }
+            }
+            else -> InferredSectionInfo(
+                groupName = structureType.ifEmpty { "未知题型" },
+                category = "",
+                sectionCategory = structureType
+            )
+        }
+    }
+
+    private fun orderGuangdongJuniorSections(sections: List<Section>): List<Section> {
+        val orderMap = mapOf(
+            "模仿朗读" to 0,
+            "听选信息" to 1,
+            "回答问题" to 2,
+            "信息转述" to 3,
+            "询问信息" to 4
+        )
+        return sections.withIndex()
+            .sortedWith(
+                compareBy<IndexedValue<Section>> {
+                    orderMap[it.value.typeName] ?: orderMap[it.value.caption] ?: Int.MAX_VALUE
+                }.thenBy { it.index }
+            )
+            .map { it.value }
     }
 
     /**

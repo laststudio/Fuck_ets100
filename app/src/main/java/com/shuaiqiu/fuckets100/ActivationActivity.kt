@@ -24,6 +24,7 @@ class ActivationActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         ThemeManager.init(this)
@@ -46,22 +47,24 @@ class ActivationActivity : ComponentActivity() {
             }
 
             FeTheme {
-                ActivationSettingsScreen(
-                    currentMode = currentMode,
-                    shizukuState = shizukuState,
-                    onModeSelected = { mode ->
-                        currentMode = mode
-                        SettingsManager.saveActivationMode(mode)
-                    },
-                    onBack = { finish() },
-                    onNavigateToCloudActivation = {
-                        cloudActivationLauncher.launch(CloudActivationActivity.createIntent(this))
-                    },
-                    onNavigateToRead = {
-                        startActivity(MainActivity.createIntent(this, Screen.Read.route))
-                        finish()
-                    }
-                )
+                PredictiveBackContent(onBack = { finish() }) {
+                    ActivationSettingsScreen(
+                        currentMode = currentMode,
+                        shizukuState = shizukuState,
+                        onModeSelected = { mode ->
+                            currentMode = mode
+                            SettingsManager.saveActivationMode(mode)
+                        },
+                        onBack = { finish() },
+                        onNavigateToCloudActivation = {
+                            cloudActivationLauncher.launch(CloudActivationActivity.createIntent(this))
+                        },
+                        onNavigateToRead = {
+                            startActivity(MainActivity.createIntent(this, Screen.Read.route))
+                            finish()
+                        }
+                    )
+                }
             }
         }
     }

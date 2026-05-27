@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 
 class ThemeSettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         ThemeManager.init(this)
@@ -23,6 +24,7 @@ class ThemeSettingsActivity : ComponentActivity() {
             var isDarkMode by remember { mutableStateOf(ThemeManager.getSavedDarkMode()) }
             var isAutoDarkMode by remember { mutableStateOf(ThemeManager.getSavedAutoDarkMode()) }
             var useDynamicColor by remember { mutableStateOf(ThemeManager.getSavedDynamicColor()) }
+            var predictiveBackMode by remember { mutableStateOf(SettingsManager.getPredictiveBackMode()) }
             val systemDarkMode = isSystemInDarkTheme()
             val effectiveDarkMode = if (isAutoDarkMode) systemDarkMode else isDarkMode
 
@@ -31,13 +33,19 @@ class ThemeSettingsActivity : ComponentActivity() {
                 isDarkMode = effectiveDarkMode,
                 useDynamicColor = useDynamicColor
             ) {
-                ThemeSettingsScreen(
-                    onBack = { finish() },
-                    onThemeChanged = { currentTheme = it },
-                    onDarkModeChanged = { isDarkMode = it },
-                    onAutoDarkModeChanged = { isAutoDarkMode = it },
-                    onDynamicColorChanged = { useDynamicColor = it }
-                )
+                PredictiveBackContent(onBack = { finish() }) {
+                    ThemeSettingsScreen(
+                        onBack = { finish() },
+                        onThemeChanged = { currentTheme = it },
+                        onDarkModeChanged = { isDarkMode = it },
+                        onAutoDarkModeChanged = { isAutoDarkMode = it },
+                        onDynamicColorChanged = { useDynamicColor = it },
+                        onPredictiveBackChanged = {
+                            predictiveBackMode = it
+                            recreate()
+                        }
+                    )
+                }
             }
         }
     }

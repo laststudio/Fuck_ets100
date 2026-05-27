@@ -16,6 +16,8 @@ object SettingsManager {
     private const val KEY_FORCE_READ_MODE = "force_read_mode"  // 强执读取模式
     private const val KEY_HIDE_DEBUG_BUTTON = "hide_debug_button"  // 隐藏调试按钮
     private const val KEY_LEGAL_ACCEPTED = "legal_accepted"
+    private const val KEY_AOSP_PREDICTIVE_BACK = "aosp_predictive_back"
+    private const val KEY_PREDICTIVE_BACK_MODE = "predictive_back_mode"
     
     private lateinit var prefs: SharedPreferences
     
@@ -121,4 +123,42 @@ object SettingsManager {
     fun hasAcceptedLegal(): Boolean {
         return prefs.getBoolean(KEY_LEGAL_ACCEPTED, false)
     }
+
+    fun savePredictiveBackMode(mode: PredictiveBackMode) {
+        prefs.edit {
+            putString(KEY_PREDICTIVE_BACK_MODE, mode.name)
+            putBoolean(KEY_AOSP_PREDICTIVE_BACK, mode == PredictiveBackMode.AOSP)
+        }
+    }
+
+    fun getPredictiveBackMode(): PredictiveBackMode {
+        val modeName = prefs.getString(KEY_PREDICTIVE_BACK_MODE, null)
+        if (modeName != null) {
+            return runCatching { PredictiveBackMode.valueOf(modeName) }
+                .getOrDefault(PredictiveBackMode.AOSP)
+        }
+
+        return if (prefs.getBoolean(KEY_AOSP_PREDICTIVE_BACK, true)) {
+            PredictiveBackMode.AOSP
+        } else {
+            PredictiveBackMode.SLIDE
+        }
+    }
+
+    fun saveAospPredictiveBackEnabled(enabled: Boolean) {
+        savePredictiveBackMode(if (enabled) PredictiveBackMode.AOSP else PredictiveBackMode.SLIDE)
+    }
+
+    fun isAospPredictiveBackEnabled(): Boolean {
+        return getPredictiveBackMode() == PredictiveBackMode.AOSP
+    }
+}
+
+enum class PredictiveBackMode(
+    val label: String,
+    val description: String
+) {
+    AOSP("AOSP", "使用仿 AOSP 跨 Activity 动画"),
+    SLIDE("滑动", "使用系统自带预见性返回动画"),
+    NONE("无", "关闭自定义预见性返回动画")
 }

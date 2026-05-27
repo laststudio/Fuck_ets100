@@ -11,6 +11,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 
 class ShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         ThemeManager.init(this)
@@ -37,11 +38,13 @@ class ShareActivity : ComponentActivity() {
                 isDarkMode = effectiveDarkMode,
                 useDynamicColor = ThemeManager.getSavedDynamicColor()
             ) {
-                ShareScreen(
-                    paper = paper,
-                    isDarkMode = effectiveDarkMode,
-                    onBack = { finish() }
-                )
+                PredictiveBackContent(onBack = { finish() }) {
+                    ShareScreen(
+                        paper = paper,
+                        isDarkMode = effectiveDarkMode,
+                        onBack = { finish() }
+                    )
+                }
             }
         }
     }

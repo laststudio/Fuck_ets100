@@ -31,6 +31,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -103,6 +105,33 @@ private sealed class InitResult {
     ) : InitResult()
     
     data class Error(val message: String) : InitResult()
+}
+
+private enum class LocalParsePhase {
+    IDLE,
+    SCANNING,
+    PARSING,
+    COMPLETED,
+    FAILED
+}
+
+private object LocalReadProgressState {
+    var phase by mutableStateOf(LocalParsePhase.IDLE)
+    var doneCount by mutableIntStateOf(0)
+    var totalCount by mutableIntStateOf(0)
+    var parsedGroupIndexes by mutableStateOf(emptySet<Int>())
+    var message by mutableStateOf("")
+    var parseJob: Job? = null
+
+    fun reset() {
+        parseJob?.cancel()
+        parseJob = null
+        phase = LocalParsePhase.IDLE
+        doneCount = 0
+        totalCount = 0
+        parsedGroupIndexes = emptySet()
+        message = ""
+    }
 }
 
 private fun ETS100AnswerReader.Paper.isLocalAnswerLoading(): Boolean {
@@ -783,6 +812,18 @@ fun ReadScreen(
 
     LaunchedEffect(currentMode, reloadTrigger) {
         currentModeRef.value = currentMode
+        isParsingLocalAnswers = false
+
+        if (reloadTrigger == 0 &&
+            currentMode != ActivationMode.CLOUD &&
+            (LocalReadProgressState.phase == LocalParsePhase.SCANNING ||
+                LocalReadProgressState.phase == LocalParsePhase.PARSING)
+        ) {
+            isLoading = false
+            isParsingLocalAnswers = true
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "已恢复正在进行的本地答案解析进度")
+            return@LaunchedEffect
+        }
         
         // 云端模式不执行本地加载，等待用户点击读取按钮喵~
         if (currentMode == ActivationMode.CLOUD) {
@@ -803,10 +844,14 @@ fun ReadScreen(
             addLog(LogLevel.INFO, LogCategory.SYSTEM, "已恢复上次读取的本地试卷内容")
             return@LaunchedEffect
         }
+
+        LocalReadProgressState.reset()
         
         isLoading = true
         errorMessage = null
         debugLog = emptyList()  // 清空之前的日志喵~
+        LocalReadProgressState.phase = LocalParsePhase.SCANNING
+        LocalReadProgressState.message = "正在扫描试卷列表"
         
         addLog(LogLevel.INIT, LogCategory.SYSTEM, "=".repeat(50))
         addLog(LogLevel.INIT, LogCategory.SYSTEM, "🚀 开始初始化 ETS 100 数据加载")
@@ -832,6 +877,7 @@ fun ReadScreen(
             
             // 在 IO 线程执行文件扫描，先把试卷列表显示出来
             addLog(LogLevel.INFO, LogCategory.SYSTEM, "开始扫描试卷列表...")
+            val summaryStartMs = System.currentTimeMillis()
             val summaryResult = withContext(Dispatchers.IO) {
                 try {
                     // 获取阅读器
@@ -844,21 +890,34 @@ fun ReadScreen(
                     val resourceDirPath = ETS100FileReader.Path.getResourceDir()
                     addLog(LogLevel.DEBUG, LogCategory.FILE, "数据目录: $dataDirPath")
                     addLog(LogLevel.DEBUG, LogCategory.FILE, "资源目录: $resourceDirPath")
+
+                    val shouldScanDebugFileLists = currentMode == ActivationMode.DIRECT_READ
                     
-                    // 列出 data 文件
-                    addLog(LogLevel.INFO, LogCategory.FILE, "扫描 data 目录...")
-                    val dataFilesList = reader.listFiles(dataDirPath)
-                        .filter { file -> !file.isDirectory && file.size > ETS100FileReader.Path.MIN_FILE_SIZE }
-                        .sortedByDescending { it.lastModified }
-                    addLog(LogLevel.SUCCESS, LogCategory.FILE, "✓ 找到 ${dataFilesList.size} 个数据文件")
-                    if (dataFilesList.isNotEmpty()) {
-                        addLog(LogLevel.DEBUG, LogCategory.FILE, "  最新文件: ${dataFilesList.first().name} (${formatFileSize(dataFilesList.first().size)})")
+                    val dataFilesList = if (shouldScanDebugFileLists) {
+                        addLog(LogLevel.INFO, LogCategory.FILE, "扫描 data 目录...")
+                        reader.listFiles(dataDirPath)
+                            .filter { file -> !file.isDirectory && file.size > ETS100FileReader.Path.MIN_FILE_SIZE }
+                            .sortedByDescending { it.lastModified }
+                            .also { files ->
+                                addLog(LogLevel.SUCCESS, LogCategory.FILE, "✓ 找到 ${files.size} 个数据文件")
+                                if (files.isNotEmpty()) {
+                                    addLog(LogLevel.DEBUG, LogCategory.FILE, "  最新文件: ${files.first().name} (${formatFileSize(files.first().size)})")
+                                }
+                            }
+                    } else {
+                        addLog(LogLevel.INFO, LogCategory.FILE, "Root/Shizuku 列表阶段跳过 data 明细扫描")
+                        emptyList()
                     }
                     
-                    // 列出 resource 文件
-                    addLog(LogLevel.INFO, LogCategory.FILE, "扫描 resource 目录...")
-                    val resourceFilesList = reader.listFiles(resourceDirPath)
-                    addLog(LogLevel.SUCCESS, LogCategory.FILE, "✓ 找到 ${resourceFilesList.size} 个资源文件")
+                    val resourceFilesList = if (shouldScanDebugFileLists) {
+                        addLog(LogLevel.INFO, LogCategory.FILE, "扫描 resource 目录...")
+                        reader.listFiles(resourceDirPath).also { files ->
+                            addLog(LogLevel.SUCCESS, LogCategory.FILE, "✓ 找到 ${files.size} 个资源文件")
+                        }
+                    } else {
+                        addLog(LogLevel.INFO, LogCategory.FILE, "Root/Shizuku 列表阶段跳过 resource 明细扫描")
+                        emptyList()
+                    }
                     
                     // 先轻量读取试卷列表，不在这里解析完整答案
                     addLog(LogLevel.INFO, LogCategory.PAPER, "=" .repeat(40))
@@ -877,6 +936,7 @@ fun ReadScreen(
                     InitResult.Error(e.message ?: "未知错误")
                 }
             }
+            val summaryCostMs = System.currentTimeMillis() - summaryStartMs
             
             addLog(LogLevel.INFO, LogCategory.SYSTEM, "处理试卷列表扫描结果...")
             when (summaryResult) {
@@ -887,75 +947,140 @@ fun ReadScreen(
                     papers = summaryResult.papers
                     errorMessage = null
                     isLoading = false
-                    addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 已显示 ${summaryResult.papers.size} 份试卷，开始后台解析答案")
+                    LocalReadProgressState.totalCount = summaryResult.papers.size
+                    LocalReadProgressState.doneCount = 0
+                    LocalReadProgressState.parsedGroupIndexes = emptySet()
+                    LocalReadProgressState.message = "列表扫描耗时 ${summaryCostMs}ms，正在后台解析答案"
+                    addLog(
+                        LogLevel.SUCCESS,
+                        LogCategory.SYSTEM,
+                        "✓ 已显示 ${summaryResult.papers.size} 份试卷，列表扫描耗时 ${summaryCostMs}ms，开始后台解析答案"
+                    )
 
                     if (summaryResult.papers.isNotEmpty()) {
                         isParsingLocalAnswers = true
-                        val fullResult = withContext(Dispatchers.IO) {
-                            try {
-                                val paperList = ETS100AnswerReader.readPapersParallel(context, currentMode)
-                                InitResult.Success(
-                                    readerInfo = summaryResult.readerInfo,
-                                    dataFiles = summaryResult.dataFiles,
-                                    resourceFiles = summaryResult.resourceFiles,
-                                    papers = paperList
-                                )
-                            } catch (e: Exception) {
-                                InitResult.Error(e.message ?: "未知错误")
-                            }
-                        }
-
-                        when (fullResult) {
-                            is InitResult.Success -> {
-                                if (fullResult.papers.isNotEmpty()) {
-                                    papers = fullResult.papers
-                                    ReadPageStateStore.saveLocal(
-                                        context,
-                                        ReadPageStateStore.LocalSnapshot(
-                                            readerInfo = fullResult.readerInfo,
-                                            dataFiles = fullResult.dataFiles,
-                                            resourceFiles = fullResult.resourceFiles,
-                                            papers = fullResult.papers
-                                        )
-                                    )
-
-                                    addLog(LogLevel.INIT, LogCategory.PAPER, "📊 试卷统计:")
-                                    addLog(LogLevel.INIT, LogCategory.PAPER, "   总试卷数: ${fullResult.papers.size}")
-                                    val totalSections = fullResult.papers.sumOf { it.sections.size }
-                                    val totalQuestions = fullResult.papers.sumOf { it.sections.sumOf { s -> s.questions.size } }
-                                    val answeredQuestions = fullResult.papers.sumOf { it.sections.sumOf { s -> s.questions.count { q -> q.answer.isNotEmpty() } } }
-                                    val answeredPercent = if (totalQuestions > 0) {
-                                        (answeredQuestions * 100.0 / totalQuestions).toInt()
-                                    } else {
-                                        0
+                        LocalReadProgressState.phase = LocalParsePhase.PARSING
+                        LocalReadProgressState.message = "列表扫描耗时 ${summaryCostMs}ms，正在后台解析答案"
+                        LocalReadProgressState.parseJob = AppCoroutineScope.scope.launch {
+                            delay(32)
+                            val parseStartMs = System.currentTimeMillis()
+                            val fullResult = withContext(Dispatchers.IO) {
+                                try {
+                                    val paperList = ETS100AnswerReader.readPapersParallel(
+                                        context = context,
+                                        mode = currentMode
+                                    ) { groupIndex, parsedGroupPapers ->
+                                        withContext(Dispatchers.Main) {
+                                            LocalReadProgressState.parsedGroupIndexes =
+                                                LocalReadProgressState.parsedGroupIndexes + groupIndex
+                                            LocalReadProgressState.doneCount =
+                                                LocalReadProgressState.parsedGroupIndexes.size
+                                            if (parsedGroupPapers.isNotEmpty()) {
+                                                papers = papers.toMutableList().also { currentPapers ->
+                                                    parsedGroupPapers.forEachIndexed { offset, parsedPaper ->
+                                                        val existingIndex = currentPapers.indexOfFirst {
+                                                            it.paperId == parsedPaper.paperId
+                                                        }
+                                                        if (existingIndex >= 0) {
+                                                            currentPapers[existingIndex] = parsedPaper
+                                                        } else {
+                                                            val insertIndex = (groupIndex + offset)
+                                                                .coerceIn(0, currentPapers.size)
+                                                            currentPapers.add(insertIndex, parsedPaper)
+                                                        }
+                                                    }
+                                                }
+                                                addLog(
+                                                    LogLevel.SUCCESS,
+                                                    LogCategory.PAPER,
+                                                    "✓ 已解析第 ${groupIndex + 1} 份试卷 (${LocalReadProgressState.doneCount}/${LocalReadProgressState.totalCount})"
+                                                )
+                                            }
+                                        }
                                     }
-                                    addLog(LogLevel.INIT, LogCategory.SECTION, "   总分区数: $totalSections")
-                                    addLog(LogLevel.INIT, LogCategory.QUESTION, "   总题目数: $totalQuestions")
-                                    addLog(LogLevel.SUCCESS, LogCategory.ANSWER, "   已答题目: $answeredQuestions ($answeredPercent%)")
-                                    addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 答案后台解析完成")
-                                } else {
-                                    addLog(LogLevel.WARN, LogCategory.SYSTEM, "后台解析未返回完整试卷，保留当前试卷列表")
+                                    InitResult.Success(
+                                        readerInfo = summaryResult.readerInfo,
+                                        dataFiles = summaryResult.dataFiles,
+                                        resourceFiles = summaryResult.resourceFiles,
+                                        papers = paperList
+                                    )
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    InitResult.Error(e.message ?: "未知错误")
                                 }
                             }
-                            is InitResult.Error -> {
-                                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 后台解析答案失败: ${fullResult.message}")
+
+                            try {
+                                when (fullResult) {
+                                    is InitResult.Success -> {
+                                        if (fullResult.papers.isNotEmpty()) {
+                                            papers = fullResult.papers
+                                            ReadPageStateStore.saveLocal(
+                                                context,
+                                                ReadPageStateStore.LocalSnapshot(
+                                                    readerInfo = fullResult.readerInfo,
+                                                    dataFiles = fullResult.dataFiles,
+                                                    resourceFiles = fullResult.resourceFiles,
+                                                    papers = fullResult.papers
+                                                )
+                                            )
+
+                                            addLog(LogLevel.INIT, LogCategory.PAPER, "📊 试卷统计:")
+                                            addLog(LogLevel.INIT, LogCategory.PAPER, "   总试卷数: ${fullResult.papers.size}")
+                                            val totalSections = fullResult.papers.sumOf { it.sections.size }
+                                            val totalQuestions = fullResult.papers.sumOf { it.sections.sumOf { s -> s.questions.size } }
+                                            val answeredQuestions = fullResult.papers.sumOf { it.sections.sumOf { s -> s.questions.count { q -> q.answer.isNotEmpty() } } }
+                                            val answeredPercent = if (totalQuestions > 0) {
+                                                (answeredQuestions * 100.0 / totalQuestions).toInt()
+                                            } else {
+                                                0
+                                            }
+                                            addLog(LogLevel.INIT, LogCategory.SECTION, "   总分区数: $totalSections")
+                                            addLog(LogLevel.INIT, LogCategory.QUESTION, "   总题目数: $totalQuestions")
+                                            addLog(LogLevel.SUCCESS, LogCategory.ANSWER, "   已答题目: $answeredQuestions ($answeredPercent%)")
+                                            val parseCostMs = System.currentTimeMillis() - parseStartMs
+                                            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 答案后台解析完成，耗时 ${parseCostMs}ms")
+                                            LocalReadProgressState.doneCount = LocalReadProgressState.totalCount
+                                            LocalReadProgressState.phase = LocalParsePhase.COMPLETED
+                                            LocalReadProgressState.message = "列表扫描 ${summaryCostMs}ms，答案解析 ${parseCostMs}ms"
+                                        } else {
+                                            addLog(LogLevel.WARN, LogCategory.SYSTEM, "后台解析未返回完整试卷，保留当前试卷列表")
+                                            LocalReadProgressState.phase = LocalParsePhase.FAILED
+                                            LocalReadProgressState.message = "后台解析未返回完整试卷"
+                                        }
+                                    }
+                                    is InitResult.Error -> {
+                                        addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 后台解析答案失败: ${fullResult.message}")
+                                        LocalReadProgressState.phase = LocalParsePhase.FAILED
+                                        LocalReadProgressState.message = "后台解析答案失败: ${fullResult.message}"
+                                    }
+                                }
+                            } finally {
+                                isParsingLocalAnswers = false
+                                LocalReadProgressState.parseJob = null
                             }
                         }
                     } else {
                         addLog(LogLevel.WARN, LogCategory.SYSTEM, "未扫描到试卷，跳过后台答案解析")
+                        LocalReadProgressState.phase = LocalParsePhase.COMPLETED
+                        LocalReadProgressState.message = "未扫描到试卷"
                     }
                 }
                 is InitResult.Error -> {
                     addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 加载失败: ${summaryResult.message}")
                     errorMessage = "加载失败: ${summaryResult.message}"
+                    LocalReadProgressState.phase = LocalParsePhase.FAILED
+                    LocalReadProgressState.message = summaryResult.message
                 }
             }
         } catch (e: Exception) {
             addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 初始化异常: ${e.message}")
             errorMessage = "初始化异常: ${e.message}"
+            LocalReadProgressState.phase = LocalParsePhase.FAILED
+            LocalReadProgressState.message = e.message ?: "未知错误"
         } finally {
             isLoading = false
-            isParsingLocalAnswers = false
             addLog(LogLevel.INIT, LogCategory.SYSTEM, "初始化流程结束喵~")
         }
     }
@@ -1206,9 +1331,14 @@ fun ReadScreen(
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                if (isParsingLocalAnswers) {
+                                if (LocalReadProgressState.phase != LocalParsePhase.IDLE) {
                                     item {
-                                        LocalAnswerParsingCard()
+                                        LocalAnswerParsingCard(
+                                            phase = LocalReadProgressState.phase,
+                                            doneCount = LocalReadProgressState.doneCount,
+                                            totalCount = LocalReadProgressState.totalCount,
+                                            message = LocalReadProgressState.message
+                                        )
                                     }
                                 }
                                 itemsIndexed(papers) { paperIndex, paper ->
@@ -1343,11 +1473,51 @@ private fun DeletingOverlay() {
 }
 
 @Composable
-private fun LocalAnswerParsingCard() {
+private fun LocalAnswerParsingCard(
+    phase: LocalParsePhase,
+    doneCount: Int,
+    totalCount: Int,
+    message: String
+) {
+    val isFinished = phase == LocalParsePhase.COMPLETED
+    val isFailed = phase == LocalParsePhase.FAILED
+    val progress = if (totalCount > 0) {
+        (doneCount.toFloat() / totalCount).coerceIn(0f, 1f)
+    } else {
+        null
+    }
+    val title = when (phase) {
+        LocalParsePhase.SCANNING -> "正在扫描试卷列表"
+        LocalParsePhase.PARSING -> "正在后台解析答案"
+        LocalParsePhase.COMPLETED -> "答案解析完成"
+        LocalParsePhase.FAILED -> "答案解析异常"
+        LocalParsePhase.IDLE -> "读取准备中"
+    }
+    val description = when (phase) {
+        LocalParsePhase.SCANNING -> message.ifBlank { "正在批量读取资源目录并生成试卷列表" }
+        LocalParsePhase.PARSING -> {
+            val countText = if (totalCount > 0) "（$doneCount/$totalCount）" else ""
+            message.ifBlank { "试卷列表已可查看，答案完成后会自动更新" } + countText
+        }
+        LocalParsePhase.COMPLETED -> message.ifBlank { "全部试卷已经解析完成" }
+        LocalParsePhase.FAILED -> message.ifBlank { "后台解析失败，请重新读取" }
+        LocalParsePhase.IDLE -> message
+    }
+    val iconColor = when {
+        isFinished -> Color(0xFF22C55E)
+        isFailed -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.primary
+    }
+    val containerColor = when {
+        isFinished -> Color(0xFF22C55E).copy(alpha = 0.12f)
+        isFailed -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+        else -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            containerColor = containerColor
         )
     ) {
         Column(
@@ -1356,27 +1526,57 @@ private fun LocalAnswerParsingCard() {
                 .padding(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp
-                )
+                when {
+                    isFinished -> {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = iconColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    isFailed -> {
+                        Icon(
+                            Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = iconColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    else -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = iconColor
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "正在后台解析答案",
+                        text = title,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = iconColor
                     )
                     Text(
-                        text = "试卷列表已可查看，答案完成后会自动更新",
+                        text = description,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            if (!isFinished && !isFailed) {
+                Spacer(modifier = Modifier.height(12.dp))
+                if (progress != null) {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
         }
     }
 }

@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 
 class DonateActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         ThemeManager.init(this)
@@ -59,7 +60,9 @@ class DonateActivity : ComponentActivity() {
                 isDarkMode = effectiveDarkMode,
                 useDynamicColor = ThemeManager.getSavedDynamicColor()
             ) {
-                DonateScreen(onBack = { finish() })
+                PredictiveBackContent(onBack = { finish() }) {
+                    DonateScreen(onBack = { finish() })
+                }
             }
         }
     }

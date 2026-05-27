@@ -51,6 +51,7 @@ import java.net.URLConnection
 
 class RemoteContentActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         ThemeManager.init(this)
@@ -76,10 +77,12 @@ class RemoteContentActivity : ComponentActivity() {
                 theme = ThemeManager.getSavedTheme(),
                 isDarkMode = effectiveDarkMode
             ) {
-                RemoteContentScreen(
-                    content = content,
-                    onBack = { finish() }
-                )
+                PredictiveBackContent(onBack = { finish() }) {
+                    RemoteContentScreen(
+                        content = content,
+                        onBack = { finish() }
+                    )
+                }
             }
         }
     }

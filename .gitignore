@@ -96,4 +96,5 @@ app/build/
 
 # Debug APK
 app/build/outputs/apk/
+.codegraph/.gitignore
 pwd.json

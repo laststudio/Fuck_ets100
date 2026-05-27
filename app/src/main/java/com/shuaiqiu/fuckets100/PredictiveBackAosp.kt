@@ -6,6 +6,7 @@ import androidx.activity.BackEventCompat
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -79,10 +80,10 @@ internal class AospPredictiveBackState(
                 latestBackEvent = event
             }
 
-            exitAnimatable.snapTo(latestBackEvent?.progress ?: 0f)
+            exitAnimatable.snapTo(0f)
             exitAnimatable.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 150, easing = LinearEasing)
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
             )
             completed = true
             onBack()
@@ -188,11 +189,7 @@ internal fun Modifier.aospPredictiveBackAnimation(
             scaleX = dragScale
             scaleY = dragScale
             translationX = exitingOffsetPx * state.directionMultiplier * emphasizedExitProgress
-            alpha = if (emphasizedExitProgress >= 0.2f) {
-                0f
-            } else {
-                (1f - emphasizedExitProgress * 5f).coerceAtLeast(0f)
-            }
+            alpha = (1f - ((emphasizedExitProgress - 0.7f) / 0.3f)).coerceIn(0f, 1f)
         }
         .clip(RoundedCornerShape(deviceCornerRadius))
 }

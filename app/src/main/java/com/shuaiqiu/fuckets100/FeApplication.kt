@@ -50,13 +50,16 @@ class FeApplication : Application() {
         // 使用 @Volatile 确保多线程可见性喵~
         @Volatile
         var updateStatus: UpdateStatus? = null
+
+        @Volatile
+        var remoteStatus: UpdateStatus? = null
         
         // 更新状态 Flow，用于通知 MainActivity 弹窗显示
         private val _updateStatusFlow = kotlinx.coroutines.flow.MutableStateFlow<UpdateStatus?>(null)
         val updateStatusFlow: kotlinx.coroutines.flow.StateFlow<UpdateStatus?> = _updateStatusFlow.asStateFlow()
-        
-        // 待分享的试卷数据，用于在 ShareScreen 中显示
-        var sharePaper: ETS100AnswerReader.Paper? = null
+
+        private val _remoteStatusFlow = MutableStateFlow<UpdateStatus?>(null)
+        val remoteStatusFlow: StateFlow<UpdateStatus?> = _remoteStatusFlow.asStateFlow()
     }
     
     override fun onCreate() {
@@ -90,6 +93,8 @@ class FeApplication : Application() {
         applicationScope.launch {
             try {
                 val status = RemoteConfigManager.checkStatus()
+                remoteStatus = status
+                _remoteStatusFlow.value = status
                 
                 when {
                     status.isKillSwitch -> {

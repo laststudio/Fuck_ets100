@@ -102,7 +102,7 @@ fun LegalContent(showHeader: Boolean) {
         if (showHeader) {
             ElevatedCard(
                 colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                 ),
                 shape = RoundedCornerShape(16.dp)
             ) {
@@ -113,7 +113,7 @@ fun LegalContent(showHeader: Boolean) {
                     Icon(
                         Icons.Default.Warning,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(Modifier.width(12.dp))
@@ -122,13 +122,13 @@ fun LegalContent(showHeader: Boolean) {
                             "请先阅读",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.error
+                            color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
                             "使用本软件前，请确认你理解并接受以下限制。违反学校、平台或法律规定造成的后果由使用者自行承担。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

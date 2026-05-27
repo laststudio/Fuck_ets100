@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import date
 from pathlib import Path
 
 
@@ -21,6 +22,7 @@ if hasattr(sys.stdout, "reconfigure"):
 DEFAULT_REPO = "qiuqiqiuqid/fe_config"
 DEFAULT_BRANCH = "master"
 DEFAULT_CONFIG_FILE = "config.json"
+DEFAULT_CHANGELOG_FILE = "update.md"
 
 
 def run_command(command: list[str], cwd: Path | None = None) -> None:
@@ -48,6 +50,12 @@ def read_message(message: str | None, message_file: str | None) -> str:
     return (message or "").strip()
 
 
+def build_raw_gitee_url(repo: str, branch: str, file_path: str) -> str:
+    """生成 Gitee 原始文件地址，供客户端直接读取。"""
+    normalized_path = file_path.strip().lstrip("/")
+    return f"https://raw.giteeusercontent.com/{repo}/raw/{branch}/{normalized_path}"
+
+
 def parse_bool(value: str | bool | None, default: bool = False) -> bool:
     """把字符串开关安全转成布尔值。"""
     if value is None:
@@ -70,6 +78,14 @@ def update_config_file(
     is_force: bool,
     notice_message: str,
     is_kill_switch_on: bool,
+    announcement_title: str,
+    announcement_message: str,
+    announcement_updated_at: str,
+    announcement_url: str,
+    changelog_url: str,
+    changelog_title: str,
+    changelog_summary: str,
+    donate_enabled: bool,
 ) -> bool:
     """精准更新远程配置字段，保留未知字段避免误伤。"""
     if config_file.exists():
@@ -88,6 +104,14 @@ def update_config_file(
     config["updateMessage"] = update_message
     config["noticeMessage"] = notice_message
     config["isKillSwitchOn"] = is_kill_switch_on
+    config["announcementTitle"] = announcement_title
+    config["announcementMessage"] = announcement_message
+    config["announcementUpdatedAt"] = announcement_updated_at
+    config["announcementUrl"] = announcement_url
+    config["changelogUrl"] = changelog_url
+    config["changelogTitle"] = changelog_title
+    config["changelogSummary"] = changelog_summary
+    config["donateEnabled"] = donate_enabled
 
     updated = json.dumps(config, ensure_ascii=False, indent=2)
     config_file.write_text(updated + "\n", encoding="utf-8")
@@ -96,11 +120,28 @@ def update_config_file(
     return original != current
 
 
-def commit_and_push(repo_dir: Path, version_name: str, config_file: str) -> None:
+def sync_changelog_file(source_file: Path, repo_dir: Path, changelog_file: str) -> bool:
+    """同步本仓库 update.md 到 Gitee 配置仓库，供国内用户读取。"""
+    if not source_file.exists():
+        raise FileNotFoundError(f"更新日志文件不存在：{source_file}")
+
+    target_file = repo_dir / changelog_file
+    target_file.parent.mkdir(parents=True, exist_ok=True)
+    new_content = source_file.read_text(encoding="utf-8")
+    old_content = target_file.read_text(encoding="utf-8") if target_file.exists() else None
+
+    if old_content == new_content:
+        return False
+
+    target_file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+def commit_and_push(repo_dir: Path, version_name: str, changed_files: list[str]) -> None:
     """提交并推送 Gitee 配置变更。"""
     run_command(["git", "config", "user.name", "github-actions[bot]"], cwd=repo_dir)
     run_command(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"], cwd=repo_dir)
-    run_command(["git", "add", config_file], cwd=repo_dir)
+    run_command(["git", "add", *changed_files], cwd=repo_dir)
     run_command(["git", "commit", "-m", f"更新 Fe v{version_name} 远程配置"], cwd=repo_dir)
     run_command(["git", "push"], cwd=repo_dir)
 
@@ -113,6 +154,18 @@ def main() -> int:
     parser.add_argument("--message", default=None, help="更新提示文本")
     parser.add_argument("--message-file", default=None, help="更新提示文件")
     parser.add_argument("--notice-message", default=os.getenv("RELEASE_NOTICE_MESSAGE", ""), help="公告文本")
+    parser.add_argument("--announcement-title", default=os.getenv("RELEASE_ANNOUNCEMENT_TITLE", ""), help="首页公告标题")
+    parser.add_argument("--announcement-message", default=os.getenv("RELEASE_ANNOUNCEMENT_MESSAGE", ""), help="首页公告正文")
+    parser.add_argument("--announcement-message-file", default=os.getenv("RELEASE_ANNOUNCEMENT_MESSAGE_FILE"), help="首页公告正文文件")
+    parser.add_argument("--announcement-updated-at", default=os.getenv("RELEASE_ANNOUNCEMENT_UPDATED_AT", ""), help="首页公告更新时间")
+    parser.add_argument("--announcement-url", default=os.getenv("RELEASE_ANNOUNCEMENT_URL", ""), help="公告详情远程地址")
+    parser.add_argument("--changelog-url", default=os.getenv("RELEASE_CHANGELOG_URL", ""), help="更新日志远程地址")
+    parser.add_argument("--changelog-title", default=os.getenv("RELEASE_CHANGELOG_TITLE", "更新日志"), help="首页更新日志标题")
+    parser.add_argument("--changelog-summary", default=os.getenv("RELEASE_CHANGELOG_SUMMARY", ""), help="首页更新日志摘要")
+    parser.add_argument("--changelog-summary-file", default=os.getenv("RELEASE_CHANGELOG_SUMMARY_FILE"), help="首页更新日志摘要文件")
+    parser.add_argument("--changelog-file", default=os.getenv("GITEE_CHANGELOG_FILE", DEFAULT_CHANGELOG_FILE), help="Gitee 更新日志路径")
+    parser.add_argument("--source-changelog-file", default=os.getenv("SOURCE_CHANGELOG_FILE", DEFAULT_CHANGELOG_FILE), help="本仓库更新日志路径")
+    parser.add_argument("--donate-enabled", default=os.getenv("RELEASE_DONATE_ENABLED", "true"), help="是否展示捐赠入口")
     parser.add_argument("--force", default=os.getenv("RELEASE_FORCE_UPDATE", "false"), help="是否强制更新")
     parser.add_argument("--kill-switch", default=os.getenv("RELEASE_KILL_SWITCH", "false"), help="是否开启 KillSwitch")
     parser.add_argument("--gitee-username", default=os.getenv("GITEE_USERNAME"), help="Gitee 用户名")
@@ -127,8 +180,27 @@ def main() -> int:
             raise ValueError("缺少 GITEE_USERNAME 或 GITEE_TOKEN，无法推送。")
 
         update_message = read_message(args.message, args.message_file)
+        announcement_message = read_message(args.announcement_message, args.announcement_message_file)
+        changelog_summary = read_message(args.changelog_summary, args.changelog_summary_file)
         is_force = parse_bool(args.force)
         is_kill_switch_on = parse_bool(args.kill_switch)
+        donate_enabled = parse_bool(args.donate_enabled, default=True)
+
+        if not announcement_message:
+            announcement_message = args.notice_message.strip()
+        announcement_title = args.announcement_title.strip()
+        if not announcement_title and announcement_message:
+            announcement_title = "公告"
+        announcement_updated_at = args.announcement_updated_at.strip()
+        if not announcement_updated_at and announcement_message:
+            announcement_updated_at = date.today().isoformat()
+        changelog_url = args.changelog_url.strip() or build_raw_gitee_url(
+            args.gitee_repo,
+            args.gitee_branch,
+            args.changelog_file,
+        )
+        if not changelog_summary:
+            changelog_summary = update_message
 
         with tempfile.TemporaryDirectory(prefix="fe-gitee-config-") as temp_dir:
             temp_path = Path(temp_dir)
@@ -140,7 +212,8 @@ def main() -> int:
                 temp_path,
             )
             config_path = repo_dir / args.config_file
-            changed = update_config_file(
+            changed_files: list[str] = []
+            config_changed = update_config_file(
                 config_path,
                 args.version_code,
                 args.apk_url,
@@ -148,13 +221,31 @@ def main() -> int:
                 is_force,
                 args.notice_message,
                 is_kill_switch_on,
+                announcement_title,
+                announcement_message,
+                announcement_updated_at,
+                args.announcement_url.strip(),
+                changelog_url,
+                args.changelog_title.strip(),
+                changelog_summary,
+                donate_enabled,
             )
+            if config_changed:
+                changed_files.append(args.config_file)
 
-            if not changed:
-                print("Gitee 配置没有变化，不需要提交。")
+            changelog_changed = sync_changelog_file(
+                source_file=Path(args.source_changelog_file),
+                repo_dir=repo_dir,
+                changelog_file=args.changelog_file,
+            )
+            if changelog_changed:
+                changed_files.append(args.changelog_file)
+
+            if not changed_files:
+                print("Gitee 配置和更新日志没有变化，不需要提交。")
                 return 0
 
-            commit_and_push(repo_dir, args.version_name, args.config_file)
+            commit_and_push(repo_dir, args.version_name, changed_files)
     except subprocess.CalledProcessError as exc:
         print(f"执行命令失败，退出码 {exc.returncode}", file=sys.stderr)
         return exc.returncode or 1

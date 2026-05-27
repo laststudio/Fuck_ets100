@@ -607,7 +607,11 @@ object ETS100ApiClient {
      * @param destFile 目标文件
      * @return 下载结果
      */
-    suspend fun downloadFile(url: String, destFile: File): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun downloadFile(
+        url: String,
+        destFile: File,
+        onProgress: suspend (downloadedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> }
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "downloadFile: 开始下载 $url")
             val urlObj = URL(url)
@@ -648,12 +652,14 @@ object ETS100ApiClient {
                 val buffer = ByteArray(8192)
                 var bytesRead: Int
                 var totalBytesRead = 0L
+                val totalBytes = connection.contentLengthLong
 
                 connection.inputStream.use { input ->
                     destFile.outputStream().use { output ->
                         while (input.read(buffer).also { bytesRead = it } != -1) {
                             output.write(buffer, 0, bytesRead)
                             totalBytesRead += bytesRead
+                            onProgress(totalBytesRead, totalBytes)
                         }
                     }
                 }

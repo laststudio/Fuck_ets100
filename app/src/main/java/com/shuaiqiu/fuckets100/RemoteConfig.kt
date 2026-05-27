@@ -9,6 +9,14 @@ package com.shuaiqiu.fuckets100
  * @param isForce 是否强制更新
  * @param updateMessage 更新弹窗正文内容
  * @param noticeMessage 启动时的 Toast 公告
+ * @param announcementTitle 首页公告标题
+ * @param announcementMessage 首页公告/公告详情正文
+ * @param announcementUpdatedAt 公告更新时间
+ * @param announcementUrl 公告详情远程地址
+ * @param changelogUrl 更新日志远程地址
+ * @param changelogTitle 首页更新日志标题
+ * @param changelogSummary 首页更新日志摘要
+ * @param donateEnabled 是否展示捐赠入口
  */
 data class RemoteConfig(
     val latestVersionCode: Int,
@@ -16,7 +24,15 @@ data class RemoteConfig(
     val isKillSwitchOn: Boolean,
     val isForce: Boolean,
     val updateMessage: String,
-    val noticeMessage: String
+    val noticeMessage: String,
+    val announcementTitle: String = "",
+    val announcementMessage: String = "",
+    val announcementUpdatedAt: String = "",
+    val announcementUrl: String = "",
+    val changelogUrl: String = "",
+    val changelogTitle: String = "",
+    val changelogSummary: String = "",
+    val donateEnabled: Boolean = true
 )
 
 /**
@@ -29,5 +45,13 @@ data class UpdateStatus(
     val message: String,            // 弹窗内容（用于 UpdateDialog）
     val isForce: Boolean,           // 是否强制更新
     val updateUrl: String,          // 更新链接
-    val noticeMessage: String      // 公告内容（用于 Toast）
+    val noticeMessage: String,      // 公告内容（用于 Toast）
+    val announcementTitle: String = "",
+    val announcementMessage: String = "",
+    val announcementUpdatedAt: String = "",
+    val announcementUrl: String = "",
+    val changelogUrl: String = "",
+    val changelogTitle: String = "",
+    val changelogSummary: String = "",
+    val donateEnabled: Boolean = true
 )

@@ -2,7 +2,6 @@ package com.shuaiqiu.fuckets100
 
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -29,13 +28,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.charset.StandardCharsets
 
 private const val TAG = "ReadScreen"
+private const val LOCAL_PAPER_LOADING_CATEGORY = "local_loading"
 
 // ============================================================================
 // 调试日志系统 - 用于跟踪应用内数据和答案的读取过程
@@ -99,6 +104,10 @@ private sealed class InitResult {
     data class Error(val message: String) : InitResult()
 }
 
+private fun ETS100AnswerReader.Paper.isLocalAnswerLoading(): Boolean {
+    return sections.any { it.category == LOCAL_PAPER_LOADING_CATEGORY }
+}
+
 // ========== 云端模式辅助函数喵~ ==========
 
 /**
@@ -130,7 +139,76 @@ private fun cloudHomeworkStatusLabel(status: String): String {
     return if (status == CloudHomeworkState.STATUS_HISTORY) "历史作业" else "当前作业"
 }
 
+private fun cloudHomeworkRequestStatuses(status: String): List<String> {
+    return if (status == CloudHomeworkState.STATUS_HISTORY) {
+        listOf(CloudHomeworkState.STATUS_EXPIRED, CloudHomeworkState.STATUS_HISTORY)
+    } else {
+        listOf(status)
+    }
+}
+
 private fun cloudHomeworkCacheKey(status: String, homeworkName: String): String = "$status:$homeworkName"
+
+private fun sortCloudQuestionsByOfficialOrder(
+    questions: List<ETS100AnswerReader.Question>
+): List<ETS100AnswerReader.Question> {
+    val displayOrders = questions.mapNotNull { it.displayOrder }
+    val hasReliableDisplayOrder = displayOrders.size == questions.size &&
+        displayOrders.distinct().size == questions.size &&
+        displayOrders.sorted() == (1..questions.size).toList()
+
+    if (!hasReliableDisplayOrder) {
+        return questions.mapIndexed { index, question ->
+            question.copy(
+                sectionOrder = index + 1,
+                displayOrder = index + 1
+            )
+        }
+    }
+
+    return questions
+        .withIndex()
+        .sortedWith(
+            compareBy<IndexedValue<ETS100AnswerReader.Question>> {
+                it.value.displayOrder ?: Int.MAX_VALUE
+            }.thenBy { it.index }
+        )
+        .mapIndexed { index, indexedQuestion ->
+            indexedQuestion.value.copy(sectionOrder = index + 1)
+        }
+}
+
+private fun normalizeCloudParsedSections(
+    sections: List<ETS100AnswerReader.Section>
+): List<ETS100AnswerReader.Section> {
+    val chooseSections = sections.filter { it.category == ETS100AnswerReader.StructureType.COLLECTOR_CHOOSE }
+    if (chooseSections.size <= 1) {
+        return sections.map { section ->
+            if (section.category == ETS100AnswerReader.StructureType.COLLECTOR_CHOOSE) {
+                section.copy(questions = sortCloudQuestionsByOfficialOrder(section.questions))
+            } else {
+                section
+            }
+        }
+    }
+
+    val firstChooseIndex = sections.indexOfFirst { it.category == ETS100AnswerReader.StructureType.COLLECTOR_CHOOSE }
+    val mergedChooseSection = chooseSections.first().copy(
+        questions = sortCloudQuestionsByOfficialOrder(chooseSections.flatMap { it.questions }),
+        originalContent = chooseSections.firstNotNullOfOrNull { it.originalContent }
+    )
+
+    val normalizedSections = mutableListOf<ETS100AnswerReader.Section>()
+    for ((index, section) in sections.withIndex()) {
+        if (index == firstChooseIndex) {
+            normalizedSections.add(mergedChooseSection)
+        }
+        if (section.category != ETS100AnswerReader.StructureType.COLLECTOR_CHOOSE) {
+            normalizedSections.add(section)
+        }
+    }
+    return normalizedSections
+}
 
 /**
  * 阅读界面 - 显示ETS 100答案的阅读界面
@@ -140,11 +218,35 @@ private fun cloudHomeworkCacheKey(status: String, homeworkName: String): String 
 @Composable
 fun ReadScreen(
     currentMode: ActivationMode,
-    onNavigateToSettings: () -> Unit,
-    onNavigateToShare: () -> Unit = {}
+    onNavigateToSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val cachedLocalSnapshot = remember { ReadPageStateStore.loadLocal(context) }
+    val cachedCloudSnapshot = remember {
+        ReadPageStateStore.loadCloud(context)?.also { snapshot ->
+            if (CloudHomeworkState.homeworkListsByStatus.isEmpty() &&
+                CloudHomeworkState.downloadedPapers.isEmpty()
+            ) {
+                CloudHomeworkState.selectedStatus = snapshot.selectedStatus
+                CloudHomeworkState.homeworkListsByStatus = snapshot.homeworkListsByStatus
+                CloudHomeworkState.cloudBaseUrl = snapshot.cloudBaseUrl
+                CloudHomeworkState.downloadedPapers = snapshot.downloadedPapers
+                CloudHomeworkState.downloadedHomeworkNames = snapshot.downloadedHomeworkNames
+                CloudHomeworkState.failedCloudHomeworks = snapshot.failedCloudHomeworks
+            }
+        }
+    }
+
+    fun openPaperDetail(paper: ETS100AnswerReader.Paper) {
+        val paperKey = PaperStore.put(paper)
+        context.startActivity(AnswerActivity.createIntent(context, paperKey))
+    }
+
+    fun openShare(paper: ETS100AnswerReader.Paper) {
+        val paperKey = PaperStore.put(paper)
+        context.startActivity(ShareActivity.createIntent(context, paperKey))
+    }
     
     // 调试相关状态 - 使用结构化日志系统
     var showDebugPanel by remember { mutableStateOf(false) }
@@ -152,12 +254,20 @@ fun ReadScreen(
     var showDataDetails by remember { mutableStateOf(false) }  // 是否显示详细数据信息
     
     // 文件列表状态
-    var dataFiles by remember { mutableStateOf<List<ETS100FileReader.FileItem>>(emptyList()) }
-    var resourceFiles by remember { mutableStateOf<List<ETS100FileReader.FileItem>>(emptyList()) }
-    var readerInfo by remember { mutableStateOf("") }
+    var dataFiles by remember {
+        mutableStateOf(if (currentMode != ActivationMode.CLOUD) cachedLocalSnapshot?.dataFiles.orEmpty() else emptyList())
+    }
+    var resourceFiles by remember {
+        mutableStateOf(if (currentMode != ActivationMode.CLOUD) cachedLocalSnapshot?.resourceFiles.orEmpty() else emptyList())
+    }
+    var readerInfo by remember {
+        mutableStateOf(if (currentMode != ActivationMode.CLOUD) cachedLocalSnapshot?.readerInfo.orEmpty() else "")
+    }
     
     // 试卷和题目状态
-    var papers by remember { mutableStateOf<List<ETS100AnswerReader.Paper>>(emptyList()) }
+    var papers by remember {
+        mutableStateOf(if (currentMode != ActivationMode.CLOUD) cachedLocalSnapshot?.papers.orEmpty() else emptyList())
+    }
     var selectedPaper by remember { mutableStateOf<ETS100AnswerReader.Paper?>(null) }
     var selectedSectionIndex by remember { mutableIntStateOf(-1) }
     var selectedQuestionIndex by remember { mutableIntStateOf(-1) }
@@ -166,7 +276,11 @@ fun ReadScreen(
     var showPaperDetail by remember { mutableStateOf(false) }
     
     // 加载状态
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember {
+        mutableStateOf(currentMode != ActivationMode.CLOUD && cachedLocalSnapshot == null)
+    }
+    var isParsingLocalAnswers by remember { mutableStateOf(false) }
+    var isDeleting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var reloadTrigger by remember { mutableIntStateOf(0) }  // 宝贝添加了重新加载触发器喵~
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }  // 宝贝添加了删除确认对话框状态喵~
@@ -191,6 +305,7 @@ fun ReadScreen(
     var downloadedPapers by remember { mutableStateOf(CloudHomeworkState.downloadedPapers) }
     var downloadedHomeworkNames by remember { mutableStateOf(CloudHomeworkState.downloadedHomeworkNames) }
     var cloudDownloadingHomeworks by remember { mutableStateOf(CloudHomeworkState.cloudDownloadingHomeworks) }
+    var cloudDownloadProgress by remember { mutableStateOf(CloudHomeworkState.cloudDownloadProgress) }
     var failedCloudHomeworks by remember { mutableStateOf(CloudHomeworkState.failedCloudHomeworks) }
 
     // 宝贝新增：云端作业占位符列表喵~ 现在显示所有作业，包括已下载的喵~
@@ -236,6 +351,32 @@ fun ReadScreen(
         debugLog = debugLog + entry
     }
 
+    fun saveCloudReadState() {
+        ReadPageStateStore.saveCloud(
+            context,
+            ReadPageStateStore.CloudSnapshot(
+                selectedStatus = selectedCloudHomeworkStatus,
+                homeworkListsByStatus = homeworkListsByStatus,
+                cloudBaseUrl = cloudBaseUrl,
+                downloadedPapers = downloadedPapers,
+                downloadedHomeworkNames = downloadedHomeworkNames,
+                failedCloudHomeworks = failedCloudHomeworks
+            )
+        )
+    }
+
+    fun updateCloudDownloadProgress(
+        cacheKey: String,
+        progress: CloudHomeworkState.DownloadProgress?
+    ) {
+        cloudDownloadProgress = if (progress == null) {
+            cloudDownloadProgress - cacheKey
+        } else {
+            cloudDownloadProgress + (cacheKey to progress)
+        }
+        CloudHomeworkState.cloudDownloadProgress = cloudDownloadProgress
+    }
+
     // ========== 云端模式辅助函数喵~ ==========
 
     /**
@@ -251,10 +392,10 @@ fun ReadScreen(
             return
         }
 
-        var token = ETS100AuthManager.getToken(context)
+        val savedToken = ETS100AuthManager.getToken(context)
         val parentId = ETS100AuthManager.getParentAccountId(context)
 
-        if (token == null || parentId == null) {
+        if (savedToken == null || parentId == null) {
             cloudHomeworkError = "登录信息不完整，请重新登录"
             addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 登录信息不完整")
             return
@@ -266,59 +407,76 @@ fun ReadScreen(
         CloudHomeworkState.error = null
         addLog(LogLevel.INFO, LogCategory.SYSTEM, "☁️ 开始加载${cloudHomeworkStatusLabel(status)}列表")
 
+        val requestStatuses = cloudHomeworkRequestStatuses(status)
         var lastError: Throwable? = null
         var success = false
-        val tokenNonNull = token!!
 
-        addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔐 自动重新登录获取最新 Token...")
-        var currentToken: String? = null
-        val phone = ETS100AuthManager.getPhone(context)
-        val savedPassword = ETS100AuthManager.getPassword(context)
-        val deviceCode = ETS100AuthManager.getDeviceCode(context)
-
-        if (phone != null && savedPassword != null) {
-            try {
-                val loginResult = ETS100ApiClient.login(phone, savedPassword, deviceCode)
-                loginResult.onSuccess { loginResponse ->
-                    val ecardResult = ETS100ApiClient.getEcardList(loginResponse.token)
-                    ecardResult.onSuccess { parentAccountId ->
-                        ETS100AuthManager.saveLoginInfo(context, phone, loginResponse.token, parentAccountId)
-                        currentToken = loginResponse.token
-                        addLog(LogLevel.INFO, LogCategory.SYSTEM, "✓ 登录成功，Token 已更新喵~")
-                    }.onFailure { e ->
-                        addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取父账户ID失败: ${e.message}")
+        suspend fun requestHomeworkLists(tokenForRequest: String): List<ETS100ApiClient.HomeworkListResponse> {
+            return coroutineScope {
+                requestStatuses.map { requestStatus ->
+                    async {
+                        requestStatus to ETS100ApiClient.getHomeworkList(tokenForRequest, parentId, requestStatus)
                     }
-                }.onFailure { e ->
-                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 登录失败: ${e.message}")
-                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "请在设置中重新登录")
+                }.awaitAll().mapNotNull { (requestStatus, result) ->
+                    result.onSuccess { response ->
+                        addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ status=$requestStatus 获取到 ${response.homeworks.size} 个作业")
+                        addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 API 返回的 base_url = ${response.baseUrl}")
+                    }.onFailure { e ->
+                        lastError = e
+                        addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ status=$requestStatus 获取作业列表失败: ${e.message}")
+                    }.getOrNull()
                 }
-            } catch (e: ETS100ApiClient.DeviceBindRequiredException) {
-                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 设备需要重新绑定，请在设置中重新登录")
             }
-        } else {
-            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 未保存密码，请先在设置中登录")
         }
 
-        val tokenForRequest = currentToken
-        if (tokenForRequest == null) {
-            cloudHomeworkError = "获取 Token 失败，请重新登录"
-            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取 Token 失败，无法加载作业列表")
-            isLoadingCloudHomework = false
-            return
+        addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔐 使用已保存 Token 请求作业列表")
+        var responses = requestHomeworkLists(savedToken)
+
+        if (responses.isEmpty()) {
+            addLog(LogLevel.WARN, LogCategory.SYSTEM, "保存的 Token 请求失败，尝试重新登录后重试")
+            val phone = ETS100AuthManager.getPhone(context)
+            val savedPassword = ETS100AuthManager.getPassword(context)
+            val deviceCode = ETS100AuthManager.getDeviceCode(context)
+
+            if (phone != null && savedPassword != null) {
+                try {
+                    val loginResult = ETS100ApiClient.login(phone, savedPassword, deviceCode)
+                    loginResult.onSuccess { loginResponse ->
+                        val ecardResult = ETS100ApiClient.getEcardList(loginResponse.token)
+                        ecardResult.onSuccess { parentAccountId ->
+                            ETS100AuthManager.saveLoginInfo(context, phone, loginResponse.token, parentAccountId)
+                            addLog(LogLevel.INFO, LogCategory.SYSTEM, "✓ 登录成功，Token 已更新，正在重试作业列表")
+                            responses = requestHomeworkLists(loginResponse.token)
+                        }.onFailure { e ->
+                            lastError = e
+                            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取父账户ID失败: ${e.message}")
+                        }
+                    }.onFailure { e ->
+                        lastError = e
+                        addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 登录失败: ${e.message}")
+                        addLog(LogLevel.ERROR, LogCategory.SYSTEM, "请在设置中重新登录")
+                    }
+                } catch (e: ETS100ApiClient.DeviceBindRequiredException) {
+                    lastError = e
+                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 设备需要重新绑定，请在设置中重新登录")
+                }
+            } else {
+                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 未保存密码，请先在设置中登录")
+            }
         }
 
-        val result = ETS100ApiClient.getHomeworkList(tokenForRequest, parentId, status)
-        result.onSuccess { response ->
-            homeworkListsByStatus = homeworkListsByStatus + (status to response.homeworks)
-            cloudBaseUrl = response.baseUrl
+        val mergedHomeworks = responses.flatMap { it.homeworks }
+        val latestBaseUrl = responses.lastOrNull()?.baseUrl ?: cloudBaseUrl
+        val hasAnySuccessfulRequest = responses.isNotEmpty()
+
+        if (hasAnySuccessfulRequest) {
+            homeworkListsByStatus = homeworkListsByStatus + (status to mergedHomeworks)
+            cloudBaseUrl = latestBaseUrl
             CloudHomeworkState.homeworkListsByStatus = homeworkListsByStatus
-            CloudHomeworkState.cloudBaseUrl = response.baseUrl
-            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 获取到 ${response.homeworks.size} 个${cloudHomeworkStatusLabel(status)}")
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 API 返回的 base_url = ${response.baseUrl}")
+            CloudHomeworkState.cloudBaseUrl = latestBaseUrl
+            saveCloudReadState()
+            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 合并得到 ${mergedHomeworks.size} 个${cloudHomeworkStatusLabel(status)}")
             success = true
-        }.onFailure { e ->
-            lastError = e
-            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取作业列表失败: ${e.message}")
         }
 
         if (!success) {
@@ -339,10 +497,7 @@ fun ReadScreen(
         selectedPaper = null
         showPaperDetail = false
         cloudHomeworkError = CloudHomeworkState.error
-
-        if (!homeworkListsByStatus.containsKey(status)) {
-            scope.launch { loadCloudHomeworkList(status) }
-        }
+        saveCloudReadState()
     }
 
     /**
@@ -350,18 +505,36 @@ fun ReadScreen(
      * 宝贝删除所有已下载的云端作业文件喵~
      */
     fun clearCloudHomeworkCache() {
-        val cacheDir = File(context.cacheDir, "cloud_homework")
-        if (cacheDir.exists()) {
-            cacheDir.deleteRecursively()
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "🗑️ 已删除云端缓存目录")
+        if (isDeleting) return
+        isDeleting = true
+        scope.launch {
+            try {
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "🗑️ 开始后台清除云端缓存")
+                withContext(Dispatchers.IO) {
+                    val cacheDir = File(context.cacheDir, "cloud_homework")
+                    if (cacheDir.exists()) {
+                        cacheDir.deleteRecursively()
+                    }
+                }
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "🗑️ 已删除云端缓存目录")
+                downloadedPapers = emptyMap()
+                downloadedHomeworkNames = emptySet()
+                cloudDownloadingHomeworks = emptySet()
+                cloudDownloadProgress = emptyMap()
+                failedCloudHomeworks = emptySet()
+                papers = emptyList()
+                homeworkListsByStatus = emptyMap()
+                selectedCloudHomeworkStatus = CloudHomeworkState.STATUS_CURRENT
+                CloudHomeworkState.clear()
+                ReadPageStateStore.clearCloud(context)
+                Toast.makeText(context, "已清除所有云端缓存", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 清除云端缓存失败: ${e.message}")
+                Toast.makeText(context, "删除失败: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                isDeleting = false
+            }
         }
-        downloadedPapers = emptyMap()
-        downloadedHomeworkNames = emptySet()
-        papers = emptyList()
-        homeworkListsByStatus = emptyMap()
-        selectedCloudHomeworkStatus = CloudHomeworkState.STATUS_CURRENT
-        CloudHomeworkState.clear()
-        Toast.makeText(context, "已清除所有云端缓存", Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -385,6 +558,10 @@ fun ReadScreen(
         failedCloudHomeworks = failedCloudHomeworks - cacheKey
         CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
         CloudHomeworkState.failedCloudHomeworks = failedCloudHomeworks
+        updateCloudDownloadProgress(
+            cacheKey,
+            CloudHomeworkState.DownloadProgress(currentFileName = homeworkInfo.name)
+        )
 
         try {
             val cacheDir = File(context.cacheDir, "cloud_homework")
@@ -414,8 +591,27 @@ fun ReadScreen(
                 val zipFile = File(cacheDir, zipFileName)
                 if (zipFile.exists() && zipFile.length() > 0) {
                     addLog(LogLevel.INFO, LogCategory.SYSTEM, "📦 文件已存在，跳过下载: ${zipFileName}")
+                    updateCloudDownloadProgress(
+                        cacheKey,
+                        CloudHomeworkState.DownloadProgress(
+                            downloadedBytes = zipFile.length(),
+                            totalBytes = zipFile.length(),
+                            currentFileName = zipFileName
+                        )
+                    )
                 } else {
-                    val downloadResult = ETS100ApiClient.downloadFile(zipUrl, zipFile)
+                    val downloadResult = ETS100ApiClient.downloadFile(zipUrl, zipFile) { downloadedBytes, totalBytes ->
+                        withContext(Dispatchers.Main) {
+                            updateCloudDownloadProgress(
+                                cacheKey,
+                                CloudHomeworkState.DownloadProgress(
+                                    downloadedBytes = downloadedBytes,
+                                    totalBytes = totalBytes,
+                                    currentFileName = zipFileName
+                                )
+                            )
+                        }
+                    }
                     downloadResult.onFailure { e ->
                         addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 下载失败 ${content.groupName}: ${e.message}")
                     }
@@ -530,21 +726,29 @@ fun ReadScreen(
                 throw Exception("未能解析到任何题目")
             }
 
-            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "📝 共解析到 ${allSections.size} 个题型，${questionIndex} 道题")
+            val normalizedSections = normalizeCloudParsedSections(allSections)
+            if (normalizedSections.size != allSections.size) {
+                addLog(LogLevel.INFO, LogCategory.SECTION, "🔀 已合并云端听后选择分包并按正式题号排序")
+            }
+
+            addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "📝 共解析到 ${normalizedSections.size} 个题型，${questionIndex} 道题")
 
             val paper = ETS100AnswerReader.Paper(
                 paperId = cacheKey.hashCode().toLong(),
                 title = homeworkInfo.name,
                 dataFileName = cacheKey,
                 fileSize = 0L,
-                sections = allSections
+                sections = normalizedSections
             )
             downloadedPapers = downloadedPapers + (cacheKey to listOf(paper))
             downloadedHomeworkNames = downloadedHomeworkNames + cacheKey
             cloudDownloadingHomeworks = cloudDownloadingHomeworks - cacheKey
+            cloudDownloadProgress = cloudDownloadProgress - cacheKey
             CloudHomeworkState.downloadedPapers = downloadedPapers
             CloudHomeworkState.downloadedHomeworkNames = downloadedHomeworkNames
             CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
+            CloudHomeworkState.cloudDownloadProgress = cloudDownloadProgress
+            saveCloudReadState()
             // 宝贝下载成功后不再切换页面，只标记已下载，停留作业列表喵~
             Toast.makeText(context, "下载并解析成功！", Toast.LENGTH_SHORT).show()
 
@@ -552,15 +756,30 @@ fun ReadScreen(
             addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 下载解析失败: ${e.message}")
             Toast.makeText(context, "下载失败: ${e.message}", Toast.LENGTH_LONG).show()
             cloudDownloadingHomeworks = cloudDownloadingHomeworks - cacheKey
+            cloudDownloadProgress = cloudDownloadProgress - cacheKey
             failedCloudHomeworks = failedCloudHomeworks + cacheKey
             CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
+            CloudHomeworkState.cloudDownloadProgress = cloudDownloadProgress
             CloudHomeworkState.failedCloudHomeworks = failedCloudHomeworks
+            saveCloudReadState()
         }
     }
 
     // 初始化加载 - 使用 rememberUpdatedState 确保最新的 currentMode
     // 宝贝添加了 reloadTrigger 依赖，这样点击读取按钮时就可以重新加载喵~
     val currentModeRef = remember { mutableStateOf(currentMode) }
+    LaunchedEffect(currentMode) {
+        if (currentMode != ActivationMode.CLOUD) return@LaunchedEffect
+        while (true) {
+            cloudDownloadingHomeworks = CloudHomeworkState.cloudDownloadingHomeworks
+            cloudDownloadProgress = CloudHomeworkState.cloudDownloadProgress
+            downloadedPapers = CloudHomeworkState.downloadedPapers
+            downloadedHomeworkNames = CloudHomeworkState.downloadedHomeworkNames
+            failedCloudHomeworks = CloudHomeworkState.failedCloudHomeworks
+            delay(500)
+        }
+    }
+
     LaunchedEffect(currentMode, reloadTrigger) {
         currentModeRef.value = currentMode
         
@@ -568,6 +787,19 @@ fun ReadScreen(
         if (currentMode == ActivationMode.CLOUD) {
             addLog(LogLevel.INFO, LogCategory.SYSTEM, "☁️ 云端模式，等待用户点击读取按钮加载作业列表")
             isLoading = false
+            isParsingLocalAnswers = false
+            return@LaunchedEffect
+        }
+
+        if (reloadTrigger == 0 && cachedLocalSnapshot != null) {
+            readerInfo = cachedLocalSnapshot.readerInfo
+            dataFiles = cachedLocalSnapshot.dataFiles
+            resourceFiles = cachedLocalSnapshot.resourceFiles
+            papers = cachedLocalSnapshot.papers
+            errorMessage = null
+            isLoading = false
+            isParsingLocalAnswers = false
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "已恢复上次读取的本地试卷内容")
             return@LaunchedEffect
         }
         
@@ -597,9 +829,9 @@ fun ReadScreen(
             }
             addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 模式检查通过" + if (forceReadMode) " (强执模式跳过检查)" else "")
             
-            // 在 IO 线程执行文件操作
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "开始 IO 操作...")
-            val result = withContext(Dispatchers.IO) {
+            // 在 IO 线程执行文件扫描，先把试卷列表显示出来
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "开始扫描试卷列表...")
+            val summaryResult = withContext(Dispatchers.IO) {
                 try {
                     // 获取阅读器
                     addLog(LogLevel.DEBUG, LogCategory.FILE, "获取文件阅读器...")
@@ -627,54 +859,11 @@ fun ReadScreen(
                     val resourceFilesList = reader.listFiles(resourceDirPath)
                     addLog(LogLevel.SUCCESS, LogCategory.FILE, "✓ 找到 ${resourceFilesList.size} 个资源文件")
                     
-                    // 读取试卷
+                    // 先轻量读取试卷列表，不在这里解析完整答案
                     addLog(LogLevel.INFO, LogCategory.PAPER, "=" .repeat(40))
-                    addLog(LogLevel.INFO, LogCategory.PAPER, "📚 开始读取试卷数据...")
-                    val paperList = ETS100AnswerReader.readPapers(context, currentMode)
-                    addLog(LogLevel.SUCCESS, LogCategory.PAPER, "✓ 成功读取 ${paperList.size} 份试卷")
-                    
-                    // 详细遍历每份试卷
-                    if (paperList.isNotEmpty()) {
-                        addLog(LogLevel.INIT, LogCategory.PAPER, "-".repeat(40))
-                        paperList.forEachIndexed { paperIndex, paper ->
-                            addLog(LogLevel.INIT, LogCategory.PAPER, "📄 试卷 #${paperIndex + 1}: ${paper.title} [${paper.regionLabel}]")
-                            addLog(LogLevel.DEBUG, LogCategory.PAPER, "   ID: ${paper.paperId}")
-                            addLog(LogLevel.DEBUG, LogCategory.PAPER, "   分区数: ${paper.sections.size}")
-                            
-                            // 详细遍历每个分区
-                            paper.sections.forEachIndexed { sectionIndex, section ->
-                                addLog(LogLevel.DEBUG, LogCategory.SECTION, "   ├─ Section #${sectionIndex + 1}: ${section.title}")
-                                addLog(LogLevel.DEBUG, LogCategory.SECTION, "   │   Category: ${section.category}")
-                                addLog(LogLevel.DEBUG, LogCategory.SECTION, "   │   题目数: ${section.questions.size}")
-                                
-                                // 详细遍历每道题目
-                                section.questions.take(3).forEachIndexed { qIndex, question ->
-                                    val answerStatus = if (question.answer.isNotEmpty()) "✓" else "✗"
-                                    addLog(
-                                        if (question.answer.isNotEmpty()) LogLevel.SUCCESS else LogLevel.WARN,
-                                        LogCategory.QUESTION,
-                                        "   │   ├─ Q${qIndex + 1}: ${question.question.take(30)}... [答案: $answerStatus]"
-                                    )
-                                    if (question.answer.isNotEmpty()) {
-                                        addLog(LogLevel.DEBUG, LogCategory.ANSWER, "   │   │   答案: ${question.answer.take(50)}")
-                                    }
-                                }
-                                if (section.questions.size > 3) {
-                                    addLog(LogLevel.WARN, LogCategory.QUESTION, "   │   └─ ... 还有 ${section.questions.size - 3} 道题目")
-                                }
-                            }
-                            addLog(LogLevel.INIT, LogCategory.PAPER, "-".repeat(40))
-                        }
-                    }
-                    
-                    addLog(LogLevel.INIT, LogCategory.PAPER, "📊 试卷统计:")
-                    addLog(LogLevel.INIT, LogCategory.PAPER, "   总试卷数: ${paperList.size}")
-                    val totalSections = paperList.sumOf { it.sections.size }
-                    val totalQuestions = paperList.sumOf { it.sections.sumOf { s -> s.questions.size } }
-                    val answeredQuestions = paperList.sumOf { it.sections.sumOf { s -> s.questions.count { q -> q.answer.isNotEmpty() } } }
-                    addLog(LogLevel.INIT, LogCategory.SECTION, "   总分区数: $totalSections")
-                    addLog(LogLevel.INIT, LogCategory.QUESTION, "   总题目数: $totalQuestions")
-                    addLog(LogLevel.SUCCESS, LogCategory.ANSWER, "   已答题目: $answeredQuestions (${(answeredQuestions * 100.0 / totalQuestions).toInt()}%)")
+                    addLog(LogLevel.INFO, LogCategory.PAPER, "📚 开始读取试卷列表...")
+                    val paperList = ETS100AnswerReader.readPaperSummaries(context, currentMode)
+                    addLog(LogLevel.SUCCESS, LogCategory.PAPER, "✓ 成功扫描到 ${paperList.size} 份试卷")
                     
                     InitResult.Success(
                         readerInfo = reader.toString(),
@@ -688,18 +877,76 @@ fun ReadScreen(
                 }
             }
             
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "处理加载结果...")
-            when (result) {
+            addLog(LogLevel.INFO, LogCategory.SYSTEM, "处理试卷列表扫描结果...")
+            when (summaryResult) {
                 is InitResult.Success -> {
-                    readerInfo = result.readerInfo
-                    dataFiles = result.dataFiles
-                    resourceFiles = result.resourceFiles
-                    papers = result.papers
-                    addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 初始化完成！数据加载成功~")
+                    readerInfo = summaryResult.readerInfo
+                    dataFiles = summaryResult.dataFiles
+                    resourceFiles = summaryResult.resourceFiles
+                    papers = summaryResult.papers
+                    errorMessage = null
+                    isLoading = false
+                    addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 已显示 ${summaryResult.papers.size} 份试卷，开始后台解析答案")
+
+                    if (summaryResult.papers.isNotEmpty()) {
+                        isParsingLocalAnswers = true
+                        val fullResult = withContext(Dispatchers.IO) {
+                            try {
+                                val paperList = ETS100AnswerReader.readPapersParallel(context, currentMode)
+                                InitResult.Success(
+                                    readerInfo = summaryResult.readerInfo,
+                                    dataFiles = summaryResult.dataFiles,
+                                    resourceFiles = summaryResult.resourceFiles,
+                                    papers = paperList
+                                )
+                            } catch (e: Exception) {
+                                InitResult.Error(e.message ?: "未知错误")
+                            }
+                        }
+
+                        when (fullResult) {
+                            is InitResult.Success -> {
+                                if (fullResult.papers.isNotEmpty()) {
+                                    papers = fullResult.papers
+                                    ReadPageStateStore.saveLocal(
+                                        context,
+                                        ReadPageStateStore.LocalSnapshot(
+                                            readerInfo = fullResult.readerInfo,
+                                            dataFiles = fullResult.dataFiles,
+                                            resourceFiles = fullResult.resourceFiles,
+                                            papers = fullResult.papers
+                                        )
+                                    )
+
+                                    addLog(LogLevel.INIT, LogCategory.PAPER, "📊 试卷统计:")
+                                    addLog(LogLevel.INIT, LogCategory.PAPER, "   总试卷数: ${fullResult.papers.size}")
+                                    val totalSections = fullResult.papers.sumOf { it.sections.size }
+                                    val totalQuestions = fullResult.papers.sumOf { it.sections.sumOf { s -> s.questions.size } }
+                                    val answeredQuestions = fullResult.papers.sumOf { it.sections.sumOf { s -> s.questions.count { q -> q.answer.isNotEmpty() } } }
+                                    val answeredPercent = if (totalQuestions > 0) {
+                                        (answeredQuestions * 100.0 / totalQuestions).toInt()
+                                    } else {
+                                        0
+                                    }
+                                    addLog(LogLevel.INIT, LogCategory.SECTION, "   总分区数: $totalSections")
+                                    addLog(LogLevel.INIT, LogCategory.QUESTION, "   总题目数: $totalQuestions")
+                                    addLog(LogLevel.SUCCESS, LogCategory.ANSWER, "   已答题目: $answeredQuestions ($answeredPercent%)")
+                                    addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 答案后台解析完成")
+                                } else {
+                                    addLog(LogLevel.WARN, LogCategory.SYSTEM, "后台解析未返回完整试卷，保留当前试卷列表")
+                                }
+                            }
+                            is InitResult.Error -> {
+                                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 后台解析答案失败: ${fullResult.message}")
+                            }
+                        }
+                    } else {
+                        addLog(LogLevel.WARN, LogCategory.SYSTEM, "未扫描到试卷，跳过后台答案解析")
+                    }
                 }
                 is InitResult.Error -> {
-                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 加载失败: ${result.message}")
-                    errorMessage = "加载失败: ${result.message}"
+                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 加载失败: ${summaryResult.message}")
+                    errorMessage = "加载失败: ${summaryResult.message}"
                 }
             }
         } catch (e: Exception) {
@@ -707,6 +954,7 @@ fun ReadScreen(
             errorMessage = "初始化异常: ${e.message}"
         } finally {
             isLoading = false
+            isParsingLocalAnswers = false
             addLog(LogLevel.INIT, LogCategory.SYSTEM, "初始化流程结束喵~")
         }
     }
@@ -831,8 +1079,7 @@ fun ReadScreen(
                                 },
                                 categoryColors = categoryColors,
                                 onShare = {
-                                    FeApplication.sharePaper = paper
-                                    onNavigateToShare()
+                                    openShare(paper)
                                 }
                             )
                         } else {
@@ -862,6 +1109,7 @@ fun ReadScreen(
                                     val isDownloaded = downloadedHomeworkNames.contains(homeworkKey)
                                     val isDownloading = cloudDownloadingHomeworks.contains(homeworkKey)
                                     val isFailed = failedCloudHomeworks.contains(homeworkKey)
+                                    val downloadProgress = cloudDownloadProgress[homeworkKey]
                                     val paper = if (isDownloaded) {
                                         downloadedPapers[homeworkKey]?.firstOrNull() ?: createCloudHomeworkPlaceholder(homeworkInfo)
                                     } else {
@@ -874,18 +1122,20 @@ fun ReadScreen(
                                             if (isDownloaded) {
                                                 // 宝贝已下载，点击查看详情喵~
                                                 downloadedPapers[homeworkKey]?.firstOrNull()?.let { downloadedPaper ->
-                                                    selectedPaper = downloadedPaper
-                                                    showPaperDetail = true
+                                                    openPaperDetail(downloadedPaper)
                                                 }
                                             } else if (!isDownloading) {
                                                 // 宝贝未下载，开始下载喵~
-                                                scope.launch { downloadAndParseHomework(homeworkInfo, selectedCloudHomeworkStatus) }
+                                                AppCoroutineScope.scope.launch {
+                                                    downloadAndParseHomework(homeworkInfo, selectedCloudHomeworkStatus)
+                                                }
                                             }
                                         },
                                         categoryColors = categoryColors,
                                         isLoading = isDownloading,
                                         isFailed = isFailed,
-                                        isDownloaded = isDownloaded
+                                        isDownloaded = isDownloaded,
+                                        downloadProgress = downloadProgress
                                     )
                                 }
                             }
@@ -945,8 +1195,7 @@ fun ReadScreen(
                                 categoryColors = categoryColors,
                                 onShare = {
                                     // 保存试卷到 FeApplication 并跳转到分享页面
-                                    FeApplication.sharePaper = paper
-                                        onNavigateToShare()
+                                    openShare(paper)
                                 }
                             )
                         } else {
@@ -956,15 +1205,24 @@ fun ReadScreen(
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
+                                if (isParsingLocalAnswers) {
+                                    item {
+                                        LocalAnswerParsingCard()
+                                    }
+                                }
                                 itemsIndexed(papers) { paperIndex, paper ->
+                                    val isLocalAnswerLoading = paper.isLocalAnswerLoading()
                                     PaperListItem(
                                         paper = paper,
                                         paperIndex = paperIndex,
                                         onClick = {
-                                            selectedPaper = paper
-                                            showPaperDetail = true
+                                            if (!isLocalAnswerLoading) {
+                                                openPaperDetail(paper)
+                                            }
                                         },
-                                        categoryColors = categoryColors
+                                        categoryColors = categoryColors,
+                                        isLoading = isLocalAnswerLoading,
+                                        isClickEnabled = !isLocalAnswerLoading
                                     )
                                 }
                             }
@@ -984,32 +1242,50 @@ fun ReadScreen(
                             // 云端模式：清除缓存喵~
                             clearCloudHomeworkCache()
                         } else {
-                            // 本地模式：删除 data 和 resource 目录喵~
-                            addLog(LogLevel.WARN, LogCategory.FILE, "🗑️ 开始删除 data 和 resource 目录...")
+                            if (isDeleting) return@DeleteConfirmDialog
+                            isDeleting = true
+                            scope.launch {
+                                try {
+                                    // 本地模式：删除 data 和 resource 目录喵~
+                                    addLog(LogLevel.WARN, LogCategory.FILE, "🗑️ 开始后台删除 data 和 resource 目录...")
 
-                            // 获取当前模式
-                            val currentModeValue = ShizukuManager.getCurrentActivationMode()
+                                    val currentModeValue = currentMode
+                                    addLog(LogLevel.INFO, LogCategory.FILE, "   ├─ 删除模式: ${currentModeValue.title}")
 
-                            // 删除 data 目录
-                            val dataPath = ETS100FileReader.Path.getDataDir()
-                            val dataDeleted = ETS100FileReader.deleteDirectory(currentModeValue, dataPath, context)
-                            if (dataDeleted) {
-                                addLog(LogLevel.SUCCESS, LogCategory.FILE, "✅ data 目录删除成功")
-                            } else {
-                                addLog(LogLevel.ERROR, LogCategory.FILE, "❌ data 目录删除失败")
+                                    val deleteResult = withContext(Dispatchers.IO) {
+                                        val dataPath = ETS100FileReader.Path.getDataDir()
+                                        val resourcePath = ETS100FileReader.Path.getResourceDir()
+                                        val dataDeleted = ETS100FileReader.deleteDirectory(currentModeValue, dataPath, context)
+                                        val resourceDeleted = ETS100FileReader.deleteDirectory(currentModeValue, resourcePath, context)
+                                        dataDeleted to resourceDeleted
+                                    }
+
+                                    if (deleteResult.first) {
+                                        addLog(LogLevel.SUCCESS, LogCategory.FILE, "✅ data 目录删除成功")
+                                    } else {
+                                        addLog(LogLevel.ERROR, LogCategory.FILE, "❌ data 目录删除失败")
+                                    }
+
+                                    if (deleteResult.second) {
+                                        addLog(LogLevel.SUCCESS, LogCategory.FILE, "✅ resource 目录删除成功")
+                                    } else {
+                                        addLog(LogLevel.ERROR, LogCategory.FILE, "❌ resource 目录删除失败")
+                                    }
+
+                                    ReadPageStateStore.clearLocal(context)
+                                    papers = emptyList()
+                                    selectedPaper = null
+                                    showPaperDetail = false
+
+                                    // 刷新页面重新读取
+                                    reloadTrigger++
+                                } catch (e: Exception) {
+                                    addLog(LogLevel.ERROR, LogCategory.FILE, "❌ 删除失败: ${e.message}")
+                                    Toast.makeText(context, "删除失败: ${e.message}", Toast.LENGTH_LONG).show()
+                                } finally {
+                                    isDeleting = false
+                                }
                             }
-
-                            // 删除 resource 目录
-                            val resourcePath = ETS100FileReader.Path.getResourceDir()
-                            val resourceDeleted = ETS100FileReader.deleteDirectory(currentModeValue, resourcePath, context)
-                            if (resourceDeleted) {
-                                addLog(LogLevel.SUCCESS, LogCategory.FILE, "✅ resource 目录删除成功")
-                            } else {
-                                addLog(LogLevel.ERROR, LogCategory.FILE, "❌ resource 目录删除失败")
-                            }
-
-                            // 刷新页面重新读取
-                            reloadTrigger++
                         }
                     },
                     isCloudMode = currentMode == ActivationMode.CLOUD
@@ -1026,6 +1302,80 @@ fun ReadScreen(
                     }
                 )
             }
+
+            if (isDeleting) {
+                DeletingOverlay()
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeletingOverlay() {
+    Dialog(onDismissRequest = {}) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "正在删除...",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "请稍等，文件清理在后台执行",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocalAnswerParsingCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "正在后台解析答案",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "试卷列表已可查看，答案完成后会自动更新",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -1072,6 +1422,7 @@ private fun CloudHomeworkStatusToggle(
             selected = !isHistory,
             onClick = { onStatusChange(CloudHomeworkState.STATUS_CURRENT) },
             shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+            colors = cloudHomeworkSegmentedButtonColors(),
             icon = {}
         ) {
             Text("当前作业")
@@ -1080,11 +1431,26 @@ private fun CloudHomeworkStatusToggle(
             selected = isHistory,
             onClick = { onStatusChange(CloudHomeworkState.STATUS_HISTORY) },
             shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+            colors = cloudHomeworkSegmentedButtonColors(),
             icon = {}
         ) {
             Text("历史作业")
         }
     }
+}
+
+@Composable
+private fun cloudHomeworkSegmentedButtonColors(): SegmentedButtonColors {
+    return SegmentedButtonDefaults.colors(
+        activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        inactiveContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        disabledActiveContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        disabledActiveContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        disabledInactiveContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        disabledInactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f)
+    )
 }
 
 /**
@@ -1168,6 +1534,12 @@ private fun ExpandableCrossFab(
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(
+                defaultElevation = 0.dp,
+                pressedElevation = 0.dp,
+                focusedElevation = 0.dp,
+                hoveredElevation = 0.dp
+            ),
             modifier = Modifier.size(56.dp)
         ) {
             Box(
@@ -1206,7 +1578,7 @@ private fun SubFabItem(
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
             shape = RoundedCornerShape(4.dp),
-            shadowElevation = 2.dp
+            shadowElevation = 0.dp
         ) {
             Text(
                 text = label,
@@ -1224,6 +1596,12 @@ private fun SubFabItem(
             containerColor = containerColor,
             contentColor = contentColor,
             shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(
+                defaultElevation = 0.dp,
+                pressedElevation = 0.dp,
+                focusedElevation = 0.dp,
+                hoveredElevation = 0.dp
+            ),
             modifier = Modifier.size(48.dp)
         ) {
             Icon(
@@ -1970,7 +2348,7 @@ private fun SectionDetailItem(
                         Text(
                             text = section.title,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
@@ -1984,13 +2362,13 @@ private fun SectionDetailItem(
                     Text(
                         text = "${section.questions.size} 题",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Icon(
                         if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = null,
-                        tint = Color.Gray,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -1999,7 +2377,7 @@ private fun SectionDetailItem(
             // 展开的题目列表
             if (expanded) {
                 Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(color = Color(0xFF4D4D4D))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 section.questions.forEachIndexed { qIndex, question ->
@@ -2031,7 +2409,11 @@ private fun QuestionDetailItem(
     
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (hasAnswer) Color(0xFF2DD4BF).copy(alpha = 0.1f) else Color(0xFF4D4D4D)
+            containerColor = if (hasAnswer) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.30f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            }
         ),
         modifier = Modifier.clickable { expanded = !expanded }
     ) {
@@ -2059,7 +2441,7 @@ private fun QuestionDetailItem(
                         Icon(
                             if (hasAnswer) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                             contentDescription = null,
-                            tint = if (hasAnswer) Color(0xFF2DD4BF) else Color.Gray,
+                            tint = if (hasAnswer) Color(0xFF2DD4BF) else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -2067,7 +2449,7 @@ private fun QuestionDetailItem(
                     Text(
                         text = question.question,
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = if (expanded) Int.MAX_VALUE else 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -2075,7 +2457,7 @@ private fun QuestionDetailItem(
                 Icon(
                     if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     contentDescription = null,
-                    tint = Color.Gray,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -2083,7 +2465,7 @@ private fun QuestionDetailItem(
             // 展开时显示完整信息
             if (expanded) {
                 Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(color = Color(0xFF5D5D5D))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 // 选项列表
@@ -2091,7 +2473,7 @@ private fun QuestionDetailItem(
                     Text(
                         text = "📝 选项列表:",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     question.answerList.forEachIndexed { index, answer ->
@@ -2108,7 +2490,7 @@ private fun QuestionDetailItem(
                             Text(
                                 text = answer,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -2132,9 +2514,9 @@ private fun QuestionDetailItem(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = question.answer,
+                            text = question.formattedAnswer,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -2284,10 +2666,10 @@ private fun QuestionBlock(
             Spacer(modifier = Modifier.height(12.dp))
             
             // 原文折叠项
-            if (!question.originalText.isNullOrEmpty()) {
+            if (question.formattedOriginalText.isNotEmpty()) {
                 CollapsibleItem(
                     title = "📖 原文",
-                    content = question.originalText!!,
+                    content = question.formattedOriginalText,
                     defaultExpanded = defaultOriginalExpanded
                 )
             }
@@ -2296,7 +2678,7 @@ private fun QuestionBlock(
             if (question.answerList.isNotEmpty()) {
                 CollapsibleItem(
                     title = "✅ 答案",
-                    content = question.answerList.joinToString("\n") { "${it}" },
+                    content = question.formattedAnswer,
                     defaultExpanded = defaultAnswerExpanded
                 )
             }
@@ -2310,16 +2692,22 @@ private fun QuestionBlock(
  * 已移除搜索功能，显示所有题目喵~
  */
 @Composable
-private fun PaperDetailScreen(
+fun PaperDetailScreen(
     paper: ETS100AnswerReader.Paper,
     onBack: () -> Unit,
     categoryColors: Map<String, Color>,
     onShare: () -> Unit = {}
 ) {
-    // 宝贝添加返回手势支持喵~
-    BackHandler(onBack = onBack)
-    
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+                )
+            )
+    ) {
         // 获取默认颜色 - 需要在 Composable 上下文中获取
         val defaultPrimaryColor = MaterialTheme.colorScheme.primary
         
@@ -2367,7 +2755,12 @@ private fun PaperDetailScreen(
         // 题目列表
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 16.dp,
+                end = 16.dp,
+                bottom = 16.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             paper.sections.forEachIndexed { sectionIndex, section ->
@@ -2445,8 +2838,8 @@ private fun MergedQuestionBlock(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // 块头部 - 显示原文和题目数量
-            val originalText = questions.firstOrNull()?.originalText
-            if (!originalText.isNullOrBlank()) {
+            val originalText = questions.firstOrNull()?.formattedOriginalText.orEmpty()
+            if (originalText.isNotBlank()) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
@@ -2580,7 +2973,7 @@ private fun QuestionItemSimple(
         if (question.answerList.isNotEmpty()) {
             CollapsibleItem(
                 title = "✅ 答案",
-                content = question.answerList.joinToString(" | "),
+                content = question.formattedAnswer,
                 defaultExpanded = false
             )
         } else {
@@ -2622,7 +3015,9 @@ private fun PaperListItem(
     categoryColors: Map<String, Color>,
     isLoading: Boolean = false,
     isFailed: Boolean = false,
-    isDownloaded: Boolean = false  // 宝贝标记是否已下载喵~
+    isDownloaded: Boolean = false,  // 宝贝标记是否已下载喵~
+    isClickEnabled: Boolean = true,
+    downloadProgress: CloudHomeworkState.DownloadProgress? = null
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     
@@ -2652,7 +3047,10 @@ private fun PaperListItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(
+                enabled = isClickEnabled,
+                onClick = onClick
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
@@ -2710,9 +3108,12 @@ private fun PaperListItem(
                     }
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     // 宝贝显示地区标签和标题喵~
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         // 宝贝添加地区标签 Badge 喵~
                         if (paper.regionLabel != "未知") {
                             Surface(
@@ -2727,6 +3128,7 @@ private fun PaperListItem(
                                     text = paper.regionLabel,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White,
+                                    maxLines = 1,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -2736,12 +3138,16 @@ private fun PaperListItem(
                             text = paper.title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
                         // 宝贝添加已下载标记喵~
                         if (isDownloaded) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
+                                modifier = Modifier.widthIn(min = 48.dp),
                                 color = Color(0xFF22C55E),
                                 shape = RoundedCornerShape(4.dp)
                             ) {
@@ -2749,6 +3155,8 @@ private fun PaperListItem(
                                     text = "已下载",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White,
+                                    maxLines = 1,
+                                    textAlign = TextAlign.Center,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -2756,7 +3164,10 @@ private fun PaperListItem(
                     }
                     Spacer(modifier = Modifier.height(2.dp))
                     // 宝贝显示分区类型，用对应颜色喵~
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         sectionColors.forEachIndexed { index, color ->
                             if (index > 0) {
                                 Text(
@@ -2783,11 +3194,35 @@ private fun PaperListItem(
                     // 宝贝根据状态显示不同的信息喵~
                     when {
                         isLoading -> {
+                            val progressText = downloadProgress?.let { progress ->
+                                val totalText = if (progress.totalBytes > 0L) {
+                                    " / ${formatFileSize(progress.totalBytes)}"
+                                } else {
+                                    ""
+                                }
+                                "下载中 ${formatFileSize(progress.downloadedBytes)}$totalText"
+                            } ?: "正在加载..."
                             Text(
-                                text = "正在加载...",
+                                text = progressText,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            downloadProgress?.progressFraction?.let { progressFraction ->
+                                LinearProgressIndicator(
+                                    progress = { progressFraction },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            } ?: LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            if (!downloadProgress?.currentFileName.isNullOrBlank()) {
+                                Text(
+                                    text = downloadProgress?.currentFileName.orEmpty(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                         isFailed -> {
                             Text(

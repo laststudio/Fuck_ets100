@@ -1,6 +1,7 @@
 package com.shuaiqiu.fuckets100
 
 import android.content.pm.PackageManager
+import android.os.Build
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -45,6 +46,7 @@ fun ActivationSettingsScreen(
     var hasAppListPerm by remember { mutableStateOf(PermissionsHelper.hasAppListPermission()) }
     var cloudLoggedIn by remember { mutableStateOf(ETS100AuthManager.isLoggedIn(context)) }
     var cloudPhone by remember { mutableStateOf(ETS100AuthManager.getPhone(context)) }
+    var etsAppInfo by remember { mutableStateOf(getEtsAppInfo(context)) }
 
     // Shizuku 权限请求状态
     var pendingPermissionRequest by remember { mutableStateOf(false) }
@@ -61,6 +63,7 @@ fun ActivationSettingsScreen(
                 hasFilesPerm = PermissionsHelper.hasAllFilesAccess()
                 hasOverlayPerm = PermissionsHelper.hasOverlayPermission(context)
                 hasAppListPerm = PermissionsHelper.hasAppListPermission()
+                etsAppInfo = getEtsAppInfo(context)
                 refreshCloudAuthState()
             }
         }
@@ -107,6 +110,10 @@ fun ActivationSettingsScreen(
                     context = context
                 )
                 Spacer(Modifier.height(8.dp))
+            }
+
+            item {
+                ActivationDeviceCard(etsAppInfo = etsAppInfo)
             }
 
             // 基础权限申请区域
@@ -253,6 +260,119 @@ fun ActivationSettingsScreen(
                 }
             }
             item { Spacer(Modifier.height(80.dp)) }
+        }
+    }
+}
+
+private fun getEtsAppInfo(
+    context: android.content.Context,
+    packageName: String = "com.ets100.secondary"
+): Pair<Boolean, String>? {
+    return try {
+        val packageManager = context.packageManager
+        val packageInfo = packageManager.getPackageInfo(packageName, 0)
+        val versionName = packageInfo.versionName ?: "未知"
+        Pair(true, versionName)
+    } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+        Pair(false, "")
+    } catch (e: Exception) {
+        null
+    }
+}
+
+@Composable
+private fun ActivationDeviceCard(etsAppInfo: Pair<Boolean, String>?) {
+    val themePrimaryColor = MaterialTheme.colorScheme.primary
+    val successColor = Color(0xFF4ADE80)
+    val errorColor = MaterialTheme.colorScheme.error
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Smartphone, null, tint = themePrimaryColor)
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            "DEVICE",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            Build.MODEL ?: "Unknown",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        "OS",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "Android ${Build.VERSION.RELEASE}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Memory,
+                        null,
+                        tint = if (etsAppInfo?.first == true) successColor else errorColor
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            "ETS应用",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = if (etsAppInfo?.first == true) "已安装" else "未安装",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (etsAppInfo?.first == true) successColor else errorColor
+                        )
+                    }
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        "VERSION",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = etsAppInfo?.second?.takeIf { it.isNotEmpty() } ?: "未知",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
     }
 }

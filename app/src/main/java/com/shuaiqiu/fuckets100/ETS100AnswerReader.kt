@@ -2,6 +2,11 @@ package com.shuaiqiu.fuckets100
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
 
 /**
@@ -23,6 +28,7 @@ import org.json.JSONObject
 object ETS100AnswerReader {
 
     private const val TAG = "ETS100AnswerReader"
+    private const val PARALLEL_PARSE_LIMIT = 4
 
     /**
      * structure_type 常量
@@ -83,9 +89,17 @@ object ETS100AnswerReader {
         val content: AnswerContent = AnswerContent.Reading("")  // 用于UI显示
     ) {
         // 兼容性别名 - ReadScreen 使用 question.question
-        val question: String get() = questionText
+        val question: String get() = ETS100AnswerReader.cleanQuestionText(questionText)
         val answer: String get() = answers.firstOrNull() ?: ""
         val answerList: List<String> get() = answers
+        val formattedAnswer: String get() = answers
+            .flatMap { ETS100AnswerReader.cleanAnswerText(it).lines() }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
+        val formattedOriginalText: String get() = originalText
+            ?.let { ETS100AnswerReader.cleanOriginalText(it) }
+            .orEmpty()
     }
 
     /**
@@ -159,12 +173,35 @@ object ETS100AnswerReader {
      */
     private fun cleanText(text: String): String {
         if (text.isEmpty()) return ""
-        return text
+        return cleanAnswerText(text
             .replace(Regex("ets_th\\d+\\s*"), "")  // 移除 ets_th 前缀
-            .replace("</p><p>", "\n")                // 替换 </p><p> 为换行
-            .replace(Regex("<[^>]+>"), "")            // 移除 HTML 标签
+        )
+    }
+
+    private fun cleanAnswerText(text: String): String {
+        return cleanDisplayText(text, splitPipes = true)
+    }
+
+    private fun cleanQuestionText(text: String): String {
+        return cleanDisplayText(text, splitPipes = false)
+    }
+
+    private fun cleanOriginalText(text: String): String {
+        return cleanDisplayText(text, splitPipes = false)
+    }
+
+    private fun cleanDisplayText(text: String, splitPipes: Boolean): String {
+        if (text.isEmpty()) return ""
+        val pipeNormalized = if (splitPipes) text.replace("|", "\n") else text
+        return pipeNormalized
+            .replace(Regex("</p>\\s*<p[^>]*>", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("<br\\s*/?>|</br>|</p>|<p[^>]*>", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("<[^>]+>"), "")            // 移除其他 HTML 标签
             .replace("\u200B", "")                    // 移除零宽空格
-            .trim()
+            .lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
     }
 
     /**
@@ -173,11 +210,9 @@ object ETS100AnswerReader {
      */
     private fun cleanQuestion(text: String): String {
         if (text.isEmpty()) return ""
-        return text
+        return cleanQuestionText(text
             .replace(Regex("ets_th\\d+\\s*"), "")  // 移除 ets_th 前缀
-            .replace(Regex("<[^>]+>"), "")            // 移除 HTML 标签
-            .replace("\u200B", "")                    // 移除零宽空格
-            .trim()
+        )
     }
     private val questionNumberFields = listOf(
         "xt_xh",
@@ -191,8 +226,11 @@ object ETS100AnswerReader {
         "index"
     )
 
-    private val questionNumberTextPatterns = listOf(
-        Regex("ets_th\\s*(\\d+)", RegexOption.IGNORE_CASE),
+    private val officialQuestionNumberTextPatterns = listOf(
+        Regex("ets_th\\s*(\\d+)", RegexOption.IGNORE_CASE)
+    )
+
+    private val fallbackQuestionNumberTextPatterns = listOf(
         Regex("\\u7b2c\\s*(\\d+)\\s*\\u9898"),
         Regex("^\\s*(\\d+)\\s*[.\\u3001\\uff0e)\\uff09]")
     )
@@ -201,10 +239,13 @@ object ETS100AnswerReader {
         return value.trim().toIntOrNull()?.takeIf { it > 0 }
     }
 
-    private fun extractQuestionNumberFromText(vararg texts: String?): Int? {
+    private fun extractQuestionNumberFromText(
+        patterns: List<Regex>,
+        vararg texts: String?
+    ): Int? {
         for (text in texts) {
             if (text.isNullOrBlank()) continue
-            for (pattern in questionNumberTextPatterns) {
+            for (pattern in patterns) {
                 val number = pattern.find(text)
                     ?.groupValues
                     ?.getOrNull(1)
@@ -216,16 +257,27 @@ object ETS100AnswerReader {
     }
 
     private fun extractQuestionNumber(item: JSONObject, vararg textKeys: String): Int? {
+        val keys = (textKeys.toList() + listOf("xt_nr", "ask", "question", "text", "topic", "value")).distinct()
+        val texts = keys.map { item.optString(it, "") }.toTypedArray()
+
+        extractQuestionNumberFromText(officialQuestionNumberTextPatterns, *texts)?.let { return it }
+
         for (field in questionNumberFields) {
             parsePositiveInt(item.optString(field, ""))?.let { return it }
         }
 
-        val keys = (textKeys.toList() + listOf("xt_nr", "ask", "question", "text", "topic", "value")).distinct()
-        return extractQuestionNumberFromText(*keys.map { item.optString(it, "") }.toTypedArray())
+        return extractQuestionNumberFromText(fallbackQuestionNumberTextPatterns, *texts)
     }
 
     private fun extractChooseQuestionNumber(item: JSONObject): Int? {
-        return extractQuestionNumber(item, "xt_nr")
+        val texts = arrayOf(
+            item.optString("xt_nr", ""),
+            item.optString("xt_value", ""),
+            item.optString("xt_wj", "")
+        )
+        extractQuestionNumberFromText(officialQuestionNumberTextPatterns, *texts)?.let { return it }
+        extractQuestionNumberFromText(fallbackQuestionNumberTextPatterns, *texts)?.let { return it }
+        return parsePositiveInt(item.optString("xt_xh", ""))
     }
 
     private val questionOfficialOrderComparator =
@@ -233,6 +285,24 @@ object ETS100AnswerReader {
 
     private fun sortQuestionsByOfficialOrder(questions: List<Question>): List<Question> {
         return questions.sortedWith(questionOfficialOrderComparator)
+    }
+
+    private fun sortChooseQuestionsByOfficialOrder(questions: List<Question>): List<Question> {
+        val displayOrders = questions.mapNotNull { it.displayOrder }
+        val hasReliableDisplayOrder = displayOrders.size == questions.size &&
+            displayOrders.distinct().size == questions.size &&
+            displayOrders.sorted() == (1..questions.size).toList()
+
+        return if (hasReliableDisplayOrder) {
+            questions.sortedWith(questionOfficialOrderComparator)
+        } else {
+            questions.mapIndexed { index, question ->
+                question.copy(
+                    sectionOrder = index + 1,
+                    displayOrder = index + 1
+                )
+            }
+        }
     }
 
     /**
@@ -286,6 +356,8 @@ object ETS100AnswerReader {
             return emptyList()
         }
 
+        val resourceOrderMap = buildResourceOrderMap(reader)
+
         // Step 1: 扫描 resource/ 目录
         // 获取所有含 content.json 的子目录，按修改时间降序排序
         val resourceFolders = scanResourceFolders(reader)
@@ -295,52 +367,155 @@ object ETS100AnswerReader {
         val groupedFolders = groupByTime(resourceFolders, thresholdMs = 2000)
         Log.i(TAG, "readPapers: Step2 时间分组得到 ${groupedFolders.size} 组")
 
-        // 用于 Step 5 去重：记录已处理的 content.json 路径
-        val processedContentPaths = mutableSetOf<String>()
         val exerciseGroupPapers = mutableListOf<Paper>()
 
         // Step 3 & 4: 根据文件夹数量路由，遍历每组的 content.json
         for ((groupIndex, folderGroup) in groupedFolders.withIndex()) {
-            val folderCount = folderGroup.size
-            
-            // 宝贝添加详细日志：显示每组的文件夹名称和时间
-            val folderNames = folderGroup.joinToString(", ") { "${it.name}(${it.lastModified})" }
-            Log.d(TAG, "╔═══ Step3&4 第 ${groupIndex + 1} 组路由日志 ═══")
-            Log.d(TAG, "║ 文件夹数量: $folderCount")
-            Log.d(TAG, "║ 文件夹列表: $folderNames")
-            
-            // 根据文件夹数量路由
-            val papers = when (folderCount) {
-                3 -> {
-                    Log.d(TAG, "║ 路由: 广东高中解析器 (3个文件夹)")
-                    parseGuangdongHighPapers(reader, folderGroup, groupIndex, processedContentPaths)
-                }
-                7 -> {
-                    Log.d(TAG, "║ 路由: 广东初中解析器 (7个文件夹)")
-                    parseGuangdongJuniorPapers(reader, folderGroup, groupIndex, processedContentPaths)
-                }
-                10 -> {
-                    Log.d(TAG, "║ 路由: 北京初中解析器 (10个文件夹)")
-                    parseBeijingJuniorPapers(reader, folderGroup, groupIndex, processedContentPaths)
-                }
-                13 -> {
-                    Log.d(TAG, "║ 路由: 北京高中解析器 (13个文件夹)")
-                    parseBeijingHighPapers(reader, folderGroup, groupIndex, processedContentPaths)
-                }
-                else -> {
-                    Log.d(TAG, "║ 路由: 通用解析器 (${folderCount}个文件夹，不匹配预设)")
-                    parseGenericPapers(reader, folderGroup, groupIndex, processedContentPaths)
-                }
-            }
-            Log.d(TAG, "║ 解析得到 ${papers.size} 份试卷")
-            Log.d(TAG, "╚═══ Step3&4 路由日志结束 ═══")
-            
-            exerciseGroupPapers.addAll(papers)
+            val orderedFolderGroup = orderResourceFoldersByPaperStructure(folderGroup, resourceOrderMap)
+            exerciseGroupPapers.addAll(parseResourceGroup(reader, orderedFolderGroup, groupIndex))
         }
 
         Log.i(TAG, "readPapers: 完成，共 ${exerciseGroupPapers.size} 份试卷")
 
         return exerciseGroupPapers
+    }
+
+    fun readPaperSummaries(context: Context, mode: ActivationMode): List<Paper> {
+        if (!ETS100FileReader.isModeAvailable(mode, context)) {
+            Log.w(TAG, "Mode $mode is not available")
+            return emptyList()
+        }
+
+        val reader = try {
+            ETS100FileReader.getReader(mode, context)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get reader", e)
+            return emptyList()
+        }
+
+        val resourceOrderMap = buildResourceOrderMap(reader)
+        val resourceFolders = scanResourceFolders(reader)
+        val groupedFolders = groupByTime(resourceFolders, thresholdMs = 2000)
+
+        return groupedFolders.mapIndexed { groupIndex, folderGroup ->
+            val orderedFolderGroup = orderResourceFoldersByPaperStructure(folderGroup, resourceOrderMap)
+            createPaperSummary(orderedFolderGroup, groupIndex)
+        }
+    }
+
+    suspend fun readPapersParallel(context: Context, mode: ActivationMode): List<Paper> = coroutineScope {
+        if (!ETS100FileReader.isModeAvailable(mode, context)) {
+            Log.w(TAG, "Mode $mode is not available")
+            return@coroutineScope emptyList()
+        }
+
+        val reader = try {
+            ETS100FileReader.getReader(mode, context)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get reader", e)
+            return@coroutineScope emptyList()
+        }
+
+        val resourceOrderMap = buildResourceOrderMap(reader)
+        val resourceFolders = scanResourceFolders(reader)
+        Log.i(TAG, "readPapersParallel: Step1 扫描 resource/ 获取 ${resourceFolders.size} 个文件夹")
+
+        val groupedFolders = groupByTime(resourceFolders, thresholdMs = 2000)
+        Log.i(TAG, "readPapersParallel: Step2 时间分组得到 ${groupedFolders.size} 组")
+
+        val semaphore = Semaphore(PARALLEL_PARSE_LIMIT)
+        groupedFolders.mapIndexed { groupIndex, folderGroup ->
+            val orderedFolderGroup = orderResourceFoldersByPaperStructure(folderGroup, resourceOrderMap)
+            async {
+                semaphore.withPermit {
+                    val localReader = ETS100FileReader.getReader(mode, context)
+                    GroupParseResult(
+                        groupIndex = groupIndex,
+                        papers = parseResourceGroup(localReader, orderedFolderGroup, groupIndex)
+                    )
+                }
+            }
+        }.awaitAll()
+            .sortedBy { it.groupIndex }
+            .flatMap { it.papers }
+            .also { Log.i(TAG, "readPapersParallel: 完成，共 ${it.size} 份试卷") }
+    }
+
+    private data class GroupParseResult(
+        val groupIndex: Int,
+        val papers: List<Paper>
+    )
+
+    private fun createPaperSummary(
+        folders: List<ETS100FileReader.FileItem>,
+        groupIndex: Int
+    ): Paper {
+        val folderCount = folders.size
+        val (titlePrefix, regionLabel) = when (folderCount) {
+            3 -> "广东高中" to "广东高中"
+            7 -> "广东初中" to "广东初中"
+            10 -> "北京初中" to "北京初中"
+            13 -> "北京高中" to "北京高中"
+            else -> "练习" to "未知"
+        }
+        val firstFolder = folders.firstOrNull()
+        return Paper(
+            paperId = (firstFolder?.name ?: "paper_$groupIndex").hashCode().toLong(),
+            title = "$titlePrefix #${groupIndex + 1}",
+            dataFileName = firstFolder?.name.orEmpty(),
+            fileSize = folders.sumOf { it.size },
+            sections = listOf(
+                Section(
+                    caption = "答案解析中",
+                    category = "local_loading",
+                    typeName = "解析中",
+                    questions = emptyList(),
+                    originalContent = null
+                )
+            ),
+            downloadTime = firstFolder?.lastModified ?: 0L,
+            regionLabel = regionLabel,
+            paperName = null
+        )
+    }
+
+    private fun parseResourceGroup(
+        reader: ETS100FileReader.Reader,
+        orderedFolderGroup: List<ETS100FileReader.FileItem>,
+        groupIndex: Int
+    ): List<Paper> {
+        val processedContentPaths = mutableSetOf<String>()
+        val folderCount = orderedFolderGroup.size
+        val folderNames = orderedFolderGroup.joinToString(", ") { "${it.name}(${it.lastModified})" }
+        Log.d(TAG, "╔═══ Step3&4 第 ${groupIndex + 1} 组路由日志 ═══")
+        Log.d(TAG, "║ 文件夹数量: $folderCount")
+        Log.d(TAG, "║ 文件夹列表: $folderNames")
+
+        val papers = when (folderCount) {
+            3 -> {
+                Log.d(TAG, "║ 路由: 广东高中解析器 (3个文件夹)")
+                parseGuangdongHighPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+            }
+            7 -> {
+                Log.d(TAG, "║ 路由: 广东初中解析器 (7个文件夹)")
+                parseGuangdongJuniorPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+            }
+            10 -> {
+                Log.d(TAG, "║ 路由: 北京初中解析器 (10个文件夹)")
+                parseBeijingJuniorPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+            }
+            13 -> {
+                Log.d(TAG, "║ 路由: 北京高中解析器 (13个文件夹)")
+                parseBeijingHighPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+            }
+            else -> {
+                Log.d(TAG, "║ 路由: 通用解析器 (${folderCount}个文件夹，不匹配预设)")
+                parseGenericPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+            }
+        }
+        Log.d(TAG, "║ 解析得到 ${papers.size} 份试卷")
+        Log.d(TAG, "╚═══ Step3&4 路由日志结束 ═══")
+        return papers
     }
 
     /**
@@ -374,6 +549,53 @@ object ETS100AnswerReader {
 
         Log.d(TAG, "scanResourceFolders: 找到 ${contentFolders.size} 个含 content.json 的文件夹")
         return contentFolders
+    }
+
+    private fun buildResourceOrderMap(reader: ETS100FileReader.Reader): Map<String, Int> {
+        val dataDirPath = ETS100FileReader.Path.getDataDir()
+        val dataFiles = reader.listFiles(dataDirPath)
+            .filter { !it.isDirectory && it.size > ETS100FileReader.Path.MIN_FILE_SIZE }
+            .sortedByDescending { it.lastModified }
+
+        val orderMap = linkedMapOf<String, Int>()
+        var order = 0
+
+        for (dataFile in dataFiles) {
+            val content = reader.readFile("$dataDirPath/${dataFile.name}") ?: continue
+            val json = runCatching { JSONObject(content) }.getOrNull() ?: continue
+            val sectionData = json.optJSONArray("sectionData") ?: continue
+
+            for (sectionIndex in 0 until sectionData.length()) {
+                val section = sectionData.optJSONObject(sectionIndex) ?: continue
+                val sectionItemData = section.optJSONArray("sectionItemData") ?: continue
+
+                for (itemIndex in 0 until sectionItemData.length()) {
+                    val item = sectionItemData.optJSONObject(itemIndex) ?: continue
+                    val fileName = item.optString("fileName", "")
+                    if (fileName.isNotEmpty() && !orderMap.containsKey(fileName)) {
+                        orderMap[fileName] = order++
+                    }
+                }
+            }
+        }
+
+        Log.d(TAG, "buildResourceOrderMap: 建立 ${orderMap.size} 个 resource 顺序映射")
+        return orderMap
+    }
+
+    private fun orderResourceFoldersByPaperStructure(
+        folders: List<ETS100FileReader.FileItem>,
+        resourceOrderMap: Map<String, Int>
+    ): List<ETS100FileReader.FileItem> {
+        if (resourceOrderMap.isEmpty()) return folders
+
+        return folders.withIndex()
+            .sortedWith(
+                compareBy<IndexedValue<ETS100FileReader.FileItem>> {
+                    resourceOrderMap[it.value.name] ?: Int.MAX_VALUE
+                }.thenBy { it.index }
+            )
+            .map { it.value }
     }
 
     /**
@@ -756,7 +978,7 @@ object ETS100AnswerReader {
         // 按文档顺序组装：听后选择 → 听后回答 → 听后转述
         val sections = mutableListOf<Section>()
         if (chooseQuestions.isNotEmpty()) {
-            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", sortQuestionsByOfficialOrder(chooseQuestions), null))
+            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", sortChooseQuestionsByOfficialOrder(chooseQuestions), null))
         }
         if (roleQuestions.isNotEmpty()) {
             sections.add(Section("听后回答", "simple_expression_ufk", "听后回答", sortQuestionsByOfficialOrder(roleQuestions), null))
@@ -930,7 +1152,7 @@ object ETS100AnswerReader {
         // 按文档顺序组装：听后选择 → 听后记录 → 听后转述 → 回答问题
         val sections = mutableListOf<Section>()
         if (chooseQuestions.isNotEmpty()) {
-            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", sortQuestionsByOfficialOrder(chooseQuestions), null))
+            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", sortChooseQuestionsByOfficialOrder(chooseQuestions), null))
         }
         if (fillQuestions.isNotEmpty()) {
             sections.add(Section("听后记录", "simple_expression_ufi", "听后记录", sortQuestionsByOfficialOrder(fillQuestions), null))

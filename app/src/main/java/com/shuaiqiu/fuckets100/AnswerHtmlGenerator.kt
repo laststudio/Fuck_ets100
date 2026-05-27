@@ -119,7 +119,7 @@ object AnswerHtmlGenerator {
             is ETS100AnswerReader.AnswerContent.QATuple -> c.pairs.joinToString("<br>") { "Q: ${it.question}<br>A: ${it.answer}" }
         }
         
-        val answerDisplay = if (question.answer.isNotEmpty()) question.answer else "No answer"
+        val answerDisplay = if (question.answer.isNotEmpty()) question.formattedAnswer else "No answer"
         
         val choicesHtml = if (question.content is ETS100AnswerReader.AnswerContent.Choice) {
             val items = (question.content as ETS100AnswerReader.AnswerContent.Choice).items

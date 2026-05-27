@@ -173,6 +173,8 @@ jobs:
           echo "RELEASE_KILL_SWITCH=${RELEASE_KILL_SWITCH}"
           echo "RELEASE_DONATE_ENABLED=${RELEASE_DONATE_ENABLED}"
           echo "GITEE_CHANGELOG_FILE=${GITEE_CHANGELOG_FILE}"
+          RELEASE_ANNOUNCEMENT_UPDATED_AT="${RELEASE_ANNOUNCEMENT_UPDATED_AT:-$(date +%F)}"
+          echo "RELEASE_ANNOUNCEMENT_UPDATED_AT=${RELEASE_ANNOUNCEMENT_UPDATED_AT}"
           if [ -n "${RELEASE_NOTICE_MESSAGE}" ]; then
             echo "RELEASE_NOTICE_MESSAGE 已配置。"
           else
@@ -189,7 +191,8 @@ jobs:
             --apk-url "${{ steps.download.outputs.apk_url }}" \
             --message-file current_changelog.md \
             --source-changelog-file update.md \
-            --changelog-file "${GITEE_CHANGELOG_FILE}"
+            --changelog-file "${GITEE_CHANGELOG_FILE}" \
+            --announcement-updated-at "${RELEASE_ANNOUNCEMENT_UPDATED_AT}"
         env:
           GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}

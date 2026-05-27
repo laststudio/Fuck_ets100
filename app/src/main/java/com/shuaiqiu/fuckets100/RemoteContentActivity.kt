@@ -3,6 +3,7 @@ package com.shuaiqiu.fuckets100
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -28,18 +29,22 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.URL
 import java.net.URLConnection
@@ -127,26 +132,45 @@ private fun RemoteContentScreen(
     content: RemoteContent,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var announcementBody by remember(content) {
         mutableStateOf(content.announcementMessage.ifBlank { "暂无公告" })
     }
     var changelogBody by remember(content) {
         mutableStateOf(content.changelogSummary.ifBlank { "暂无更新内容" })
     }
-    var isLoading by remember(content) {
-        mutableStateOf(content.announcementUrl.isNotBlank() || content.changelogUrl.isNotBlank())
+    var fetchStatus by remember(content) {
+        mutableStateOf(
+            if (content.announcementUrl.isNotBlank() || content.changelogUrl.isNotBlank()) {
+                "正在同步远程内容..."
+            } else {
+                "暂无远程内容地址，显示本地缓存内容"
+            }
+        )
+    }
+    var updateDialogStatus by remember {
+        mutableStateOf<UpdateStatus?>(null)
     }
 
     LaunchedEffect(content) {
         val announcementResult = fetchRemoteTextOrNull(content.announcementUrl)
         val changelogResult = fetchRemoteTextOrNull(content.changelogUrl)
+        var successCount = 0
         if (!announcementResult.isNullOrBlank()) {
             announcementBody = parseRemoteContent(announcementResult)
+            successCount++
         }
         if (!changelogResult.isNullOrBlank()) {
-            changelogBody = parseRemoteContent(changelogResult)
+            changelogBody = parseCurrentVersionChangelog(changelogResult, BuildConfig.VERSION_NAME)
+                .ifBlank { parseRemoteContent(changelogResult) }
+            successCount++
         }
-        isLoading = false
+        fetchStatus = when {
+            content.announcementUrl.isBlank() && content.changelogUrl.isBlank() -> "暂无远程内容地址，显示本地缓存内容"
+            successCount > 0 -> "获取成功，已显示当前版本 ${BuildConfig.VERSION_NAME} 的更新日志"
+            else -> "获取失败，已显示缓存内容"
+        }
     }
 
     Scaffold(
@@ -156,6 +180,27 @@ private fun RemoteContentScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                runCatching { RemoteConfigManager.checkStatus() }
+                                    .onSuccess { status ->
+                                        if (status.showDialog) {
+                                            updateDialogStatus = status
+                                        } else {
+                                            Toast.makeText(context, "当前已是最新版本", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                    .onFailure {
+                                        Toast.makeText(context, "检测更新失败", Toast.LENGTH_SHORT).show()
+                                    }
+                            }
+                        }
+                    ) {
+                        Text("检测更新")
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -172,13 +217,11 @@ private fun RemoteContentScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            if (isLoading) {
-                Text(
-                    "正在同步远程内容...",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text(
+                fetchStatus,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             RemoteContentSection(
                 icon = Icons.Default.Campaign,
@@ -194,6 +237,13 @@ private fun RemoteContentScreen(
                 meta = ""
             )
         }
+    }
+
+    updateDialogStatus?.let { status ->
+        UpdateDialog(
+            status = status,
+            onDismiss = { updateDialogStatus = null }
+        )
     }
 }
 
@@ -271,4 +321,13 @@ private fun parseRemoteContent(raw: String): String {
         .joinToString("\n")
         .replace(Regex("\\n{3,}"), "\n\n")
         .trim()
+}
+
+private fun parseCurrentVersionChangelog(raw: String, versionName: String): String {
+    val normalized = raw.replace("\r\n", "\n").replace("\r", "\n")
+    val versionHeader = Regex("^##\\s+\\[?${Regex.escape(versionName)}]?\\b.*$", RegexOption.MULTILINE)
+    val match = versionHeader.find(normalized) ?: return ""
+    val nextHeader = Regex("^##\\s+", RegexOption.MULTILINE).find(normalized, match.range.last + 1)
+    val sectionEnd = nextHeader?.range?.first ?: normalized.length
+    return parseRemoteContent(normalized.substring(match.range.first, sectionEnd))
 }

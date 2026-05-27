@@ -28,7 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -275,6 +277,7 @@ fun ReadScreen(
         mutableStateOf(currentMode != ActivationMode.CLOUD && cachedLocalSnapshot == null)
     }
     var isParsingLocalAnswers by remember { mutableStateOf(false) }
+    var isDeleting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var reloadTrigger by remember { mutableIntStateOf(0) }  // 宝贝添加了重新加载触发器喵~
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }  // 宝贝添加了删除确认对话框状态喵~
@@ -299,6 +302,7 @@ fun ReadScreen(
     var downloadedPapers by remember { mutableStateOf(CloudHomeworkState.downloadedPapers) }
     var downloadedHomeworkNames by remember { mutableStateOf(CloudHomeworkState.downloadedHomeworkNames) }
     var cloudDownloadingHomeworks by remember { mutableStateOf(CloudHomeworkState.cloudDownloadingHomeworks) }
+    var cloudDownloadProgress by remember { mutableStateOf(CloudHomeworkState.cloudDownloadProgress) }
     var failedCloudHomeworks by remember { mutableStateOf(CloudHomeworkState.failedCloudHomeworks) }
 
     // 宝贝新增：云端作业占位符列表喵~ 现在显示所有作业，包括已下载的喵~
@@ -356,6 +360,18 @@ fun ReadScreen(
                 failedCloudHomeworks = failedCloudHomeworks
             )
         )
+    }
+
+    fun updateCloudDownloadProgress(
+        cacheKey: String,
+        progress: CloudHomeworkState.DownloadProgress?
+    ) {
+        cloudDownloadProgress = if (progress == null) {
+            cloudDownloadProgress - cacheKey
+        } else {
+            cloudDownloadProgress + (cacheKey to progress)
+        }
+        CloudHomeworkState.cloudDownloadProgress = cloudDownloadProgress
     }
 
     // ========== 云端模式辅助函数喵~ ==========
@@ -484,19 +500,36 @@ fun ReadScreen(
      * 宝贝删除所有已下载的云端作业文件喵~
      */
     fun clearCloudHomeworkCache() {
-        val cacheDir = File(context.cacheDir, "cloud_homework")
-        if (cacheDir.exists()) {
-            cacheDir.deleteRecursively()
-            addLog(LogLevel.INFO, LogCategory.SYSTEM, "🗑️ 已删除云端缓存目录")
+        if (isDeleting) return
+        isDeleting = true
+        scope.launch {
+            try {
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "🗑️ 开始后台清除云端缓存")
+                withContext(Dispatchers.IO) {
+                    val cacheDir = File(context.cacheDir, "cloud_homework")
+                    if (cacheDir.exists()) {
+                        cacheDir.deleteRecursively()
+                    }
+                }
+                addLog(LogLevel.INFO, LogCategory.SYSTEM, "🗑️ 已删除云端缓存目录")
+                downloadedPapers = emptyMap()
+                downloadedHomeworkNames = emptySet()
+                cloudDownloadingHomeworks = emptySet()
+                cloudDownloadProgress = emptyMap()
+                failedCloudHomeworks = emptySet()
+                papers = emptyList()
+                homeworkListsByStatus = emptyMap()
+                selectedCloudHomeworkStatus = CloudHomeworkState.STATUS_CURRENT
+                CloudHomeworkState.clear()
+                ReadPageStateStore.clearCloud(context)
+                Toast.makeText(context, "已清除所有云端缓存", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 清除云端缓存失败: ${e.message}")
+                Toast.makeText(context, "删除失败: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                isDeleting = false
+            }
         }
-        downloadedPapers = emptyMap()
-        downloadedHomeworkNames = emptySet()
-        papers = emptyList()
-        homeworkListsByStatus = emptyMap()
-        selectedCloudHomeworkStatus = CloudHomeworkState.STATUS_CURRENT
-        CloudHomeworkState.clear()
-        ReadPageStateStore.clearCloud(context)
-        Toast.makeText(context, "已清除所有云端缓存", Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -520,6 +553,10 @@ fun ReadScreen(
         failedCloudHomeworks = failedCloudHomeworks - cacheKey
         CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
         CloudHomeworkState.failedCloudHomeworks = failedCloudHomeworks
+        updateCloudDownloadProgress(
+            cacheKey,
+            CloudHomeworkState.DownloadProgress(currentFileName = homeworkInfo.name)
+        )
 
         try {
             val cacheDir = File(context.cacheDir, "cloud_homework")
@@ -549,8 +586,27 @@ fun ReadScreen(
                 val zipFile = File(cacheDir, zipFileName)
                 if (zipFile.exists() && zipFile.length() > 0) {
                     addLog(LogLevel.INFO, LogCategory.SYSTEM, "📦 文件已存在，跳过下载: ${zipFileName}")
+                    updateCloudDownloadProgress(
+                        cacheKey,
+                        CloudHomeworkState.DownloadProgress(
+                            downloadedBytes = zipFile.length(),
+                            totalBytes = zipFile.length(),
+                            currentFileName = zipFileName
+                        )
+                    )
                 } else {
-                    val downloadResult = ETS100ApiClient.downloadFile(zipUrl, zipFile)
+                    val downloadResult = ETS100ApiClient.downloadFile(zipUrl, zipFile) { downloadedBytes, totalBytes ->
+                        withContext(Dispatchers.Main) {
+                            updateCloudDownloadProgress(
+                                cacheKey,
+                                CloudHomeworkState.DownloadProgress(
+                                    downloadedBytes = downloadedBytes,
+                                    totalBytes = totalBytes,
+                                    currentFileName = zipFileName
+                                )
+                            )
+                        }
+                    }
                     downloadResult.onFailure { e ->
                         addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 下载失败 ${content.groupName}: ${e.message}")
                     }
@@ -682,9 +738,11 @@ fun ReadScreen(
             downloadedPapers = downloadedPapers + (cacheKey to listOf(paper))
             downloadedHomeworkNames = downloadedHomeworkNames + cacheKey
             cloudDownloadingHomeworks = cloudDownloadingHomeworks - cacheKey
+            cloudDownloadProgress = cloudDownloadProgress - cacheKey
             CloudHomeworkState.downloadedPapers = downloadedPapers
             CloudHomeworkState.downloadedHomeworkNames = downloadedHomeworkNames
             CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
+            CloudHomeworkState.cloudDownloadProgress = cloudDownloadProgress
             saveCloudReadState()
             // 宝贝下载成功后不再切换页面，只标记已下载，停留作业列表喵~
             Toast.makeText(context, "下载并解析成功！", Toast.LENGTH_SHORT).show()
@@ -693,8 +751,10 @@ fun ReadScreen(
             addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 下载解析失败: ${e.message}")
             Toast.makeText(context, "下载失败: ${e.message}", Toast.LENGTH_LONG).show()
             cloudDownloadingHomeworks = cloudDownloadingHomeworks - cacheKey
+            cloudDownloadProgress = cloudDownloadProgress - cacheKey
             failedCloudHomeworks = failedCloudHomeworks + cacheKey
             CloudHomeworkState.cloudDownloadingHomeworks = cloudDownloadingHomeworks
+            CloudHomeworkState.cloudDownloadProgress = cloudDownloadProgress
             CloudHomeworkState.failedCloudHomeworks = failedCloudHomeworks
             saveCloudReadState()
         }
@@ -703,6 +763,18 @@ fun ReadScreen(
     // 初始化加载 - 使用 rememberUpdatedState 确保最新的 currentMode
     // 宝贝添加了 reloadTrigger 依赖，这样点击读取按钮时就可以重新加载喵~
     val currentModeRef = remember { mutableStateOf(currentMode) }
+    LaunchedEffect(currentMode) {
+        if (currentMode != ActivationMode.CLOUD) return@LaunchedEffect
+        while (true) {
+            cloudDownloadingHomeworks = CloudHomeworkState.cloudDownloadingHomeworks
+            cloudDownloadProgress = CloudHomeworkState.cloudDownloadProgress
+            downloadedPapers = CloudHomeworkState.downloadedPapers
+            downloadedHomeworkNames = CloudHomeworkState.downloadedHomeworkNames
+            failedCloudHomeworks = CloudHomeworkState.failedCloudHomeworks
+            delay(500)
+        }
+    }
+
     LaunchedEffect(currentMode, reloadTrigger) {
         currentModeRef.value = currentMode
         
@@ -1032,6 +1104,7 @@ fun ReadScreen(
                                     val isDownloaded = downloadedHomeworkNames.contains(homeworkKey)
                                     val isDownloading = cloudDownloadingHomeworks.contains(homeworkKey)
                                     val isFailed = failedCloudHomeworks.contains(homeworkKey)
+                                    val downloadProgress = cloudDownloadProgress[homeworkKey]
                                     val paper = if (isDownloaded) {
                                         downloadedPapers[homeworkKey]?.firstOrNull() ?: createCloudHomeworkPlaceholder(homeworkInfo)
                                     } else {
@@ -1048,13 +1121,16 @@ fun ReadScreen(
                                                 }
                                             } else if (!isDownloading) {
                                                 // 宝贝未下载，开始下载喵~
-                                                scope.launch { downloadAndParseHomework(homeworkInfo, selectedCloudHomeworkStatus) }
+                                                AppCoroutineScope.scope.launch {
+                                                    downloadAndParseHomework(homeworkInfo, selectedCloudHomeworkStatus)
+                                                }
                                             }
                                         },
                                         categoryColors = categoryColors,
                                         isLoading = isDownloading,
                                         isFailed = isFailed,
-                                        isDownloaded = isDownloaded
+                                        isDownloaded = isDownloaded,
+                                        downloadProgress = downloadProgress
                                     )
                                 }
                             }
@@ -1161,37 +1237,50 @@ fun ReadScreen(
                             // 云端模式：清除缓存喵~
                             clearCloudHomeworkCache()
                         } else {
-                            // 本地模式：删除 data 和 resource 目录喵~
-                            addLog(LogLevel.WARN, LogCategory.FILE, "🗑️ 开始删除 data 和 resource 目录...")
+                            if (isDeleting) return@DeleteConfirmDialog
+                            isDeleting = true
+                            scope.launch {
+                                try {
+                                    // 本地模式：删除 data 和 resource 目录喵~
+                                    addLog(LogLevel.WARN, LogCategory.FILE, "🗑️ 开始后台删除 data 和 resource 目录...")
 
-                            val currentModeValue = currentMode
-                            addLog(LogLevel.INFO, LogCategory.FILE, "   ├─ 删除模式: ${currentModeValue.title}")
+                                    val currentModeValue = currentMode
+                                    addLog(LogLevel.INFO, LogCategory.FILE, "   ├─ 删除模式: ${currentModeValue.title}")
 
-                            // 删除 data 目录
-                            val dataPath = ETS100FileReader.Path.getDataDir()
-                            val dataDeleted = ETS100FileReader.deleteDirectory(currentModeValue, dataPath, context)
-                            if (dataDeleted) {
-                                addLog(LogLevel.SUCCESS, LogCategory.FILE, "✅ data 目录删除成功")
-                            } else {
-                                addLog(LogLevel.ERROR, LogCategory.FILE, "❌ data 目录删除失败")
+                                    val deleteResult = withContext(Dispatchers.IO) {
+                                        val dataPath = ETS100FileReader.Path.getDataDir()
+                                        val resourcePath = ETS100FileReader.Path.getResourceDir()
+                                        val dataDeleted = ETS100FileReader.deleteDirectory(currentModeValue, dataPath, context)
+                                        val resourceDeleted = ETS100FileReader.deleteDirectory(currentModeValue, resourcePath, context)
+                                        dataDeleted to resourceDeleted
+                                    }
+
+                                    if (deleteResult.first) {
+                                        addLog(LogLevel.SUCCESS, LogCategory.FILE, "✅ data 目录删除成功")
+                                    } else {
+                                        addLog(LogLevel.ERROR, LogCategory.FILE, "❌ data 目录删除失败")
+                                    }
+
+                                    if (deleteResult.second) {
+                                        addLog(LogLevel.SUCCESS, LogCategory.FILE, "✅ resource 目录删除成功")
+                                    } else {
+                                        addLog(LogLevel.ERROR, LogCategory.FILE, "❌ resource 目录删除失败")
+                                    }
+
+                                    ReadPageStateStore.clearLocal(context)
+                                    papers = emptyList()
+                                    selectedPaper = null
+                                    showPaperDetail = false
+
+                                    // 刷新页面重新读取
+                                    reloadTrigger++
+                                } catch (e: Exception) {
+                                    addLog(LogLevel.ERROR, LogCategory.FILE, "❌ 删除失败: ${e.message}")
+                                    Toast.makeText(context, "删除失败: ${e.message}", Toast.LENGTH_LONG).show()
+                                } finally {
+                                    isDeleting = false
+                                }
                             }
-
-                            // 删除 resource 目录
-                            val resourcePath = ETS100FileReader.Path.getResourceDir()
-                            val resourceDeleted = ETS100FileReader.deleteDirectory(currentModeValue, resourcePath, context)
-                            if (resourceDeleted) {
-                                addLog(LogLevel.SUCCESS, LogCategory.FILE, "✅ resource 目录删除成功")
-                            } else {
-                                addLog(LogLevel.ERROR, LogCategory.FILE, "❌ resource 目录删除失败")
-                            }
-
-                            ReadPageStateStore.clearLocal(context)
-                            papers = emptyList()
-                            selectedPaper = null
-                            showPaperDetail = false
-
-                            // 刷新页面重新读取
-                            reloadTrigger++
                         }
                     },
                     isCloudMode = currentMode == ActivationMode.CLOUD
@@ -1206,6 +1295,41 @@ fun ReadScreen(
                         cloudHomeworkError = null
                         scope.launch { loadCloudHomeworkList() }
                     }
+                )
+            }
+
+            if (isDeleting) {
+                DeletingOverlay()
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeletingOverlay() {
+    Dialog(onDismissRequest = {}) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "正在删除...",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "请稍等，文件清理在后台执行",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -2887,7 +3011,8 @@ private fun PaperListItem(
     isLoading: Boolean = false,
     isFailed: Boolean = false,
     isDownloaded: Boolean = false,  // 宝贝标记是否已下载喵~
-    isClickEnabled: Boolean = true
+    isClickEnabled: Boolean = true,
+    downloadProgress: CloudHomeworkState.DownloadProgress? = null
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     
@@ -3064,11 +3189,35 @@ private fun PaperListItem(
                     // 宝贝根据状态显示不同的信息喵~
                     when {
                         isLoading -> {
+                            val progressText = downloadProgress?.let { progress ->
+                                val totalText = if (progress.totalBytes > 0L) {
+                                    " / ${formatFileSize(progress.totalBytes)}"
+                                } else {
+                                    ""
+                                }
+                                "下载中 ${formatFileSize(progress.downloadedBytes)}$totalText"
+                            } ?: "正在加载..."
                             Text(
-                                text = "正在加载...",
+                                text = progressText,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            downloadProgress?.progressFraction?.let { progressFraction ->
+                                LinearProgressIndicator(
+                                    progress = { progressFraction },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            } ?: LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            if (!downloadProgress?.currentFileName.isNullOrBlank()) {
+                                Text(
+                                    text = downloadProgress?.currentFileName.orEmpty(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                         isFailed -> {
                             Text(

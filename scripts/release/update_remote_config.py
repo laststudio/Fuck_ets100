@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import date
 from pathlib import Path
 
 
@@ -190,6 +191,9 @@ def main() -> int:
         announcement_title = args.announcement_title.strip()
         if not announcement_title and announcement_message:
             announcement_title = "公告"
+        announcement_updated_at = args.announcement_updated_at.strip()
+        if not announcement_updated_at and announcement_message:
+            announcement_updated_at = date.today().isoformat()
         changelog_url = args.changelog_url.strip() or build_raw_gitee_url(
             args.gitee_repo,
             args.gitee_branch,
@@ -219,7 +223,7 @@ def main() -> int:
                 is_kill_switch_on,
                 announcement_title,
                 announcement_message,
-                args.announcement_updated_at.strip(),
+                announcement_updated_at,
                 args.announcement_url.strip(),
                 changelog_url,
                 args.changelog_title.strip(),

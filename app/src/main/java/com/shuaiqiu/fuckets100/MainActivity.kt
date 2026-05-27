@@ -141,22 +141,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun FeTheme(content: @Composable () -> Unit) {
     val theme = ThemeManager.getSavedTheme()
-    val colorScheme = darkColorScheme(
-        primary = theme.primary,
-        primaryContainer = theme.primaryContainer,
-        onPrimary = theme.onPrimary,
-        onPrimaryContainer = theme.primary,
-        surface = theme.surface,
-        onSurface = theme.onSurface,
-        onSurfaceVariant = theme.onSurfaceVariant,
-        outlineVariant = theme.outlineVariant,
-        error = theme.error,
-        errorContainer = theme.errorContainer,
-        onErrorContainer = theme.error,
-        secondary = theme.secondary,
-        secondaryContainer = theme.secondaryContainer
+    FeThemeWrapper(
+        theme = theme,
+        isDarkMode = ThemeManager.getSavedDarkMode(),
+        content = content
     )
-    MaterialTheme(colorScheme = colorScheme, content = content)
 }
 
 private val rootTabRoutes = setOf(Screen.Home.route, Screen.Read.route, Screen.Settings.route)
@@ -223,6 +212,7 @@ fun FeAppMain() {
     val shizukuState = rememberShizukuState()
     
     var currentTheme by remember { mutableStateOf(ThemeManager.getSavedTheme()) }
+    var isDarkMode by remember { mutableStateOf(ThemeManager.getSavedDarkMode()) }
     
     // 鏇存柊寮圭獥鐘舵€?- 浣跨敤 snapshotFlow 鐩戝惉 FeApplication.updateStatus 鐨勫彉鍖栧柕~
     var showUpdateDialog by remember { mutableStateOf(false) }
@@ -272,7 +262,7 @@ fun FeAppMain() {
         previousRouteForRootAnimation = currentRoute
     }
 
-    FeThemeWrapper(theme = currentTheme) {
+    FeThemeWrapper(theme = currentTheme, isDarkMode = isDarkMode) {
         Scaffold(
             bottomBar = {
                 if (currentRoute in listOf(
@@ -364,7 +354,8 @@ fun FeAppMain() {
                 composable(Screen.ThemeSettings.route) {
                     ThemeSettingsScreen(
                         navController = navController,
-                        onThemeChanged = { newTheme -> currentTheme = newTheme }
+                        onThemeChanged = { newTheme -> currentTheme = newTheme },
+                        onDarkModeChanged = { darkMode -> isDarkMode = darkMode }
                     )
                 }
                 
@@ -413,20 +404,31 @@ fun FeAppMain() {
 /**
  * 涓婚鍖呰鍣ㄧ粍浠? */
 @Composable
-fun FeThemeWrapper(theme: AppTheme, content: @Composable () -> Unit) {
-    val colorScheme = if (theme.isDark) {
+fun FeThemeWrapper(
+    theme: AppTheme,
+    isDarkMode: Boolean = ThemeManager.getSavedDarkMode(),
+    content: @Composable () -> Unit
+) {
+    val colorScheme = if (isDarkMode) {
+        val surface = monetBlend(Color(0xFF141218), theme.primary, 0.04f)
+        val surfaceContainerLow = monetBlend(Color(0xFF1D1B20), theme.primary, 0.06f)
+        val surfaceContainer = monetBlend(Color(0xFF211F26), theme.primary, 0.08f)
+        val surfaceContainerHigh = monetBlend(Color(0xFF2B2930), theme.primary, 0.09f)
+        val surfaceContainerHighest = monetBlend(Color(0xFF36343B), theme.primary, 0.10f)
+
         darkColorScheme(
             primary = theme.primary,
             primaryContainer = theme.primaryContainer,
             onPrimary = theme.onPrimary,
-            onPrimaryContainer = theme.primary,
-            surface = theme.surface,
-            surfaceContainerLow = theme.surfaceContainerLow,
-            surfaceContainer = theme.surfaceContainer,
-            surfaceContainerHigh = theme.surfaceContainerHigh,
-            surfaceContainerHighest = theme.surfaceContainerHighest,
-            onSurface = theme.onSurface,
-            onSurfaceVariant = theme.onSurfaceVariant,
+            onPrimaryContainer = Color(0xFFEADDFF),
+            background = surface,
+            surface = surface,
+            surfaceContainerLow = surfaceContainerLow,
+            surfaceContainer = surfaceContainer,
+            surfaceContainerHigh = surfaceContainerHigh,
+            surfaceContainerHighest = surfaceContainerHighest,
+            onSurface = Color(0xFFE6E0E9),
+            onSurfaceVariant = Color(0xFFCAC4D0),
             outlineVariant = theme.outlineVariant,
             error = theme.error,
             errorContainer = theme.errorContainer,
@@ -435,27 +437,48 @@ fun FeThemeWrapper(theme: AppTheme, content: @Composable () -> Unit) {
             secondaryContainer = theme.secondaryContainer
         )
     } else {
+        val primary = monetBlend(theme.primary, Color.Black, 0.38f)
+        val primaryContainer = monetBlend(theme.primary, Color.White, 0.78f)
+        val secondary = monetBlend(theme.primary, Color.Black, 0.50f)
+        val secondaryContainer = monetBlend(theme.primary, Color.White, 0.84f)
+        val surface = monetBlend(Color(0xFFFFFBFE), theme.primary, 0.025f)
+        val surfaceContainerLow = monetBlend(Color(0xFFF7F2FA), theme.primary, 0.035f)
+        val surfaceContainer = monetBlend(Color(0xFFF3EDF7), theme.primary, 0.045f)
+        val surfaceContainerHigh = monetBlend(Color(0xFFECE6F0), theme.primary, 0.055f)
+        val surfaceContainerHighest = monetBlend(Color(0xFFE6E0E9), theme.primary, 0.065f)
+
         lightColorScheme(
-            primary = theme.primary,
-            primaryContainer = theme.primaryContainer,
-            onPrimary = theme.onPrimary,
-            onPrimaryContainer = theme.primary,
-            surface = theme.surface,
-            surfaceContainerLow = theme.surfaceContainerLow,
-            surfaceContainer = theme.surfaceContainer,
-            surfaceContainerHigh = theme.surfaceContainerHigh,
-            surfaceContainerHighest = theme.surfaceContainerHighest,
-            onSurface = theme.onSurface,
-            onSurfaceVariant = theme.onSurfaceVariant,
-            outlineVariant = theme.outlineVariant,
-            error = theme.error,
-            errorContainer = theme.errorContainer,
-            onErrorContainer = theme.error,
-            secondary = theme.secondary,
-            secondaryContainer = theme.secondaryContainer
+            primary = primary,
+            primaryContainer = primaryContainer,
+            onPrimary = Color.White,
+            onPrimaryContainer = monetBlend(primary, Color.Black, 0.35f),
+            background = surface,
+            surface = surface,
+            surfaceContainerLow = surfaceContainerLow,
+            surfaceContainer = surfaceContainer,
+            surfaceContainerHigh = surfaceContainerHigh,
+            surfaceContainerHighest = surfaceContainerHighest,
+            onSurface = Color(0xFF1C1B1F),
+            onSurfaceVariant = Color(0xFF49454F),
+            outlineVariant = Color(0xFFCAC4D0),
+            error = Color(0xFFBA1A1A),
+            errorContainer = Color(0xFFFFDAD6),
+            onErrorContainer = Color(0xFF410002),
+            secondary = secondary,
+            secondaryContainer = secondaryContainer
         )
     }
     MaterialTheme(colorScheme = colorScheme, content = content)
+}
+
+private fun monetBlend(from: Color, to: Color, amount: Float): Color {
+    val t = amount.coerceIn(0f, 1f)
+    return Color(
+        red = from.red + (to.red - from.red) * t,
+        green = from.green + (to.green - from.green) * t,
+        blue = from.blue + (to.blue - from.blue) * t,
+        alpha = from.alpha + (to.alpha - from.alpha) * t
+    )
 }
 
 // ============================================================================

@@ -2,10 +2,12 @@ package com.shuaiqiu.fuckets100
 
 import android.util.Log
 import android.widget.Toast
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -185,7 +187,8 @@ fun CloudActivationScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(32.dp))
@@ -309,7 +312,7 @@ fun CloudActivationScreen(
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(12.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "登录风险提示",
                             style = MaterialTheme.typography.labelMedium,
@@ -319,7 +322,8 @@ fun CloudActivationScreen(
                         Text(
                             text = "登录云端模式可能会导致 E听说账号在官方客户端退出登录。请确认当前没有正在使用 E听说，再继续登录。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            softWrap = true
                         )
                     }
                 }

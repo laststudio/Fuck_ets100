@@ -1256,6 +1256,12 @@ private fun ExpandableCrossFab(
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(
+                defaultElevation = 0.dp,
+                pressedElevation = 0.dp,
+                focusedElevation = 0.dp,
+                hoveredElevation = 0.dp
+            ),
             modifier = Modifier.size(56.dp)
         ) {
             Box(
@@ -1294,7 +1300,7 @@ private fun SubFabItem(
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
             shape = RoundedCornerShape(4.dp),
-            shadowElevation = 2.dp
+            shadowElevation = 0.dp
         ) {
             Text(
                 text = label,
@@ -1312,6 +1318,12 @@ private fun SubFabItem(
             containerColor = containerColor,
             contentColor = contentColor,
             shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(
+                defaultElevation = 0.dp,
+                pressedElevation = 0.dp,
+                focusedElevation = 0.dp,
+                hoveredElevation = 0.dp
+            ),
             modifier = Modifier.size(48.dp)
         ) {
             Icon(
@@ -2058,7 +2070,7 @@ private fun SectionDetailItem(
                         Text(
                             text = section.title,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
@@ -2072,13 +2084,13 @@ private fun SectionDetailItem(
                     Text(
                         text = "${section.questions.size} 题",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Icon(
                         if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = null,
-                        tint = Color.Gray,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -2087,7 +2099,7 @@ private fun SectionDetailItem(
             // 展开的题目列表
             if (expanded) {
                 Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(color = Color(0xFF4D4D4D))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 section.questions.forEachIndexed { qIndex, question ->
@@ -2119,7 +2131,11 @@ private fun QuestionDetailItem(
     
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (hasAnswer) Color(0xFF2DD4BF).copy(alpha = 0.1f) else Color(0xFF4D4D4D)
+            containerColor = if (hasAnswer) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.30f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            }
         ),
         modifier = Modifier.clickable { expanded = !expanded }
     ) {
@@ -2147,7 +2163,7 @@ private fun QuestionDetailItem(
                         Icon(
                             if (hasAnswer) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                             contentDescription = null,
-                            tint = if (hasAnswer) Color(0xFF2DD4BF) else Color.Gray,
+                            tint = if (hasAnswer) Color(0xFF2DD4BF) else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -2155,7 +2171,7 @@ private fun QuestionDetailItem(
                     Text(
                         text = question.question,
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = if (expanded) Int.MAX_VALUE else 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -2163,7 +2179,7 @@ private fun QuestionDetailItem(
                 Icon(
                     if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     contentDescription = null,
-                    tint = Color.Gray,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -2171,7 +2187,7 @@ private fun QuestionDetailItem(
             // 展开时显示完整信息
             if (expanded) {
                 Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(color = Color(0xFF5D5D5D))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 // 选项列表
@@ -2179,7 +2195,7 @@ private fun QuestionDetailItem(
                     Text(
                         text = "📝 选项列表:",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     question.answerList.forEachIndexed { index, answer ->
@@ -2196,7 +2212,7 @@ private fun QuestionDetailItem(
                             Text(
                                 text = answer,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -2222,7 +2238,7 @@ private fun QuestionDetailItem(
                         Text(
                             text = question.formattedAnswer,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -2407,6 +2423,7 @@ fun PaperDetailScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(
                     WindowInsetsSides.Top + WindowInsetsSides.Horizontal
@@ -2808,9 +2825,12 @@ private fun PaperListItem(
                     }
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     // 宝贝显示地区标签和标题喵~
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         // 宝贝添加地区标签 Badge 喵~
                         if (paper.regionLabel != "未知") {
                             Surface(
@@ -2825,6 +2845,7 @@ private fun PaperListItem(
                                     text = paper.regionLabel,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White,
+                                    maxLines = 1,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -2834,12 +2855,16 @@ private fun PaperListItem(
                             text = paper.title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
                         // 宝贝添加已下载标记喵~
                         if (isDownloaded) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
+                                modifier = Modifier.widthIn(min = 48.dp),
                                 color = Color(0xFF22C55E),
                                 shape = RoundedCornerShape(4.dp)
                             ) {
@@ -2847,6 +2872,8 @@ private fun PaperListItem(
                                     text = "已下载",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White,
+                                    maxLines = 1,
+                                    textAlign = TextAlign.Center,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -2854,7 +2881,10 @@ private fun PaperListItem(
                     }
                     Spacer(modifier = Modifier.height(2.dp))
                     // 宝贝显示分区类型，用对应颜色喵~
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         sectionColors.forEachIndexed { index, color ->
                             if (index > 0) {
                                 Text(

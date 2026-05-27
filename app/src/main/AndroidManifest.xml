@@ -54,6 +54,13 @@
             android:label="@string/app_name"
             android:enableOnBackInvokedCallback="true"
             android:theme="@style/Theme.Fe" />
+
+        <activity
+            android:name=".DonateActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.Fe" />
         
         <!-- Shizuku Provider - 必须添加 -->
         <provider

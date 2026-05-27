@@ -24,11 +24,12 @@ class ShareActivity : ComponentActivity() {
         }
 
         val theme = ThemeManager.getSavedTheme()
+        val isDarkMode = ThemeManager.getSavedDarkMode()
         setContent {
-            FeThemeWrapper(theme = theme) {
+            FeThemeWrapper(theme = theme, isDarkMode = isDarkMode) {
                 ShareScreen(
                     paper = paper,
-                    isDarkMode = theme.isDark,
+                    isDarkMode = isDarkMode,
                     onBack = { finish() }
                 )
             }

@@ -113,6 +113,7 @@ enum class AppTheme(
 object ThemeManager {
     private const val PREFS_NAME = "fe_settings"
     private const val KEY_THEME = "app_theme"
+    private const val KEY_DARK_MODE = "dark_mode"
     
     private var prefs: SharedPreferences? = null
     
@@ -122,19 +123,30 @@ object ThemeManager {
     
     fun getSavedTheme(): AppTheme {
         val themeName = prefs?.getString(KEY_THEME, AppTheme.MONET_PURPLE.name) ?: AppTheme.MONET_PURPLE.name
-        return try {
+        val savedTheme = try {
             AppTheme.valueOf(themeName)
         } catch (e: IllegalArgumentException) {
             AppTheme.MONET_PURPLE
         }
+        return if (savedTheme.name.startsWith("MONET_")) savedTheme else AppTheme.MONET_PURPLE
     }
     
     fun saveTheme(theme: AppTheme) {
         prefs?.edit()?.putString(KEY_THEME, theme.name)?.apply()
     }
+
+    fun getSavedDarkMode(): Boolean {
+        return prefs?.getBoolean(KEY_DARK_MODE, true) ?: true
+    }
+
+    fun saveDarkMode(isDarkMode: Boolean) {
+        prefs?.edit()?.putBoolean(KEY_DARK_MODE, isDarkMode)?.apply()
+    }
     
     // 获取莫奈系列主题
     fun getMonetThemes(): List<AppTheme> = AppTheme.values().filter { it.name.startsWith("MONET_") }
+
+    fun getColorThemes(): List<AppTheme> = getMonetThemes()
     
     // 获取黑白系列主题
     fun getMonoThemes(): List<AppTheme> = AppTheme.values().filter { it.name.startsWith("MONO_") }

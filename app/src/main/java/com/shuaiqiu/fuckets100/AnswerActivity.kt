@@ -27,7 +27,10 @@ class AnswerActivity : ComponentActivity() {
         }
 
         setContent {
-            FeThemeWrapper(theme = ThemeManager.getSavedTheme()) {
+            FeThemeWrapper(
+                theme = ThemeManager.getSavedTheme(),
+                isDarkMode = ThemeManager.getSavedDarkMode()
+            ) {
                 PaperDetailScreen(
                     paper = paper,
                     onBack = { finish() },

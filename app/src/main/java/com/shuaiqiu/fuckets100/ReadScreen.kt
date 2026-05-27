@@ -30,6 +30,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -389,10 +392,10 @@ fun ReadScreen(
             return
         }
 
-        var token = ETS100AuthManager.getToken(context)
+        val savedToken = ETS100AuthManager.getToken(context)
         val parentId = ETS100AuthManager.getParentAccountId(context)
 
-        if (token == null || parentId == null) {
+        if (savedToken == null || parentId == null) {
             cloudHomeworkError = "登录信息不完整，请重新登录"
             addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 登录信息不完整")
             return
@@ -404,65 +407,67 @@ fun ReadScreen(
         CloudHomeworkState.error = null
         addLog(LogLevel.INFO, LogCategory.SYSTEM, "☁️ 开始加载${cloudHomeworkStatusLabel(status)}列表")
 
+        val requestStatuses = cloudHomeworkRequestStatuses(status)
         var lastError: Throwable? = null
         var success = false
-        val tokenNonNull = token!!
 
-        addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔐 自动重新登录获取最新 Token...")
-        var currentToken: String? = null
-        val phone = ETS100AuthManager.getPhone(context)
-        val savedPassword = ETS100AuthManager.getPassword(context)
-        val deviceCode = ETS100AuthManager.getDeviceCode(context)
-
-        if (phone != null && savedPassword != null) {
-            try {
-                val loginResult = ETS100ApiClient.login(phone, savedPassword, deviceCode)
-                loginResult.onSuccess { loginResponse ->
-                    val ecardResult = ETS100ApiClient.getEcardList(loginResponse.token)
-                    ecardResult.onSuccess { parentAccountId ->
-                        ETS100AuthManager.saveLoginInfo(context, phone, loginResponse.token, parentAccountId)
-                        currentToken = loginResponse.token
-                        addLog(LogLevel.INFO, LogCategory.SYSTEM, "✓ 登录成功，Token 已更新喵~")
-                    }.onFailure { e ->
-                        addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取父账户ID失败: ${e.message}")
+        suspend fun requestHomeworkLists(tokenForRequest: String): List<ETS100ApiClient.HomeworkListResponse> {
+            return coroutineScope {
+                requestStatuses.map { requestStatus ->
+                    async {
+                        requestStatus to ETS100ApiClient.getHomeworkList(tokenForRequest, parentId, requestStatus)
                     }
-                }.onFailure { e ->
-                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 登录失败: ${e.message}")
-                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "请在设置中重新登录")
+                }.awaitAll().mapNotNull { (requestStatus, result) ->
+                    result.onSuccess { response ->
+                        addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ status=$requestStatus 获取到 ${response.homeworks.size} 个作业")
+                        addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 API 返回的 base_url = ${response.baseUrl}")
+                    }.onFailure { e ->
+                        lastError = e
+                        addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ status=$requestStatus 获取作业列表失败: ${e.message}")
+                    }.getOrNull()
                 }
-            } catch (e: ETS100ApiClient.DeviceBindRequiredException) {
-                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 设备需要重新绑定，请在设置中重新登录")
-            }
-        } else {
-            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 未保存密码，请先在设置中登录")
-        }
-
-        val tokenForRequest = currentToken
-        if (tokenForRequest == null) {
-            cloudHomeworkError = "获取 Token 失败，请重新登录"
-            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取 Token 失败，无法加载作业列表")
-            isLoadingCloudHomework = false
-            return
-        }
-
-        val requestStatuses = cloudHomeworkRequestStatuses(status)
-        val mergedHomeworks = mutableListOf<ETS100ApiClient.HomeworkInfo>()
-        var latestBaseUrl = cloudBaseUrl
-        var hasAnySuccessfulRequest = false
-
-        for (requestStatus in requestStatuses) {
-            val result = ETS100ApiClient.getHomeworkList(tokenForRequest, parentId, requestStatus)
-            result.onSuccess { response ->
-                hasAnySuccessfulRequest = true
-                mergedHomeworks.addAll(response.homeworks)
-                latestBaseUrl = response.baseUrl
-                addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ status=$requestStatus 获取到 ${response.homeworks.size} 个作业")
-                addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 API 返回的 base_url = ${response.baseUrl}")
-            }.onFailure { e ->
-                lastError = e
-                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ status=$requestStatus 获取作业列表失败: ${e.message}")
             }
         }
+
+        addLog(LogLevel.INFO, LogCategory.SYSTEM, "🔐 使用已保存 Token 请求作业列表")
+        var responses = requestHomeworkLists(savedToken)
+
+        if (responses.isEmpty()) {
+            addLog(LogLevel.WARN, LogCategory.SYSTEM, "保存的 Token 请求失败，尝试重新登录后重试")
+            val phone = ETS100AuthManager.getPhone(context)
+            val savedPassword = ETS100AuthManager.getPassword(context)
+            val deviceCode = ETS100AuthManager.getDeviceCode(context)
+
+            if (phone != null && savedPassword != null) {
+                try {
+                    val loginResult = ETS100ApiClient.login(phone, savedPassword, deviceCode)
+                    loginResult.onSuccess { loginResponse ->
+                        val ecardResult = ETS100ApiClient.getEcardList(loginResponse.token)
+                        ecardResult.onSuccess { parentAccountId ->
+                            ETS100AuthManager.saveLoginInfo(context, phone, loginResponse.token, parentAccountId)
+                            addLog(LogLevel.INFO, LogCategory.SYSTEM, "✓ 登录成功，Token 已更新，正在重试作业列表")
+                            responses = requestHomeworkLists(loginResponse.token)
+                        }.onFailure { e ->
+                            lastError = e
+                            addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 获取父账户ID失败: ${e.message}")
+                        }
+                    }.onFailure { e ->
+                        lastError = e
+                        addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 登录失败: ${e.message}")
+                        addLog(LogLevel.ERROR, LogCategory.SYSTEM, "请在设置中重新登录")
+                    }
+                } catch (e: ETS100ApiClient.DeviceBindRequiredException) {
+                    lastError = e
+                    addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 设备需要重新绑定，请在设置中重新登录")
+                }
+            } else {
+                addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ 未保存密码，请先在设置中登录")
+            }
+        }
+
+        val mergedHomeworks = responses.flatMap { it.homeworks }
+        val latestBaseUrl = responses.lastOrNull()?.baseUrl ?: cloudBaseUrl
+        val hasAnySuccessfulRequest = responses.isNotEmpty()
 
         if (hasAnySuccessfulRequest) {
             homeworkListsByStatus = homeworkListsByStatus + (status to mergedHomeworks)

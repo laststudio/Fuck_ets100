@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.foundation.layout.Box
@@ -111,7 +112,7 @@ enum class ActivationMode(
 
 sealed class Screen(val route: String, val icon: ImageVector, val label: String) {
     object Home : Screen("home", Icons.Default.Home, "首页")
-    object Read : Screen("read", Icons.Default.MenuBook, "答题")
+    object Read : Screen("read", Icons.AutoMirrored.Filled.MenuBook, "答题")
     object Settings : Screen("settings", Icons.Default.Settings, "设置")
     object Activation : Screen("activation", Icons.Default.Build, "激活")
     object GeneralSettings : Screen("general_settings", Icons.Default.Tune, "通用")
@@ -544,7 +545,7 @@ fun FeTopAppBar(title: String) {
                 tint = MaterialTheme.colorScheme.primary
             )
         },
-        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
     )
 }
 
@@ -585,4 +586,3 @@ fun SettingsListItem(
         }
     }
 }
-

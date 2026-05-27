@@ -265,6 +265,7 @@ fun FeAppMain() {
     val rootContentAlpha = remember { Animatable(1f) }
     var previousRouteForRootAnimation by remember { mutableStateOf<String?>(null) }
     val predictiveBackState = rememberAospPredictiveBackState()
+    var predictiveBackMode by remember { mutableStateOf(SettingsManager.getPredictiveBackMode()) }
 
     val shizukuState = rememberShizukuState()
     
@@ -305,6 +306,7 @@ fun FeAppMain() {
                 isDarkMode = ThemeManager.getSavedDarkMode()
                 isAutoDarkMode = ThemeManager.getSavedAutoDarkMode()
                 useDynamicColor = ThemeManager.getSavedDynamicColor()
+                predictiveBackMode = SettingsManager.getPredictiveBackMode()
                 MainActivity.pendingTargetRoute?.let { route ->
                     MainActivity.pendingTargetRoute = null
                     navController.navigateRootTab(route)
@@ -401,16 +403,34 @@ fun FeAppMain() {
                     startDestination = Screen.Home.route,
                     modifier = Modifier
                         .fillMaxSize()
-                        .aospPredictiveBackAnimation(
-                            state = predictiveBackState,
-                            containerHeightPx = containerHeightPx,
-                            exitingOffsetPx = predictiveBackOffsetPx,
-                            deviceCornerRadius = deviceCornerRadius
+                        .then(
+                            if (predictiveBackMode == PredictiveBackMode.AOSP) {
+                                Modifier.aospPredictiveBackAnimation(
+                                    state = predictiveBackState,
+                                    containerHeightPx = containerHeightPx,
+                                    exitingOffsetPx = predictiveBackOffsetPx,
+                                    deviceCornerRadius = deviceCornerRadius
+                                )
+                            } else {
+                                Modifier
+                            }
                         ),
-                    enterTransition = { slideEnterTransition() },
-                    exitTransition = { slideExitTransition() },
-                    popEnterTransition = { slidePopEnterTransition() },
-                    popExitTransition = { slidePopExitTransition() }
+                    enterTransition = {
+                        if (predictiveBackMode == PredictiveBackMode.NONE) EnterTransition.None
+                        else slideEnterTransition()
+                    },
+                    exitTransition = {
+                        if (predictiveBackMode == PredictiveBackMode.NONE) ExitTransition.None
+                        else slideExitTransition()
+                    },
+                    popEnterTransition = {
+                        if (predictiveBackMode == PredictiveBackMode.NONE) EnterTransition.None
+                        else slidePopEnterTransition()
+                    },
+                    popExitTransition = {
+                        if (predictiveBackMode == PredictiveBackMode.NONE) ExitTransition.None
+                        else slidePopExitTransition()
+                    }
                 ) {
 
                     composable(Screen.Home.route) { 
@@ -437,7 +457,9 @@ fun FeAppMain() {
                     }
                     
                     composable(Screen.Debug.route) {
-                        DebugScreen(navController = navController)
+                        SlideEnterContent(enabled = predictiveBackMode == PredictiveBackMode.SLIDE) {
+                            DebugScreen(navController = navController)
+                        }
                     }
                 }
             }
@@ -445,7 +467,8 @@ fun FeAppMain() {
 
         AospPredictiveBackHandler(
             state = predictiveBackState,
-            enabled = navController.previousBackStackEntry != null,
+            enabled = predictiveBackMode == PredictiveBackMode.AOSP &&
+                navController.previousBackStackEntry != null,
             onBack = { navController.popBackStack() }
         )
         

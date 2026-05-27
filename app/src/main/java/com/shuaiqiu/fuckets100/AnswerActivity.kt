@@ -14,6 +14,7 @@ class AnswerActivity : ComponentActivity() {
     private var paperKey: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         ThemeManager.init(this)
@@ -39,7 +40,7 @@ class AnswerActivity : ComponentActivity() {
                 isDarkMode = effectiveDarkMode,
                 useDynamicColor = ThemeManager.getSavedDynamicColor()
             ) {
-                AospPredictiveBackContent(onBack = { finish() }) {
+                PredictiveBackContent(onBack = { finish() }) {
                     PaperDetailScreen(
                         paper = paper,
                         onBack = { finish() },

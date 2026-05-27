@@ -10,13 +10,14 @@ import androidx.activity.enableEdgeToEdge
 
 class CloudActivationActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         ThemeManager.init(this)
 
         setContent {
             FeTheme {
-                AospPredictiveBackContent(onBack = { finish() }) {
+                PredictiveBackContent(onBack = { finish() }) {
                     CloudActivationScreen(
                         onBack = { finish() },
                         onLoginSuccess = {

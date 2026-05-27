@@ -28,11 +28,27 @@ import org.json.JSONObject
 object ETS100AnswerReader {
 
     private const val TAG = "ETS100AnswerReader"
-    private const val PARALLEL_PARSE_LIMIT = 4
+    private const val DIRECT_READ_PARALLEL_PARSE_LIMIT = 4
+    private const val PRIVILEGED_PARALLEL_PARSE_LIMIT = 4
+    private const val RESOURCE_SCAN_CACHE_TTL_MS = 15_000L
+    private const val VERBOSE_PARSE_LOGS = false
     private val debugTimeFormatter = java.text.SimpleDateFormat(
         "yyyy-MM-dd HH:mm:ss.SSS",
         java.util.Locale.getDefault()
     )
+    private var lastResourceScanCache: ResourceScanCache? = null
+
+    private data class ResourceScanCache(
+        val mode: ActivationMode,
+        val createdAtMs: Long,
+        val folders: List<ETS100FileReader.FileItem>
+    )
+
+    private fun logVerbose(message: String) {
+        if (VERBOSE_PARSE_LOGS) {
+            Log.d(TAG, message)
+        }
+    }
 
     /**
      * structure_type 常量
@@ -401,12 +417,11 @@ object ETS100AnswerReader {
         }
     }
 
-    suspend fun readPapersParallel(context: Context, mode: ActivationMode): List<Paper> = coroutineScope {
-        if (mode != ActivationMode.DIRECT_READ) {
-            Log.i(TAG, "readPapersParallel: $mode 使用串行解析，避免权限命令通道并发串读")
-            return@coroutineScope readPapers(context, mode)
-        }
-
+    suspend fun readPapersParallel(
+        context: Context,
+        mode: ActivationMode,
+        onGroupParsed: (suspend (Int, List<Paper>) -> Unit)? = null
+    ): List<Paper> = coroutineScope {
         if (!ETS100FileReader.isModeAvailable(mode, context)) {
             Log.w(TAG, "Mode $mode is not available")
             return@coroutineScope emptyList()
@@ -424,16 +439,35 @@ object ETS100AnswerReader {
         val groupedFolders = groupResourceFolders(resourceFolders)
         Log.i(TAG, "readPapersParallel: 得到 ${groupedFolders.size} 组试卷")
 
-        val semaphore = Semaphore(PARALLEL_PARSE_LIMIT)
+        val parallelLimit = when (mode) {
+            ActivationMode.DIRECT_READ -> DIRECT_READ_PARALLEL_PARSE_LIMIT
+            ActivationMode.ROOT,
+            ActivationMode.SHIZUKU -> PRIVILEGED_PARALLEL_PARSE_LIMIT
+            else -> 1
+        }
+        Log.i(TAG, "readPapersParallel: $mode 使用 $parallelLimit 路解析")
+
+        val semaphore = Semaphore(parallelLimit)
         groupedFolders.mapIndexed { groupIndex, folderGroup ->
             val orderedFolderGroup = orderResourceFoldersByPaperStructure(folderGroup, resourceOrderMap)
-            async {
+            async(kotlinx.coroutines.Dispatchers.IO) {
                 semaphore.withPermit {
-                    val localReader = ETS100FileReader.getReader(mode, context)
-                    GroupParseResult(
-                        groupIndex = groupIndex,
-                        papers = parseResourceGroup(localReader, orderedFolderGroup, groupIndex)
+                    val startMs = System.currentTimeMillis()
+                    Log.i(
+                        TAG,
+                        "readPapersParallel: START group=${groupIndex + 1}/${groupedFolders.size}, " +
+                            "folders=${orderedFolderGroup.size}, mode=$mode, thread=${Thread.currentThread().name}"
                     )
+                    val localReader = ETS100FileReader.getReader(mode, context)
+                    val papers = parseResourceGroup(localReader, orderedFolderGroup, groupIndex)
+                    onGroupParsed?.invoke(groupIndex, papers)
+                    Log.i(
+                        TAG,
+                        "readPapersParallel: END group=${groupIndex + 1}/${groupedFolders.size}, " +
+                            "papers=${papers.size}, cost=${System.currentTimeMillis() - startMs}ms, " +
+                            "thread=${Thread.currentThread().name}"
+                    )
+                    GroupParseResult(groupIndex = groupIndex, papers = papers)
                 }
             }
         }.awaitAll()
@@ -488,38 +522,47 @@ object ETS100AnswerReader {
         val processedContentPaths = mutableSetOf<String>()
         val folderCount = orderedFolderGroup.size
         val folderNames = orderedFolderGroup.joinToString(", ") { "${it.name}(${it.lastModified})" }
-        Log.d(TAG, "╔═══ Step3&4 第 ${groupIndex + 1} 组路由日志 ═══")
-        Log.d(TAG, "║ 文件夹数量: $folderCount")
-        Log.d(TAG, "║ 文件夹列表: $folderNames")
+        logVerbose("╔═══ Step3&4 第 ${groupIndex + 1} 组路由日志 ═══")
+        logVerbose("║ 文件夹数量: $folderCount")
+        logVerbose("║ 文件夹列表: $folderNames")
 
         val papers = when (folderCount) {
             3 -> {
-                Log.d(TAG, "║ 路由: 广东高中解析器 (3个文件夹)")
+                logVerbose("║ 路由: 广东高中解析器 (3个文件夹)")
                 parseGuangdongHighPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
             }
             7 -> {
-                Log.d(TAG, "║ 路由: 广东初中解析器 (7个文件夹)")
+                logVerbose("║ 路由: 广东初中解析器 (7个文件夹)")
                 parseGuangdongJuniorPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
             }
             10 -> {
-                Log.d(TAG, "║ 路由: 北京初中解析器 (10个文件夹)")
+                logVerbose("║ 路由: 北京初中解析器 (10个文件夹)")
                 parseBeijingJuniorPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
             }
             13 -> {
-                Log.d(TAG, "║ 路由: 北京高中解析器 (13个文件夹)")
+                logVerbose("║ 路由: 北京高中解析器 (13个文件夹)")
                 parseBeijingHighPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
             }
             else -> {
-                Log.d(TAG, "║ 路由: 通用解析器 (${folderCount}个文件夹，不匹配预设)")
+                logVerbose("║ 路由: 通用解析器 (${folderCount}个文件夹，不匹配预设)")
                 parseGenericPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
             }
         }
-        Log.d(TAG, "║ 解析得到 ${papers.size} 份试卷")
-        Log.d(TAG, "╚═══ Step3&4 路由日志结束 ═══")
+        logVerbose("║ 解析得到 ${papers.size} 份试卷")
+        logVerbose("╚═══ Step3&4 路由日志结束 ═══")
         return papers
     }
 
     private fun scanResourceFolders(reader: ETS100FileReader.Reader): List<ETS100FileReader.FileItem> {
+        val mode = reader.getMode()
+        val now = System.currentTimeMillis()
+        lastResourceScanCache?.let { cache ->
+            if (cache.mode == mode && now - cache.createdAtMs <= RESOURCE_SCAN_CACHE_TTL_MS) {
+                Log.d(TAG, "scanResourceFolders: 使用缓存 mode=$mode, count=${cache.folders.size}")
+                return cache.folders
+            }
+        }
+
         val resourceDir = ETS100FileReader.Path.getResourceDir()
         val contentFolders = if (reader is ETS100FileReader.ContentFolderReader) {
             reader.listContentFolders(resourceDir)
@@ -548,6 +591,7 @@ object ETS100AnswerReader {
             )
 
         Log.d(TAG, "scanResourceFolders: 找到 ${sortedFolders.size} 个含 content.json 的文件夹")
+        lastResourceScanCache = ResourceScanCache(mode, now, sortedFolders)
         sortedFolders.forEachIndexed { index, folder ->
             val readableTime = if (folder.lastModified > 0L) {
                 debugTimeFormatter.format(java.util.Date(folder.lastModified))

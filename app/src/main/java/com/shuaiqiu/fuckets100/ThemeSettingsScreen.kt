@@ -2,7 +2,6 @@ package com.shuaiqiu.fuckets100
 
 import android.os.Build
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -36,13 +35,16 @@ fun ThemeSettingsScreen(
     onThemeChanged: ((AppTheme) -> Unit)? = null,
     onDarkModeChanged: ((Boolean) -> Unit)? = null,
     onAutoDarkModeChanged: ((Boolean) -> Unit)? = null,
-    onDynamicColorChanged: ((Boolean) -> Unit)? = null
+    onDynamicColorChanged: ((Boolean) -> Unit)? = null,
+    onPredictiveBackChanged: ((PredictiveBackMode) -> Unit)? = null
 ) {
     val currentTheme = ThemeManager.getSavedTheme()
     var selectedTheme by remember { mutableStateOf(currentTheme) }
     var isDarkMode by remember { mutableStateOf(ThemeManager.getSavedDarkMode()) }
     var isAutoDarkMode by remember { mutableStateOf(ThemeManager.getSavedAutoDarkMode()) }
     var useDynamicColor by remember { mutableStateOf(ThemeManager.getSavedDynamicColor()) }
+    var predictiveBackMode by remember { mutableStateOf(SettingsManager.getPredictiveBackMode()) }
+    var showPredictiveBackDialog by remember { mutableStateOf(false) }
     val dynamicColorAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val systemDarkMode = isSystemInDarkTheme()
     val effectiveDarkMode = if (isAutoDarkMode) systemDarkMode else isDarkMode
@@ -196,6 +198,42 @@ fun ThemeSettingsScreen(
                     label = { Text("夜间") }
                 )
             }
+
+            Spacer(Modifier.height(24.dp))
+
+            Text(
+                "返回手势",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+            Text(
+                "切换自定义 AOSP 动画或系统默认动画",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+
+            ListItem(
+                headlineContent = { Text("预见性返回动画") },
+                supportingContent = {
+                    Text("${predictiveBackMode.label} · ${predictiveBackMode.description}")
+                },
+                leadingContent = {
+                    Icon(Icons.Default.Sync, contentDescription = null)
+                },
+                trailingContent = {
+                    Text(
+                        predictiveBackMode.label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .clickable { showPredictiveBackDialog = true }
+            )
             
             Spacer(Modifier.height(32.dp))
             
@@ -210,13 +248,45 @@ fun ThemeSettingsScreen(
             Spacer(Modifier.height(12.dp))
             
             ThemePreviewCard(
-                theme = selectedTheme,
-                isDarkMode = effectiveDarkMode,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
             
             Spacer(Modifier.height(88.dp))
         }
+    }
+
+    if (showPredictiveBackDialog) {
+        AlertDialog(
+            onDismissRequest = { showPredictiveBackDialog = false },
+            title = { Text("预见性返回动画") },
+            text = {
+                Column {
+                    PredictiveBackMode.entries.forEach { mode ->
+                        ListItem(
+                            headlineContent = { Text(mode.label) },
+                            supportingContent = { Text(mode.description) },
+                            trailingContent = {
+                                if (predictiveBackMode == mode) {
+                                    Icon(Icons.Default.Check, contentDescription = null)
+                                }
+                            },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier.clickable {
+                                predictiveBackMode = mode
+                                SettingsManager.savePredictiveBackMode(mode)
+                                showPredictiveBackDialog = false
+                                onPredictiveBackChanged?.invoke(mode)
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPredictiveBackDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 }
 
@@ -278,99 +348,180 @@ fun ThemeCard(
 }
 
 @Composable
-fun ThemePreviewCard(theme: AppTheme, isDarkMode: Boolean, modifier: Modifier = Modifier) {
-    val primary = if (isDarkMode) theme.primary else previewBlend(theme.primary, Color.Black, 0.38f)
-    val primaryContainer = if (isDarkMode) {
-        theme.primaryContainer
-    } else {
-        previewBlend(theme.primary, Color.White, 0.78f)
-    }
-    val background = if (isDarkMode) {
-        previewBlend(Color(0xFF111014), theme.primary, 0.055f)
-    } else {
-        previewBlend(Color(0xFFFFFBFE), theme.primary, 0.045f)
-    }
-    val surface = if (isDarkMode) {
-        previewBlend(Color(0xFF141218), theme.primary, 0.05f)
-    } else {
-        previewBlend(Color(0xFFFFFBFE), theme.primary, 0.03f)
-    }
-    val onSurface = if (isDarkMode) Color(0xFFE6E0E9) else Color(0xFF1C1B1F)
-    val onSurfaceVariant = if (isDarkMode) Color(0xFFCAC4D0) else Color(0xFF49454F)
+fun ThemePreviewCard(modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
 
-    Card(
+    ElevatedCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = background)
+        colors = CardDefaults.elevatedCardColors(containerColor = colors.surfaceContainerLow)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(surface, RoundedCornerShape(12.dp))
                 .padding(16.dp)
         ) {
-            // 标题预览
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(primary)
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.size(40.dp),
+                    shape = CircleShape,
+                    color = colors.primaryContainer,
+                    contentColor = colors.onPrimaryContainer
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Palette, contentDescription = null)
+                    }
+                }
                 Spacer(Modifier.width(12.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Fe 终端",
+                        "Material 3 配色",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = onSurface
+                        color = colors.onSurface
                     )
                     Text(
-                        "应用预览",
+                        "当前应用正在使用的 ColorScheme",
                         style = MaterialTheme.typography.bodySmall,
-                        color = onSurfaceVariant
+                        color = colors.onSurfaceVariant
                     )
                 }
             }
-            
+
             Spacer(Modifier.height(16.dp))
-            
-            // 按钮预览
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = primary,
-                        contentColor = if (isDarkMode) theme.onPrimary else Color.White
-                    )
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("主要按钮")
+                    ColorRoleChip(
+                        label = "Primary",
+                        color = colors.primary,
+                        contentColor = colors.onPrimary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ColorRoleChip(
+                        label = "Secondary",
+                        color = colors.secondary,
+                        contentColor = colors.onSecondary,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
-                
-                OutlinedButton(onClick = { }) {
-                    Text("次要按钮")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ColorRoleChip(
+                        label = "Tertiary",
+                        color = colors.tertiary,
+                        contentColor = colors.onTertiary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ColorRoleChip(
+                        label = "Error",
+                        color = colors.errorContainer,
+                        contentColor = colors.onErrorContainer,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
-            
-            Spacer(Modifier.height(12.dp))
-            
-            // 状态指示器
+
+            Spacer(Modifier.height(16.dp))
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = colors.surface,
+                contentColor = colors.onSurface,
+                tonalElevation = 1.dp
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(
+                        "Surface",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = colors.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "背景、容器、文字和按钮都会跟随这里的实际主题色。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { }) {
+                            Text("Filled")
+                        }
+                        FilledTonalButton(onClick = { }) {
+                            Text("Tonal")
+                        }
+                        OutlinedButton(onClick = { }) {
+                            Text("Outlined")
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(8.dp)
+                    .height(10.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(primaryContainer),
+                    .background(colors.surfaceContainerHighest),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // 模拟进度
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .weight(0.7f)
-                        .background(primary)
+                        .weight(0.38f)
+                        .background(colors.primary)
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .weight(0.28f)
+                        .background(colors.secondary)
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .weight(0.22f)
+                        .background(colors.tertiary)
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ColorRoleChip(
+    label: String,
+    color: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.height(56.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = color,
+        contentColor = contentColor
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 10.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -386,15 +537,5 @@ private fun themeModeSegmentedButtonColors(): SegmentedButtonColors {
         disabledActiveContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         disabledInactiveContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         disabledInactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f)
-    )
-}
-
-private fun previewBlend(from: Color, to: Color, amount: Float): Color {
-    val t = amount.coerceIn(0f, 1f)
-    return Color(
-        red = from.red + (to.red - from.red) * t,
-        green = from.green + (to.green - from.green) * t,
-        blue = from.blue + (to.blue - from.blue) * t,
-        alpha = from.alpha + (to.alpha - from.alpha) * t
     )
 }

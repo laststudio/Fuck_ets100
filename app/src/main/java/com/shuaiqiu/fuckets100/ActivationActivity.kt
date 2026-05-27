@@ -24,6 +24,7 @@ class ActivationActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         ThemeManager.init(this)
@@ -46,7 +47,7 @@ class ActivationActivity : ComponentActivity() {
             }
 
             FeTheme {
-                AospPredictiveBackContent(onBack = { finish() }) {
+                PredictiveBackContent(onBack = { finish() }) {
                     ActivationSettingsScreen(
                         currentMode = currentMode,
                         shizukuState = shizukuState,

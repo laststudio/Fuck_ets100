@@ -3,6 +3,8 @@ package com.shuaiqiu.fuckets100
 import android.os.Build
 import android.view.RoundedCorner
 import androidx.activity.BackEventCompat
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -35,6 +39,78 @@ internal enum class PredictiveBackExitDirection {
     FOLLOW_GESTURE,
     ALWAYS_RIGHT,
     ALWAYS_LEFT
+}
+
+internal fun ComponentActivity.applyPredictiveBackWindowTheme() {
+    setTheme(
+        if (SettingsManager.getPredictiveBackMode() != PredictiveBackMode.NONE) {
+            R.style.Theme_Fe_Transparent
+        } else {
+            R.style.Theme_Fe
+        }
+    )
+}
+
+@Composable
+internal fun PredictiveBackContent(
+    enabled: Boolean = true,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    when (SettingsManager.getPredictiveBackMode()) {
+        PredictiveBackMode.AOSP -> {
+            AospPredictiveBackContent(
+                enabled = enabled,
+                onBack = onBack,
+                content = content
+            )
+        }
+        PredictiveBackMode.SLIDE -> {
+            SlidePredictiveBackContent(
+                enabled = enabled,
+                onBack = onBack,
+                content = content
+            )
+        }
+        PredictiveBackMode.NONE -> {
+            BackHandler(enabled = enabled, onBack = onBack)
+            content()
+        }
+    }
+}
+
+@Composable
+internal fun SlidePredictiveBackContent(
+    enabled: Boolean = true,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val state = rememberAospPredictiveBackState()
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val containerWidthPx = with(density) { maxWidth.toPx() }
+        val deviceCornerRadius = rememberDeviceCornerRadius()
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .slidePredictiveBackAnimation(
+                    state = state,
+                    containerWidthPx = containerWidthPx,
+                    deviceCornerRadius = deviceCornerRadius
+                )
+        ) {
+            SlideEnterContent(enabled = true, content = content)
+        }
+    }
+
+    AospPredictiveBackHandler(
+        state = state,
+        enabled = enabled,
+        retainCompletedState = true,
+        onBack = onBack
+    )
 }
 
 internal class AospPredictiveBackState(
@@ -192,6 +268,82 @@ internal fun Modifier.aospPredictiveBackAnimation(
             alpha = (1f - ((emphasizedExitProgress - 0.7f) / 0.3f)).coerceIn(0f, 1f)
         }
         .clip(RoundedCornerShape(deviceCornerRadius))
+}
+
+internal fun Modifier.slidePredictiveBackAnimation(
+    state: AospPredictiveBackState,
+    containerWidthPx: Float,
+    deviceCornerRadius: Dp
+): Modifier {
+    val gestureProgress = state.latestBackEvent?.progress ?: 0f
+    val emphasizedExitProgress = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+        .transform(state.exitAnimatable.value.coerceIn(0f, 1f))
+    val progress = max(gestureProgress, emphasizedExitProgress).coerceIn(0f, 1f)
+
+    return slidePageLayer(
+        progress = progress,
+        containerWidthPx = containerWidthPx,
+        deviceCornerRadius = deviceCornerRadius
+    )
+}
+
+@Composable
+internal fun SlideEnterContent(
+    enabled: Boolean,
+    content: @Composable () -> Unit
+) {
+    val enterProgress = remember { Animatable(if (enabled) 1f else 0f) }
+
+    LaunchedEffect(enabled) {
+        if (enabled) {
+            enterProgress.snapTo(1f)
+            enterProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing)
+            )
+        } else {
+            enterProgress.snapTo(0f)
+        }
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val containerWidthPx = with(density) { maxWidth.toPx() }
+        val deviceCornerRadius = rememberDeviceCornerRadius()
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .slidePageLayer(
+                    progress = enterProgress.value,
+                    containerWidthPx = containerWidthPx,
+                    deviceCornerRadius = deviceCornerRadius
+                )
+        ) {
+            content()
+        }
+    }
+}
+
+private fun Modifier.slidePageLayer(
+    progress: Float,
+    containerWidthPx: Float,
+    deviceCornerRadius: Dp
+): Modifier {
+    if (progress <= 0.001f) {
+        return this
+    }
+
+    val pageShape = RoundedCornerShape(deviceCornerRadius)
+
+    return graphicsLayer {
+        shape = pageShape
+        clip = true
+        shadowElevation = 20.dp.toPx()
+        ambientShadowColor = Color.Black.copy(alpha = 0.26f)
+        spotShadowColor = Color.Black.copy(alpha = 0.32f)
+        translationX = containerWidthPx * progress.coerceIn(0f, 1f)
+    }
 }
 
 @Composable

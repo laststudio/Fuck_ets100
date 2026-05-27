@@ -9,13 +9,14 @@ import androidx.activity.enableEdgeToEdge
 
 class LegalActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         ThemeManager.init(this)
 
         setContent {
             FeTheme {
-                AospPredictiveBackContent(onBack = { finish() }) {
+                PredictiveBackContent(onBack = { finish() }) {
                     LegalScreen(onBack = { finish() })
                 }
             }

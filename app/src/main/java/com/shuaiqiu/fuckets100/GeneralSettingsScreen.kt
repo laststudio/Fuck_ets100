@@ -18,7 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavHostController
 
 /**
  * 通用设置页面
@@ -27,7 +26,7 @@ import androidx.navigation.NavHostController
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GeneralSettingsScreen(navController: NavHostController) {
+fun GeneralSettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     var debugModeEnabled by remember { mutableStateOf(SettingsManager.getDebugMode()) }
     var forceReadModeEnabled by remember { mutableStateOf(SettingsManager.getForceReadMode()) }
@@ -38,7 +37,7 @@ fun GeneralSettingsScreen(navController: NavHostController) {
             CenterAlignedTopAppBar(
                 title = { Text("通用设置", style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 }

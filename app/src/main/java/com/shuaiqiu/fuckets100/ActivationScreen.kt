@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.navigation.NavHostController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,7 +38,9 @@ fun ActivationSettingsScreen(
     currentMode: ActivationMode,
     shizukuState: ShizukuState,
     onModeSelected: (ActivationMode) -> Unit,
-    navController: NavHostController
+    onBack: () -> Unit,
+    onNavigateToCloudActivation: () -> Unit,
+    onNavigateToRead: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -97,7 +98,7 @@ fun ActivationSettingsScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("运行授权与权限", style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } }
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } }
             )
         }
     ) { p ->
@@ -241,10 +242,11 @@ fun ActivationSettingsScreen(
                                     ActivationMode.CLOUD -> {
                                         FeCloudActivationPanel(
                                             context = context,
-                                            navController = navController,
                                             isLoggedIn = cloudLoggedIn,
                                             phone = cloudPhone,
-                                            onCloudAuthChanged = { refreshCloudAuthState() }
+                                            onCloudAuthChanged = { refreshCloudAuthState() },
+                                            onNavigateToCloudActivation = onNavigateToCloudActivation,
+                                            onNavigateToRead = onNavigateToRead
                                         )
                                     }
                                     else -> {
@@ -900,10 +902,11 @@ fun FeRootActivationPanel(context: android.content.Context) {
 @Composable
 fun FeCloudActivationPanel(
     context: android.content.Context,
-    navController: NavHostController,
     isLoggedIn: Boolean,
     phone: String?,
-    onCloudAuthChanged: () -> Unit
+    onCloudAuthChanged: () -> Unit,
+    onNavigateToCloudActivation: () -> Unit,
+    onNavigateToRead: () -> Unit
 ) {
     val cloudColor = Color(0xFF60A5FA)
     val successColor = Color(0xFF4ADE80)
@@ -960,7 +963,7 @@ fun FeCloudActivationPanel(
                 Button(
                     onClick = {
                         // 宝贝直接跳转到答题页面，云端模式入口喵~
-                        navController.navigate(Screen.Read.route)
+                        onNavigateToRead()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = cloudColor, contentColor = Color.White),
                     modifier = Modifier.weight(1f).height(40.dp)
@@ -975,7 +978,7 @@ fun FeCloudActivationPanel(
             Button(
                 onClick = {
                     // 跳转到登录页面
-                    navController.navigate(Screen.CloudActivation.route)
+                    onNavigateToCloudActivation()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = cloudColor, contentColor = Color.White),
                 modifier = Modifier.fillMaxWidth().height(40.dp)

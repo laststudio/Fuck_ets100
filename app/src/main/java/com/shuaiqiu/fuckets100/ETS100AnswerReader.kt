@@ -29,6 +29,10 @@ object ETS100AnswerReader {
 
     private const val TAG = "ETS100AnswerReader"
     private const val PARALLEL_PARSE_LIMIT = 4
+    private val debugTimeFormatter = java.text.SimpleDateFormat(
+        "yyyy-MM-dd HH:mm:ss.SSS",
+        java.util.Locale.getDefault()
+    )
 
     /**
      * structure_type 常量
@@ -356,16 +360,10 @@ object ETS100AnswerReader {
             return emptyList()
         }
 
-        val resourceOrderMap = buildResourceOrderMap(reader)
-
-        // Step 1: 扫描 resource/ 目录
-        // 获取所有含 content.json 的子目录，按修改时间降序排序
         val resourceFolders = scanResourceFolders(reader)
-        Log.i(TAG, "readPapers: Step1 扫描 resource/ 获取 ${resourceFolders.size} 个文件夹")
-
-        // Step 2: 按时间分组（相邻文件夹修改时间间隔 ≤ 0.5秒 → 同一组）
-        val groupedFolders = groupByTime(resourceFolders, thresholdMs = 2000)
-        Log.i(TAG, "readPapers: Step2 时间分组得到 ${groupedFolders.size} 组")
+        val resourceOrderMap = emptyMap<String, Int>()
+        val groupedFolders = groupResourceFolders(resourceFolders)
+        Log.i(TAG, "readPapers: 得到 ${groupedFolders.size} 组试卷")
 
         val exerciseGroupPapers = mutableListOf<Paper>()
 
@@ -393,9 +391,9 @@ object ETS100AnswerReader {
             return emptyList()
         }
 
-        val resourceOrderMap = buildResourceOrderMap(reader)
         val resourceFolders = scanResourceFolders(reader)
-        val groupedFolders = groupByTime(resourceFolders, thresholdMs = 2000)
+        val resourceOrderMap = emptyMap<String, Int>()
+        val groupedFolders = groupResourceFolders(resourceFolders)
 
         return groupedFolders.mapIndexed { groupIndex, folderGroup ->
             val orderedFolderGroup = orderResourceFoldersByPaperStructure(folderGroup, resourceOrderMap)
@@ -404,6 +402,11 @@ object ETS100AnswerReader {
     }
 
     suspend fun readPapersParallel(context: Context, mode: ActivationMode): List<Paper> = coroutineScope {
+        if (mode != ActivationMode.DIRECT_READ) {
+            Log.i(TAG, "readPapersParallel: $mode 使用串行解析，避免权限命令通道并发串读")
+            return@coroutineScope readPapers(context, mode)
+        }
+
         if (!ETS100FileReader.isModeAvailable(mode, context)) {
             Log.w(TAG, "Mode $mode is not available")
             return@coroutineScope emptyList()
@@ -416,12 +419,10 @@ object ETS100AnswerReader {
             return@coroutineScope emptyList()
         }
 
-        val resourceOrderMap = buildResourceOrderMap(reader)
         val resourceFolders = scanResourceFolders(reader)
-        Log.i(TAG, "readPapersParallel: Step1 扫描 resource/ 获取 ${resourceFolders.size} 个文件夹")
-
-        val groupedFolders = groupByTime(resourceFolders, thresholdMs = 2000)
-        Log.i(TAG, "readPapersParallel: Step2 时间分组得到 ${groupedFolders.size} 组")
+        val resourceOrderMap = emptyMap<String, Int>()
+        val groupedFolders = groupResourceFolders(resourceFolders)
+        Log.i(TAG, "readPapersParallel: 得到 ${groupedFolders.size} 组试卷")
 
         val semaphore = Semaphore(PARALLEL_PARSE_LIMIT)
         groupedFolders.mapIndexed { groupIndex, folderGroup ->
@@ -518,37 +519,102 @@ object ETS100AnswerReader {
         return papers
     }
 
-    /**
-     * Step 1: 扫描 resource/ 目录
-     * 获取所有含 content.json 的子目录，按修改时间降序排序
-     *
-     * 喵~ 按照文档方式，直接对每个目录调用 getFileModifiedTime 获取时间！
-     */
     private fun scanResourceFolders(reader: ETS100FileReader.Reader): List<ETS100FileReader.FileItem> {
         val resourceDir = ETS100FileReader.Path.getResourceDir()
-        val allItems = reader.listFiles(resourceDir)
+        val contentFolders = if (reader is ETS100FileReader.ContentFolderReader) {
+            reader.listContentFolders(resourceDir)
+        } else {
+            reader.listFiles(resourceDir)
+                .filter { it.isDirectory }
+                .mapNotNull { item ->
+                    val folderPath = "$resourceDir/${item.name}"
+                    val contentJsonPath = "$folderPath/content.json"
 
-        // 筛选出是目录的项，然后检查 content.json 并获取时间
-        val contentFolders = allItems
-            .filter { it.isDirectory }
-            .mapNotNull { item ->
-                val folderPath = "$resourceDir/${item.name}"
-                val contentJsonPath = "$folderPath/content.json"
-                
-                // 检查是否有 content.json
-                if (reader.getFileSize(contentJsonPath) <= 0) {
-                    return@mapNotNull null
+                    if (reader.getFileSize(contentJsonPath) <= 0) {
+                        return@mapNotNull null
+                    }
+
+                    val lastModified = item.lastModified.takeIf { it > 0L }
+                        ?: reader.getFileModifiedTime(folderPath)
+
+                    item.copy(lastModified = lastModified)
                 }
-                
-                // 喵~ 直接调用 getFileModifiedTime 获取目录修改时间！
-                val lastModified = reader.getFileModifiedTime(folderPath)
-                
-                item.copy(lastModified = lastModified)
-            }
-            .sortedByDescending { it.lastModified }
+        }
 
-        Log.d(TAG, "scanResourceFolders: 找到 ${contentFolders.size} 个含 content.json 的文件夹")
-        return contentFolders
+        val sortedFolders = contentFolders
+            .sortedWith(
+                compareByDescending<ETS100FileReader.FileItem> { it.lastModified }
+                    .thenByDescending { it.name }
+            )
+
+        Log.d(TAG, "scanResourceFolders: 找到 ${sortedFolders.size} 个含 content.json 的文件夹")
+        sortedFolders.forEachIndexed { index, folder ->
+            val readableTime = if (folder.lastModified > 0L) {
+                debugTimeFormatter.format(java.util.Date(folder.lastModified))
+            } else {
+                "0/无效时间"
+            }
+            Log.d(
+                TAG,
+                "scanResourceFolders: #${index + 1} name=${folder.name}, " +
+                    "lastModified=${folder.lastModified}, time=$readableTime, " +
+                    "contentJsonSize=${folder.size}"
+            )
+        }
+        return sortedFolders
+    }
+
+    private fun groupResourceFolders(
+        folders: List<ETS100FileReader.FileItem>
+    ): List<List<ETS100FileReader.FileItem>> {
+        if (folders.isEmpty()) return emptyList()
+        val hasReliableTime = folders.any { it.lastModified > 0L } &&
+            folders.map { it.lastModified }.distinct().size > 1
+        val hasMillisecondPrecision = folders.any { it.lastModified % 1000L != 0L }
+        Log.d(
+            TAG,
+            "groupResourceFolders: count=${folders.size}, " +
+                "hasReliableTime=$hasReliableTime, hasMillisecondPrecision=$hasMillisecondPrecision"
+        )
+
+        if (hasReliableTime) {
+            return normalizeResourceGroups(groupByTime(folders, thresholdMs = 2000L))
+        }
+
+        Log.w(TAG, "groupResourceFolders: resource 修改时间不可靠，按已知试卷包数量兜底拆分")
+        return groupByKnownPaperFolderCounts(folders)
+    }
+
+    private fun normalizeResourceGroups(
+        groups: List<List<ETS100FileReader.FileItem>>
+    ): List<List<ETS100FileReader.FileItem>> {
+        return groups.flatMap { group ->
+            if (group.size <= 13) {
+                listOf(group)
+            } else {
+                Log.w(TAG, "normalizeResourceGroups: 时间分组过大(${group.size})，按已知试卷包数量二次拆分")
+                groupByKnownPaperFolderCounts(group)
+            }
+        }
+    }
+
+    private fun groupByKnownPaperFolderCounts(
+        folders: List<ETS100FileReader.FileItem>
+    ): List<List<ETS100FileReader.FileItem>> {
+        val groupSizes = listOf(13, 10, 7, 3)
+        val groups = mutableListOf<List<ETS100FileReader.FileItem>>()
+        var index = 0
+
+        while (index < folders.size) {
+            val remaining = folders.size - index
+            val size = groupSizes.firstOrNull { remaining >= it && (remaining == it || (remaining - it) >= 3) }
+                ?: remaining
+            groups.add(folders.subList(index, index + size))
+            index += size
+        }
+
+        Log.d(TAG, "groupByKnownPaperFolderCounts: ${folders.size} 个文件夹兜底拆成 ${groups.size} 组")
+        return groups
     }
 
     private fun buildResourceOrderMap(reader: ETS100FileReader.Reader): Map<String, Int> {

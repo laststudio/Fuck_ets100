@@ -30,6 +30,7 @@ import androidx.navigation.NavHostController
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(navController: NavHostController) {
+    val context = LocalContext.current
     var showAboutDialog by remember { mutableStateOf(false) }
     
     Scaffold(
@@ -51,17 +52,17 @@ fun SettingsScreen(navController: NavHostController) {
             ElevatedCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                 Column {
                     SettingsListItem(Icons.Default.Build, "运行授权", "配置 Shizuku、Root 或其他模式") {
-                        navController.navigate(Screen.Activation.route)
+                        context.startActivity(ActivationActivity.createIntent(context))
                     }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
 
                     SettingsListItem(Icons.Default.Tune, "通用设置", "语言、时区等常规选项") {
-                        navController.navigate(Screen.GeneralSettings.route)
+                        context.startActivity(GeneralSettingsActivity.createIntent(context))
                     }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
 
                     SettingsListItem(Icons.Default.Palette, "主题", "莫奈系列与黑白系列主题切换") {
-                        navController.navigate(Screen.ThemeSettings.route)
+                        context.startActivity(ThemeSettingsActivity.createIntent(context))
                     }
                 }
             }
@@ -76,10 +77,9 @@ fun SettingsScreen(navController: NavHostController) {
                     }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
                     SettingsListItem(Icons.Default.Gavel, "法律信息与使用守则", "使用前请阅读并遵守", hideChevron = false) {
-                        navController.navigate(Screen.Legal.route)
+                        context.startActivity(LegalActivity.createIntent(context))
                     }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-                    val context = LocalContext.current
                     SettingsListItem(Icons.AutoMirrored.Filled.Help, "访问官网", "lastudio.cc", hideChevron = true) {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://lastudio.cc"))
                         context.startActivity(intent)

@@ -219,7 +219,7 @@ private fun normalizeCloudParsedSections(
 @Composable
 fun ReadScreen(
     currentMode: ActivationMode,
-    onNavigateToSettings: () -> Unit
+    onNavigateToActivation: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1055,8 +1055,8 @@ fun ReadScreen(
                                 color = MaterialTheme.colorScheme.error
                             )
                             Spacer(modifier = Modifier.height(24.dp))
-                            Button(onClick = onNavigateToSettings) {
-                                Text("前往设置")
+                            Button(onClick = onNavigateToActivation) {
+                                Text("前往激活")
                             }
                         }
                     }

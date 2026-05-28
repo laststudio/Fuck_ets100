@@ -41,7 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-class DonateActivity : ComponentActivity() {
+open class DonateActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
@@ -69,7 +69,13 @@ class DonateActivity : ComponentActivity() {
 
     companion object {
         fun createIntent(context: Context): Intent {
-            return Intent(context, DonateActivity::class.java)
+            return Intent(
+                context,
+                predictiveBackActivityClass(
+                    DonateActivity::class.java,
+                    DonateOpaqueActivity::class.java
+                )
+            )
         }
     }
 }

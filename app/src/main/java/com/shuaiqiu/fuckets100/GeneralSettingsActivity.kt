@@ -7,7 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 
-class GeneralSettingsActivity : ComponentActivity() {
+open class GeneralSettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
@@ -25,7 +25,13 @@ class GeneralSettingsActivity : ComponentActivity() {
 
     companion object {
         fun createIntent(context: Context): Intent {
-            return Intent(context, GeneralSettingsActivity::class.java)
+            return Intent(
+                context,
+                predictiveBackActivityClass(
+                    GeneralSettingsActivity::class.java,
+                    GeneralSettingsOpaqueActivity::class.java
+                )
+            )
         }
     }
 }

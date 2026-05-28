@@ -8,7 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 
-class CloudActivationActivity : ComponentActivity() {
+open class CloudActivationActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
@@ -33,7 +33,13 @@ class CloudActivationActivity : ComponentActivity() {
 
     companion object {
         fun createIntent(context: Context): Intent {
-            return Intent(context, CloudActivationActivity::class.java)
+            return Intent(
+                context,
+                predictiveBackActivityClass(
+                    CloudActivationActivity::class.java,
+                    CloudActivationOpaqueActivity::class.java
+                )
+            )
         }
     }
 }

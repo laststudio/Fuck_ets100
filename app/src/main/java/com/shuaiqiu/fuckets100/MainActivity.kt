@@ -457,9 +457,7 @@ fun FeAppMain() {
                     }
                     
                     composable(Screen.Debug.route) {
-                        SlideEnterContent(enabled = predictiveBackMode == PredictiveBackMode.SLIDE) {
-                            DebugScreen(navController = navController)
-                        }
+                        DebugScreen(navController = navController)
                     }
                 }
             }

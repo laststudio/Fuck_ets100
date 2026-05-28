@@ -623,6 +623,7 @@ object ETS100AnswerReader {
 
         if (hasReliableTime) {
             return normalizeResourceGroups(groupByTime(folders, thresholdMs = 2000L))
+            return normalizeResourceGroups(groupByTime(folders, thresholdMs = 2000L))
         }
 
         Log.w(TAG, "groupResourceFolders: resource 修改时间不可靠，按已知试卷包数量兜底拆分")

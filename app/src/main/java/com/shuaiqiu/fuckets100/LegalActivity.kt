@@ -7,7 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 
-class LegalActivity : ComponentActivity() {
+open class LegalActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
@@ -25,7 +25,13 @@ class LegalActivity : ComponentActivity() {
 
     companion object {
         fun createIntent(context: Context): Intent {
-            return Intent(context, LegalActivity::class.java)
+            return Intent(
+                context,
+                predictiveBackActivityClass(
+                    LegalActivity::class.java,
+                    LegalOpaqueActivity::class.java
+                )
+            )
         }
     }
 }

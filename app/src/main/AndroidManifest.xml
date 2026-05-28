@@ -104,6 +104,69 @@
             android:label="@string/app_name"
             android:enableOnBackInvokedCallback="true"
             android:theme="@style/Theme.Fe.Transparent" />
+
+        <activity
+            android:name=".AnswerOpaqueActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.Fe" />
+
+        <activity
+            android:name=".ShareOpaqueActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.Fe" />
+
+        <activity
+            android:name=".DonateOpaqueActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.Fe" />
+
+        <activity
+            android:name=".RemoteContentOpaqueActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.Fe" />
+
+        <activity
+            android:name=".ActivationOpaqueActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.Fe" />
+
+        <activity
+            android:name=".CloudActivationOpaqueActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.Fe" />
+
+        <activity
+            android:name=".GeneralSettingsOpaqueActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.Fe" />
+
+        <activity
+            android:name=".ThemeSettingsOpaqueActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.Fe" />
+
+        <activity
+            android:name=".LegalOpaqueActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.Fe" />
         
         <!-- Shizuku Provider - 必须添加 -->
         <provider

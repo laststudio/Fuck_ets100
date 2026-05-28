@@ -49,7 +49,7 @@ import kotlinx.coroutines.withContext
 import java.net.URL
 import java.net.URLConnection
 
-class RemoteContentActivity : ComponentActivity() {
+open class RemoteContentActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
@@ -106,7 +106,13 @@ class RemoteContentActivity : ComponentActivity() {
             changelogSummary: String,
             changelogUrl: String
         ): Intent {
-            return Intent(context, RemoteContentActivity::class.java).apply {
+            return Intent(
+                context,
+                predictiveBackActivityClass(
+                    RemoteContentActivity::class.java,
+                    RemoteContentOpaqueActivity::class.java
+                )
+            ).apply {
                 putExtra(EXTRA_ANNOUNCEMENT_TITLE, announcementTitle)
                 putExtra(EXTRA_ANNOUNCEMENT_MESSAGE, announcementMessage)
                 putExtra(EXTRA_ANNOUNCEMENT_UPDATED_AT, announcementUpdatedAt)

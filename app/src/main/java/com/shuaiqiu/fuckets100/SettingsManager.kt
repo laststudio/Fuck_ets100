@@ -158,7 +158,7 @@ enum class PredictiveBackMode(
     val label: String,
     val description: String
 ) {
-    AOSP("AOSP", "使用仿 AOSP 跨 Activity 动画"),
+    AOSP("缩放", "使用缩放式预见性返回动画"),
     SLIDE("滑动", "使用系统自带预见性返回动画"),
     NONE("无", "关闭自定义预见性返回动画")
 }

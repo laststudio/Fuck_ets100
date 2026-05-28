@@ -130,7 +130,7 @@ internal class AospPredictiveBackState(
             exitAnimatable.snapTo(0f)
             exitAnimatable.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
             )
             completed = true
             onBack()
@@ -181,7 +181,7 @@ internal fun AospPredictiveBackContent(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val containerHeightPx = with(density) { maxHeight.toPx() }
-        val predictiveBackOffsetPx = with(density) { 96.dp.toPx() }
+        val containerWidthPx = with(density) { maxWidth.toPx() }
         val deviceCornerRadius = rememberDeviceCornerRadius()
 
         Box(
@@ -190,7 +190,7 @@ internal fun AospPredictiveBackContent(
                 .aospPredictiveBackAnimation(
                     state = state,
                     containerHeightPx = containerHeightPx,
-                    exitingOffsetPx = predictiveBackOffsetPx,
+                    exitingOffsetPx = containerWidthPx,
                     deviceCornerRadius = deviceCornerRadius
                 )
         ) {
@@ -218,9 +218,10 @@ internal fun Modifier.aospPredictiveBackAnimation(
 
     val backEvent = state.latestBackEvent
     val edge = backEvent?.swipeEdge ?: BackEventCompat.EDGE_LEFT
-    val gestureProgress = state.progress
+    val gestureProgress = (backEvent?.progress ?: 0f).coerceIn(0f, 1f)
+    val linearExitProgress = state.exitAnimatable.value.coerceIn(0f, 1f)
     val emphasizedExitProgress = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-        .transform(state.exitAnimatable.value.coerceIn(0f, 1f))
+        .transform(linearExitProgress)
     val maxScale = 0.85f
     val dragScale = 1f - (1f - maxScale) * gestureProgress
     val pivotX = if (edge == BackEventCompat.EDGE_LEFT) 0.8f else 0.2f
@@ -236,7 +237,6 @@ internal fun Modifier.aospPredictiveBackAnimation(
             scaleX = dragScale
             scaleY = dragScale
             translationX = exitingOffsetPx * state.directionMultiplier * emphasizedExitProgress
-            alpha = (1f - ((emphasizedExitProgress - 0.7f) / 0.3f)).coerceIn(0f, 1f)
         }
         .clip(RoundedCornerShape(deviceCornerRadius))
 }

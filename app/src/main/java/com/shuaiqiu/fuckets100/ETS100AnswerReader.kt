@@ -377,7 +377,7 @@ object ETS100AnswerReader {
         }
 
         val resourceFolders = scanResourceFolders(reader)
-        val resourceOrderMap = emptyMap<String, Int>()
+        val resourceOrderMap = buildResourceOrderMap(reader)
         val groupedFolders = groupResourceFolders(resourceFolders)
         Log.i(TAG, "readPapers: 得到 ${groupedFolders.size} 组试卷")
 
@@ -408,7 +408,7 @@ object ETS100AnswerReader {
         }
 
         val resourceFolders = scanResourceFolders(reader)
-        val resourceOrderMap = emptyMap<String, Int>()
+        val resourceOrderMap = buildResourceOrderMap(reader)
         val groupedFolders = groupResourceFolders(resourceFolders)
 
         return groupedFolders.mapIndexed { groupIndex, folderGroup ->
@@ -435,7 +435,7 @@ object ETS100AnswerReader {
         }
 
         val resourceFolders = scanResourceFolders(reader)
-        val resourceOrderMap = emptyMap<String, Int>()
+        val resourceOrderMap = buildResourceOrderMap(reader)
         val groupedFolders = groupResourceFolders(resourceFolders)
         Log.i(TAG, "readPapersParallel: 得到 ${groupedFolders.size} 组试卷")
 
@@ -777,6 +777,7 @@ object ETS100AnswerReader {
     private data class LocalResourceTemplateSection(
         val structureType: String,
         val title: String,
+        val templateOrder: Int,
         val questionNumbers: List<Int>
     )
 
@@ -854,6 +855,7 @@ object ETS100AnswerReader {
     ): List<Paper> {
         Log.d(TAG, "parseLocalResourcePapers: 第 $groupIndex 组，${folders.size} 个文件夹，kind=$kind")
         val templateSections = readLocalResourceTemplateSections(reader, folders)
+        val baseStid = readLocalBaseStid(reader, folders)
         val templateCursors = mutableMapOf<String, Int>()
         val parsedSections = mutableListOf<LocalParsedSection>()
         var questionIndex = 0
@@ -866,7 +868,12 @@ object ETS100AnswerReader {
             val json = runCatching { JSONObject(content) }.getOrNull() ?: continue
             val structureType = json.optString("structure_type", "")
             val sectionInfo = inferLocalSectionInfo(kind, json)
-            val templateSection = nextLocalTemplateSection(templateSections, templateCursors, structureType)
+            val templateSection = nextLocalTemplateSection(
+                templateSections = templateSections,
+                cursors = templateCursors,
+                structureType = structureType,
+                contentOrder = extractContentTemplateOrder(json, baseStid)
+            )
             val sourceOrder = templateSection?.let { templateSections.indexOf(it) } ?: folderOrder
             val (questions, originalContent) = parseContentJson(
                 json = json,
@@ -931,15 +938,27 @@ object ETS100AnswerReader {
                 val examType = examTypeList.optJSONObject(typeIndex) ?: continue
                 val structureType = examType.optString("exam_type_collect", "")
                 val title = examType.optString("exam_type_name", structureType)
-                val examList = examType.optJSONArray("exam_list") ?: continue
+                val examList = examType.optJSONArray("exam_list")
 
-                for (examIndex in 0 until examList.length()) {
-                    val exam = examList.optJSONObject(examIndex) ?: continue
+                if (examList != null && examList.length() > 0) {
+                    for (examIndex in 0 until examList.length()) {
+                        val exam = examList.optJSONObject(examIndex) ?: continue
+                        templateSections.add(
+                            LocalResourceTemplateSection(
+                                structureType = structureType,
+                                title = title,
+                                templateOrder = extractTemplateOrder(exam, templateSections.size + 1),
+                                questionNumbers = extractTemplateQuestionNumbers(exam)
+                            )
+                        )
+                    }
+                } else if (examType.has("exam_id")) {
                     templateSections.add(
                         LocalResourceTemplateSection(
                             structureType = structureType,
                             title = title,
-                            questionNumbers = extractTemplateQuestionNumbers(exam)
+                            templateOrder = extractTemplateOrder(examType, templateSections.size + 1),
+                            questionNumbers = extractTemplateQuestionNumbers(examType)
                         )
                     )
                 }
@@ -950,6 +969,12 @@ object ETS100AnswerReader {
             Log.d(TAG, "readLocalResourceTemplateSections: 读取到 ${templateSections.size} 个模板题段")
         }
         return templateSections
+    }
+
+    private fun extractTemplateOrder(exam: JSONObject, fallback: Int): Int {
+        val examId = exam.optString("exam_id", "")
+        Regex("st(\\d+)").find(examId)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+        return fallback
     }
 
     private fun extractTemplateQuestionNumbers(exam: JSONObject): List<Int> {
@@ -969,18 +994,42 @@ object ETS100AnswerReader {
         return (start until start + count).toList()
     }
 
+    private fun readLocalBaseStid(
+        reader: ETS100FileReader.Reader,
+        folders: List<ETS100FileReader.FileItem>
+    ): Int? {
+        val resourceDir = ETS100FileReader.Path.getResourceDir()
+        return folders.mapNotNull { folder ->
+            val content = reader.readFile("$resourceDir/${folder.name}/content.json") ?: return@mapNotNull null
+            val json = runCatching { JSONObject(content) }.getOrNull() ?: return@mapNotNull null
+            parsePositiveInt(json.optJSONObject("info")?.optString("stid", "").orEmpty())
+        }.minOrNull()
+    }
+
+    private fun extractContentTemplateOrder(json: JSONObject, baseStid: Int?): Int? {
+        val stid = parsePositiveInt(json.optJSONObject("info")?.optString("stid", "").orEmpty()) ?: return null
+        return baseStid?.let { stid - it + 1 }?.takeIf { it > 0 }
+    }
+
     private fun nextLocalTemplateSection(
         templateSections: List<LocalResourceTemplateSection>,
         cursors: MutableMap<String, Int>,
-        structureType: String
+        structureType: String,
+        contentOrder: Int?
     ): LocalResourceTemplateSection? {
         if (structureType.isEmpty()) return null
         val matches = templateSections.filter { it.structureType == structureType }
         if (matches.isEmpty()) return null
+
+        contentOrder?.let { order ->
+            matches.firstOrNull { it.templateOrder == order }?.let { return it }
+        }
+
         val cursor = cursors[structureType] ?: 0
         cursors[structureType] = cursor + 1
         return matches.getOrNull(cursor)
     }
+
     private fun mergeAndOrderLocalSections(
         parsedSections: List<LocalParsedSection>,
         sectionOrder: List<String>
@@ -1915,17 +1964,5 @@ object ETS100AnswerReader {
         return result
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 

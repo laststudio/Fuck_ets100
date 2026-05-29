@@ -50,6 +50,14 @@ object ETS100AnswerReader {
         }
     }
 
+    fun clearResourceScanCache(mode: ActivationMode? = null) {
+        val cache = lastResourceScanCache ?: return
+        if (mode == null || cache.mode == mode) {
+            Log.d(TAG, "clearResourceScanCache: clear mode=${cache.mode}")
+            lastResourceScanCache = null
+        }
+    }
+
     /**
      * structure_type 常量
      * 决定了 content.json 的解析方式
@@ -753,7 +761,7 @@ object ETS100AnswerReader {
         val sectionOrder: List<String>
     ) {
         GUANGDONG_HIGH("广东高中", "广东高中", listOf("模仿朗读", "3问5答")),
-        GUANGDONG_JUNIOR("广东初中", "广东初中", listOf("模仿朗读", "听选信息", "回答问题", "信息转述", "提问")),
+        GUANGDONG_JUNIOR("广东初中", "广东初中", listOf("模仿朗读", "听选信息", "回答问题", "信息转述", "询问信息")),
         BEIJING_JUNIOR("北京初中", "北京初中", listOf("听后选择", "听后回答", "听后转述", "短文朗读")),
         BEIJING_HIGH("北京高中", "北京高中", listOf("听后选择", "听后记录", "听后转述", "回答问题", "短文朗读")),
         GENERIC("通用练习", "通用", emptyList())
@@ -867,13 +875,14 @@ object ETS100AnswerReader {
             val content = reader.readFile(contentPath) ?: continue
             val json = runCatching { JSONObject(content) }.getOrNull() ?: continue
             val structureType = json.optString("structure_type", "")
-            val sectionInfo = inferLocalSectionInfo(kind, json)
             val templateSection = nextLocalTemplateSection(
                 templateSections = templateSections,
                 cursors = templateCursors,
                 structureType = structureType,
                 contentOrder = extractContentTemplateOrder(json, baseStid)
             )
+            val sectionInfo = templateSection?.let { localSectionInfoFromTemplate(it, inferLocalSectionInfo(kind, json)) }
+                ?: inferLocalSectionInfo(kind, json)
             val sourceOrder = templateSection?.let { templateSections.indexOf(it) } ?: folderOrder
             val (questions, originalContent) = parseContentJson(
                 json = json,
@@ -1092,6 +1101,22 @@ object ETS100AnswerReader {
         } else {
             questions.sortedBy { it.order }
         }
+    }
+
+    private fun localSectionInfoFromTemplate(
+        templateSection: LocalResourceTemplateSection,
+        fallback: LocalSectionInfo
+    ): LocalSectionInfo {
+        val title = templateSection.title.ifBlank { fallback.title }
+        val category = when (title) {
+            "模仿朗读", "短文朗读", "朗读" -> "read_chapter"
+            "听选信息", "听后选择", "听说信息", "3问5答", "听后记录", "填空" -> "simple_expression_ufi"
+            "回答问题", "听后回答", "问答信息" -> "simple_expression_ufk"
+            "信息转述", "听后转述", "转述" -> "topic"
+            "询问信息", "提问" -> "simple_expression_ufj"
+            else -> fallback.category
+        }
+        return LocalSectionInfo(title, category)
     }
 
     private fun inferLocalSectionInfo(kind: LocalPaperKind, json: JSONObject): LocalSectionInfo {

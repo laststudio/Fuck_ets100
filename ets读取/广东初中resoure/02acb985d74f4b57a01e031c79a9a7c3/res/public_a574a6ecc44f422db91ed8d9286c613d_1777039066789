@@ -1,0 +1,13 @@
+<xml_result>
+
+  <simple_expression_ufk lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
+    <rec_paper>
+      <rec_paper beg_pos="243" content="rec_paper" end_pos="389" except_info="0" is_rejected="false" keywords="australia" phone_score="2.848225" reject_type="0" total_score="4.890841" word_hit_of_each_kw="1.00">
+        <sentence content="australia " index="0">
+          <word beg_pos="254" content="australia" end_pos="374"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufk>
+
+</xml_result>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<xml_result>
+
+  <simple_expression_ufi lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.38M5.81.38.0">
+    <rec_paper>
+      <rec_paper beg_pos="193" content="rec_paper" end_pos="648" except_info="0" is_rejected="false" keywords="learnt how recycle waste|learnt recycling waste|learnt way recycle waste|learnt method recycling waste" phone_score="4.510636" reject_type="0" total_score="4.935856" word_hit_of_each_kw="1.00|1.00|0.75|0.75">
+        <sentence content="he learnt how to recycle the waste " index="0">
+          <word beg_pos="204" content="he" end_pos="236"/>
+          <word beg_pos="236" content="learnt" end_pos="282"/>
+          <word beg_pos="282" content="how" end_pos="316"/>
+          <word beg_pos="316" content="to" end_pos="338"/>
+          <word beg_pos="338" content="recycle" end_pos="412"/>
+          <word beg_pos="412" content="the" end_pos="430"/>
+          <word beg_pos="430" content="waste" end_pos="505"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufi>
+
+</xml_result>

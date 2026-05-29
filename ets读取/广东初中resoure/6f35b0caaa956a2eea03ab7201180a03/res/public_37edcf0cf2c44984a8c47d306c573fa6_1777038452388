@@ -1,0 +1,15 @@
+<xml_result>
+
+  <simple_expression_ufi lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
+    <rec_paper>
+      <rec_paper beg_pos="246" content="rec_paper" end_pos="405" except_info="0" is_rejected="false" keywords="an hour|one hour|sixty minutes|an our|one our|our" phone_score="2.484858" reject_type="0" total_score="4.958613" word_hit_of_each_kw="1.00|0.50|0.50|1.00|0.50|1.00">
+        <sentence content="for an hour " index="0">
+          <word beg_pos="259" content="for" end_pos="302"/>
+          <word beg_pos="302" content="an" end_pos="315"/>
+          <word beg_pos="315" content="hour" end_pos="382"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufi>
+
+</xml_result>

@@ -1,0 +1,18 @@
+<xml_result>
+
+  <simple_expression_ufk lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
+    <rec_paper>
+      <rec_paper beg_pos="234" content="rec_paper" end_pos="502" except_info="0" is_rejected="false" keywords="bad weather|terrible weather" phone_score="3.511977" reject_type="0" total_score="4.952076" word_hit_of_each_kw="0.50|0.50">
+        <sentence content="because the weather was too bad " index="0">
+          <word beg_pos="237" content="because" end_pos="301"/>
+          <word beg_pos="301" content="the" end_pos="320"/>
+          <word beg_pos="320" content="weather" end_pos="369"/>
+          <word beg_pos="369" content="was" end_pos="400"/>
+          <word beg_pos="400" content="too" end_pos="430"/>
+          <word beg_pos="430" content="bad" end_pos="467"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufk>
+
+</xml_result>

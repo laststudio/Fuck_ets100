@@ -1,0 +1,74 @@
+<xml_result>
+
+  <topic lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
+    <rec_paper>
+      <rec_paper accuracy_score="4.883054" beg_pos="235" content="rec_paper" end_pos="3217" except_info="0" is_rejected="false" keypoints="lucy is introducing us to the crossing tongji bridge activity in foshan it has a history of over four hundred years|every year lucy and her parents carry windmills and lettuce as they walk across the bridge|people believe this brings them good luck|the streets are lively with lion dances bright lights and yummy food" phone_score="5.000000" reject_type="0" speeking_speed="117.647057" total_score="4.829463" word_hit_of_each_kp="0.90|0.94|1.00|1.00">
+        <sentence content="lucy is introducing us to crossing tongji bridge activity in foshan it has a history of over four hundred years " index="0">
+          <word beg_pos="249" content="lucy" end_pos="317"/>
+          <word beg_pos="317" content="is" end_pos="345"/>
+          <word beg_pos="345" content="introducing" end_pos="461"/>
+          <word beg_pos="461" content="us" end_pos="495"/>
+          <word beg_pos="495" content="to" end_pos="525"/>
+          <word beg_pos="525" content="crossing" end_pos="595"/>
+          <word beg_pos="595" content="tongji" end_pos="693"/>
+          <word beg_pos="693" content="bridge" end_pos="753"/>
+          <word beg_pos="753" content="activity" end_pos="870"/>
+          <word beg_pos="870" content="in" end_pos="900"/>
+          <word beg_pos="900" content="foshan" end_pos="971"/>
+          <word beg_pos="971" content="it" end_pos="1022"/>
+          <word beg_pos="1022" content="has" end_pos="1055"/>
+          <word beg_pos="1055" content="a" end_pos="1066"/>
+          <word beg_pos="1066" content="history" end_pos="1141"/>
+          <word beg_pos="1141" content="of" end_pos="1165"/>
+          <word beg_pos="1165" content="over" end_pos="1205"/>
+          <word beg_pos="1205" content="four" end_pos="1237"/>
+          <word beg_pos="1237" content="hundred" end_pos="1293"/>
+          <word beg_pos="1293" content="years" end_pos="1353"/>
+        </sentence>
+        <sentence content="every year lucy and her parents carry windmills and not us as they walk across the bridge " index="1">
+          <word beg_pos="1377" content="every" end_pos="1437"/>
+          <word beg_pos="1437" content="year" end_pos="1471"/>
+          <word beg_pos="1471" content="lucy" end_pos="1529"/>
+          <word beg_pos="1529" content="and" end_pos="1547"/>
+          <word beg_pos="1547" content="her" end_pos="1571"/>
+          <word beg_pos="1571" content="parents" end_pos="1639"/>
+          <word beg_pos="1639" content="carry" end_pos="1697"/>
+          <word beg_pos="1697" content="windmills" end_pos="1819"/>
+          <word beg_pos="1819" content="and" end_pos="1859"/>
+          <word beg_pos="1859" content="not" end_pos="1959"/>
+          <word beg_pos="1959" content="us" end_pos="2003"/>
+          <word beg_pos="2003" content="as" end_pos="2033"/>
+          <word beg_pos="2033" content="they" end_pos="2055"/>
+          <word beg_pos="2055" content="walk" end_pos="2093"/>
+          <word beg_pos="2093" content="across" end_pos="2149"/>
+          <word beg_pos="2149" content="the" end_pos="2165"/>
+          <word beg_pos="2165" content="bridge" end_pos="2223"/>
+        </sentence>
+        <sentence content="people believe this brings them good luck the streets are lively with lion dances " index="2">
+          <word beg_pos="2248" content="people" end_pos="2301"/>
+          <word beg_pos="2301" content="believe" end_pos="2347"/>
+          <word beg_pos="2347" content="this" end_pos="2377"/>
+          <word beg_pos="2377" content="brings" end_pos="2429"/>
+          <word beg_pos="2429" content="them" end_pos="2507"/>
+          <word beg_pos="2507" content="good" end_pos="2531"/>
+          <word beg_pos="2531" content="luck" end_pos="2579"/>
+          <word beg_pos="2579" content="the" end_pos="2627"/>
+          <word beg_pos="2627" content="streets" end_pos="2683"/>
+          <word beg_pos="2683" content="are" end_pos="2705"/>
+          <word beg_pos="2705" content="lively" end_pos="2759"/>
+          <word beg_pos="2759" content="with" end_pos="2805"/>
+          <word beg_pos="2805" content="lion" end_pos="2845"/>
+          <word beg_pos="2845" content="dances" end_pos="2921"/>
+        </sentence>
+        <sentence content="bright lights and yummy food " index="3">
+          <word beg_pos="2966" content="bright" end_pos="3021"/>
+          <word beg_pos="3021" content="lights" end_pos="3079"/>
+          <word beg_pos="3079" content="and" end_pos="3111"/>
+          <word beg_pos="3111" content="yummy" end_pos="3153"/>
+          <word beg_pos="3153" content="food" end_pos="3199"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </topic>
+
+</xml_result>

@@ -208,7 +208,7 @@ fun ThemeSettingsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
             Text(
-                "切换自定义 AOSP 动画或系统默认动画",
+                "切换缩放、KernelSU、系统默认或关闭动画",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)

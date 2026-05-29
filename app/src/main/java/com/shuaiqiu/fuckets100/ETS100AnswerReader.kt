@@ -1,4 +1,4 @@
-package com.shuaiqiu.fuckets100
+﻿package com.shuaiqiu.fuckets100
 
 import android.content.Context
 import android.util.Log
@@ -622,25 +622,11 @@ object ETS100AnswerReader {
         )
 
         if (hasReliableTime) {
-            return normalizeResourceGroups(groupByTime(folders, thresholdMs = 2000L))
-            return normalizeResourceGroups(groupByTime(folders, thresholdMs = 2000L))
+            return groupByTime(folders, thresholdMs = 2000L)
         }
 
         Log.w(TAG, "groupResourceFolders: resource 修改时间不可靠，按已知试卷包数量兜底拆分")
         return groupByKnownPaperFolderCounts(folders)
-    }
-
-    private fun normalizeResourceGroups(
-        groups: List<List<ETS100FileReader.FileItem>>
-    ): List<List<ETS100FileReader.FileItem>> {
-        return groups.flatMap { group ->
-            if (group.size <= 13) {
-                listOf(group)
-            } else {
-                Log.w(TAG, "normalizeResourceGroups: 时间分组过大(${group.size})，按已知试卷包数量二次拆分")
-                groupByKnownPaperFolderCounts(group)
-            }
-        }
     }
 
     private fun groupByKnownPaperFolderCounts(
@@ -674,6 +660,7 @@ object ETS100AnswerReader {
         for (dataFile in dataFiles) {
             val content = reader.readFile("$dataDirPath/${dataFile.name}") ?: continue
             val json = runCatching { JSONObject(content) }.getOrNull() ?: continue
+            val structureType = json.optString("structure_type", "")
             val sectionData = json.optJSONArray("sectionData") ?: continue
 
             for (sectionIndex in 0 until sectionData.length()) {
@@ -760,585 +747,379 @@ object ETS100AnswerReader {
         return groups
     }
 
-    /**
-     * 广东高中解析器（3个文件夹）
-     * 遍历每个 content.json：
-     * - collector.3q5a → 遍历 info.question[]，每题从 std[] 提取多个参考答案
-     */
+    private enum class LocalPaperKind(
+        val titlePrefix: String,
+        val regionLabel: String,
+        val sectionOrder: List<String>
+    ) {
+        GUANGDONG_HIGH("广东高中", "广东高中", listOf("模仿朗读", "3问5答")),
+        GUANGDONG_JUNIOR("广东初中", "广东初中", listOf("模仿朗读", "听选信息", "回答问题", "信息转述", "提问")),
+        BEIJING_JUNIOR("北京初中", "北京初中", listOf("听后选择", "听后回答", "听后转述", "短文朗读")),
+        BEIJING_HIGH("北京高中", "北京高中", listOf("听后选择", "听后记录", "听后转述", "回答问题", "短文朗读")),
+        GENERIC("通用练习", "通用", emptyList())
+    }
+
+    private data class LocalSectionInfo(
+        val title: String,
+        val category: String
+    )
+
+    private data class LocalParsedSection(
+        val info: LocalSectionInfo,
+        val structureType: String,
+        val sourceOrder: Int,
+        val questions: List<Question>,
+        val originalContent: String?,
+        val firstIndex: Int,
+        val templateQuestionNumbers: List<Int> = emptyList()
+    )
+
+    private data class LocalResourceTemplateSection(
+        val structureType: String,
+        val title: String,
+        val questionNumbers: List<Int>
+    )
+
     private fun parseGuangdongHighPapers(
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         groupIndex: Int,
         processedPaths: MutableSet<String>
-    ): List<Paper> {
-        Log.d(TAG, "parseGuangdongHighPapers: 第 $groupIndex 组，${folders.size} 个文件夹")
-        val sections = mutableListOf<Section>()
-        var questionIndex = 0
+    ): List<Paper> = parseLocalResourcePapers(
+        reader,
+        folders,
+        groupIndex,
+        processedPaths,
+        LocalPaperKind.GUANGDONG_HIGH
+    )
 
-        for (folder in folders) {
-            val contentPath = "${ETS100FileReader.Path.getResourceDir()}/${folder.name}/content.json"
-            processedPaths.add(contentPath)
-
-            val content = reader.readFile(contentPath) ?: continue
-            val json = JSONObject(content)
-            val (questions, _) = parseContentJson(json, questionIndex, "simple_expression_ufi", "3问5答", "广东高中练习")
-
-            if (questions.isNotEmpty()) {
-                sections.add(Section(
-                    caption = "广东高中练习",
-                    category = "simple_expression_ufi",
-                    typeName = "3问5答",
-                    questions = questions,
-                    originalContent = null
-                ))
-                questionIndex += questions.size
-            }
-        }
-
-        if (sections.isEmpty()) return emptyList()
-
-        val paperId = folders.first().name.hashCode().toLong()
-        return listOf(Paper(
-            paperId = paperId,
-            title = "广东高中 #${groupIndex + 1}",
-            dataFileName = folders.first().name,
-            fileSize = folders.sumOf { it.size },
-            sections = sections,
-            downloadTime = folders.first().lastModified,
-            regionLabel = "广东高中",
-            paperName = null
-        ))
-    }
-
-    /**
-     * 广东初中解析器（7个文件夹）
-     * 遍历每个 content.json：
-     * - collector.role → 遍历 info.question[]，按 askaudio/中文条件分为听选信息、回答问题、提问
-     * - collector.picture → 从 info.std[].value 提取信息转述答案
-     * - collector.read → 跳过
-     * 输出顺序：听选信息 → 回答问题 → 信息转述 → 提问
-     */
     private fun parseGuangdongJuniorPapers(
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         groupIndex: Int,
         processedPaths: MutableSet<String>
-    ): List<Paper> {
-        Log.d(TAG, "parseGuangdongJuniorPapers: 第 $groupIndex 组，${folders.size} 个文件夹")
-        val listeningSelectQuestions = mutableListOf<Question>()  // 听选信息
-        val answerQuestions = mutableListOf<Question>()          // 回答问题
-        val pictureQuestions = mutableListOf<Question>()         // 信息转述
-        val askQuestions = mutableListOf<Question>()            // 提问
-        var questionIndex = 0
+    ): List<Paper> = parseLocalResourcePapers(
+        reader,
+        folders,
+        groupIndex,
+        processedPaths,
+        LocalPaperKind.GUANGDONG_JUNIOR
+    )
 
-        for (folder in folders) {
-            val contentPath = "${ETS100FileReader.Path.getResourceDir()}/${folder.name}/content.json"
-            processedPaths.add(contentPath)
-
-            val content = reader.readFile(contentPath) ?: continue
-            val json = JSONObject(content)
-            val structureType = json.optString("structure_type", "")
-
-            when (structureType) {
-                "collector.role" -> {
-                    // 需要进一步根据 askaudio/中文条件细分
-                    val infoObj = json.optJSONObject("info") ?: continue
-                    val questionsArray = infoObj.optJSONArray("question") ?: continue
-
-                    for (i in 0 until questionsArray.length()) {
-                        val q = questionsArray.getJSONObject(i)
-                        val ask = q.optString("ask", "")
-                        val askaudio = q.optString("askaudio", "")
-                        val hasBr = ask.contains("<br>")
-                        val hasChinese = containsChinese(ask)
-
-                        val stdArray = q.optJSONArray("std")
-                        val answers = if (stdArray != null && stdArray.length() > 0) {
-                            (0 until stdArray.length()).map { idx ->
-                                cleanText(stdArray.getJSONObject(idx).optString("value", ""))
-                            }
-                        } else listOf("暂无标准答案")
-
-                        val questionText = ask.substringAfter(" ").ifEmpty { ask }
-                        val displayOrder = extractQuestionNumber(q, "ask", "question", "text")
-
-                        when {
-                            hasBr && askaudio.isNotEmpty() -> {
-                                // 听选信息
-                                listeningSelectQuestions.add(Question(
-                                    order = questionIndex + 1,
-                                    sectionOrder = listeningSelectQuestions.size + 1,
-                                    sectionCaption = "听选信息",
-                                    typeName = "听选信息",
-                                    questionText = questionText,
-                                    answers = answers,
-                                    originalText = null,
-                                    category = "simple_expression_ufi",
-                                    displayOrder = displayOrder
-                                ))
-                            }
-                            askaudio.isNotEmpty() && !hasBr -> {
-                                // 回答问题
-                                answerQuestions.add(Question(
-                                    order = questionIndex + 1,
-                                    sectionOrder = answerQuestions.size + 1,
-                                    sectionCaption = "回答问题",
-                                    typeName = "回答问题",
-                                    questionText = questionText,
-                                    answers = answers,
-                                    originalText = null,
-                                    category = "simple_expression_ufk",
-                                    displayOrder = displayOrder
-                                ))
-                            }
-                            askaudio.isEmpty() && hasChinese -> {
-                                // 提问
-                                askQuestions.add(Question(
-                                    order = questionIndex + 1,
-                                    sectionOrder = askQuestions.size + 1,
-                                    sectionCaption = "提问",
-                                    typeName = "提问",
-                                    questionText = questionText,
-                                    answers = answers,
-                                    originalText = null,
-                                    category = "simple_expression_ufj",
-                                    displayOrder = displayOrder
-                                ))
-                            }
-                        }
-                        questionIndex++
-                    }
-                }
-                "collector.picture" -> {
-                    // 信息转述
-                    val infoObj = json.optJSONObject("info") ?: continue
-                    val stdArray = infoObj.optJSONArray("std")
-                    val answers = if (stdArray != null && stdArray.length() > 0) {
-                        (0 until stdArray.length()).map { idx ->
-                            cleanText(stdArray.getJSONObject(idx).optString("value", ""))
-                        }
-                    } else listOf("暂无标准答案")
-                    val topicTitle = infoObj.optString("topic", "信息转述")
-
-                    pictureQuestions.add(Question(
-                        order = questionIndex + 1,
-                        sectionOrder = pictureQuestions.size + 1,
-                        sectionCaption = "信息转述",
-                        typeName = "信息转述",
-                        questionText = topicTitle,
-                        answers = answers,
-                        originalText = infoObj.optString("value", ""),
-                        category = "topic",
-                        displayOrder = extractQuestionNumber(infoObj, "topic", "value")
-                    ))
-                    questionIndex++
-                }
-                // collector.read 跳过
-            }
-        }
-
-        // 按文档顺序组装：听选信息 → 回答问题 → 信息转述 → 提问
-        val sections = mutableListOf<Section>()
-        if (listeningSelectQuestions.isNotEmpty()) {
-            sections.add(Section("听选信息", "simple_expression_ufi", "听选信息", sortQuestionsByOfficialOrder(listeningSelectQuestions), null))
-        }
-        if (answerQuestions.isNotEmpty()) {
-            sections.add(Section("回答问题", "simple_expression_ufk", "回答问题", sortQuestionsByOfficialOrder(answerQuestions), null))
-        }
-        if (pictureQuestions.isNotEmpty()) {
-            sections.add(Section("信息转述", "topic", "信息转述", sortQuestionsByOfficialOrder(pictureQuestions), null))
-        }
-        if (askQuestions.isNotEmpty()) {
-            sections.add(Section("提问", "simple_expression_ufj", "提问", sortQuestionsByOfficialOrder(askQuestions), null))
-        }
-
-        if (sections.isEmpty()) return emptyList()
-
-        val paperId = folders.first().name.hashCode().toLong()
-        return listOf(Paper(
-            paperId = paperId,
-            title = "广东初中 #${groupIndex + 1}",
-            dataFileName = folders.first().name,
-            fileSize = folders.sumOf { it.size },
-            sections = sections,
-            downloadTime = folders.first().lastModified,
-            regionLabel = "广东初中",
-            paperName = null
-        ))
-    }
-
-    /**
-     * 北京初中解析器（10个文件夹）
-     * 遍历每个 content.json：
-     * - collector.choose → 从 info.xtlist[] 提取题目、选项、答案
-     * - collector.role → 从 info.question[].std[].value 提取听后回答
-     * - collector.picture → 从 info.std[].value 提取听后转述
-     * 输出顺序：听后选择 → 听后回答 → 听后转述
-     */
     private fun parseBeijingJuniorPapers(
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         groupIndex: Int,
         processedPaths: MutableSet<String>
-    ): List<Paper> {
-        Log.d(TAG, "parseBeijingJuniorPapers: 第 $groupIndex 组，${folders.size} 个文件夹")
-        val chooseQuestions = mutableListOf<Question>()
-        val roleQuestions = mutableListOf<Question>()
-        val pictureQuestions = mutableListOf<Question>()
-        var questionIndex = 0
+    ): List<Paper> = parseLocalResourcePapers(
+        reader,
+        folders,
+        groupIndex,
+        processedPaths,
+        LocalPaperKind.BEIJING_JUNIOR
+    )
 
-        for (folder in folders) {
-            val contentPath = "${ETS100FileReader.Path.getResourceDir()}/${folder.name}/content.json"
-            processedPaths.add(contentPath)
-
-            val content = reader.readFile(contentPath) ?: continue
-            val json = JSONObject(content)
-            val structureType = json.optString("structure_type", "")
-
-            when (structureType) {
-                "collector.choose" -> {
-                    val infoObj = json.optJSONObject("info") ?: continue
-                    val xtlist = infoObj.optJSONArray("xtlist") ?: continue
-
-                    for (i in 0 until xtlist.length()) {
-                        val item = xtlist.getJSONObject(i)
-                        val displayOrder = extractChooseQuestionNumber(item)
-                        val questionText = cleanQuestion(item.optString("xt_nr", ""))
-                        val answer = item.optString("answer", "")
-                        val xxlist = item.optJSONArray("xxlist")
-                        val options = if (xxlist != null && xxlist.length() > 0) {
-                            (0 until xxlist.length()).map { j ->
-                                val opt = xxlist.getJSONObject(j)
-                                "${opt.optString("xx_mc")}. ${cleanText(opt.optString("xx_nr"))}"
-                            }
-                        } else emptyList()
-
-                        val answerText = if (options.isNotEmpty()) {
-                            options.joinToString("\n") + "\n正确答案: $answer"
-                        } else "正确答案: $answer"
-
-                        chooseQuestions.add(Question(
-                            order = questionIndex + 1,
-                            sectionOrder = chooseQuestions.size + 1,
-                            sectionCaption = "听后选择",
-                            typeName = "听后选择",
-                            questionText = questionText,
-                            answers = listOf(answerText),
-                            originalText = null,
-                            category = "simple_expression_ufi",
-                            displayOrder = displayOrder
-                        ))
-                        questionIndex++
-                    }
-                }
-                "collector.role" -> {
-                    val infoObj = json.optJSONObject("info") ?: continue
-                    val questionsArray = infoObj.optJSONArray("question") ?: continue
-
-                    for (i in 0 until questionsArray.length()) {
-                        val q = questionsArray.getJSONObject(i)
-                        val askText = cleanText(q.optString("ask", ""))
-                        val displayOrder = extractQuestionNumber(q, "ask", "question", "text")
-                        val stdArray = q.optJSONArray("std")
-                        val answers = if (stdArray != null && stdArray.length() > 0) {
-                            (0 until stdArray.length()).map { idx ->
-                                cleanText(stdArray.getJSONObject(idx).optString("value", ""))
-                            }
-                        } else listOf("暂无标准答案")
-
-                        roleQuestions.add(Question(
-                            order = questionIndex + 1,
-                            sectionOrder = roleQuestions.size + 1,
-                            sectionCaption = "听后回答",
-                            typeName = "听后回答",
-                            questionText = askText,
-                            answers = answers,
-                            originalText = null,
-                            category = "simple_expression_ufk",
-                            displayOrder = displayOrder
-                        ))
-                        questionIndex++
-                    }
-                }
-                "collector.picture" -> {
-                    val infoObj = json.optJSONObject("info") ?: continue
-                    val stdArray = infoObj.optJSONArray("std")
-                    val answers = if (stdArray != null && stdArray.length() > 0) {
-                        (0 until stdArray.length()).map { idx ->
-                            cleanText(stdArray.getJSONObject(idx).optString("value", ""))
-                        }
-                    } else listOf("暂无标准答案")
-                    val topicTitle = infoObj.optString("topic", "听后转述")
-
-                    pictureQuestions.add(Question(
-                        order = questionIndex + 1,
-                        sectionOrder = pictureQuestions.size + 1,
-                        sectionCaption = "听后转述",
-                        typeName = "听后转述",
-                        questionText = topicTitle,
-                        answers = answers,
-                        originalText = infoObj.optString("value", ""),
-                        category = "topic",
-                        displayOrder = extractQuestionNumber(infoObj, "topic", "value")
-                    ))
-                    questionIndex++
-                }
-            }
-        }
-
-        // 按文档顺序组装：听后选择 → 听后回答 → 听后转述
-        val sections = mutableListOf<Section>()
-        if (chooseQuestions.isNotEmpty()) {
-            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", sortChooseQuestionsByOfficialOrder(chooseQuestions), null))
-        }
-        if (roleQuestions.isNotEmpty()) {
-            sections.add(Section("听后回答", "simple_expression_ufk", "听后回答", sortQuestionsByOfficialOrder(roleQuestions), null))
-        }
-        if (pictureQuestions.isNotEmpty()) {
-            sections.add(Section("听后转述", "topic", "听后转述", sortQuestionsByOfficialOrder(pictureQuestions), null))
-        }
-
-        if (sections.isEmpty()) return emptyList()
-
-        val paperId = folders.first().name.hashCode().toLong()
-        return listOf(Paper(
-            paperId = paperId,
-            title = "北京初中 #${groupIndex + 1}",
-            dataFileName = folders.first().name,
-            fileSize = folders.sumOf { it.size },
-            sections = sections,
-            downloadTime = folders.first().lastModified,
-            regionLabel = "北京初中",
-            paperName = null
-        ))
-    }
-
-    /**
-     * 北京高中解析器（13个文件夹）
-     * 遍历每个 content.json：
-     * - collector.choose → 听后选择
-     * - collector.fill → 从 info.std[] 提取填空答案
-     * - collector.picture → 听后转述
-     * - collector.dialogue → 从 info.question[].std[].value 提取回答问题
-     * - collector.read → 跳过
-     * 输出顺序：听后选择 → 听后记录 → 听后转述 → 回答问题
-     */
     private fun parseBeijingHighPapers(
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         groupIndex: Int,
         processedPaths: MutableSet<String>
-    ): List<Paper> {
-        Log.d(TAG, "parseBeijingHighPapers: 第 $groupIndex 组，${folders.size} 个文件夹")
-        val chooseQuestions = mutableListOf<Question>()
-        val fillQuestions = mutableListOf<Question>()
-        val pictureQuestions = mutableListOf<Question>()
-        val dialogueQuestions = mutableListOf<Question>()
-        var questionIndex = 0
+    ): List<Paper> = parseLocalResourcePapers(
+        reader,
+        folders,
+        groupIndex,
+        processedPaths,
+        LocalPaperKind.BEIJING_HIGH
+    )
 
-        for (folder in folders) {
-            val contentPath = "${ETS100FileReader.Path.getResourceDir()}/${folder.name}/content.json"
-            processedPaths.add(contentPath)
-
-            val content = reader.readFile(contentPath) ?: continue
-            val json = JSONObject(content)
-            val structureType = json.optString("structure_type", "")
-
-            when (structureType) {
-                "collector.choose" -> {
-                    val infoObj = json.optJSONObject("info") ?: continue
-                    val xtlist = infoObj.optJSONArray("xtlist") ?: continue
-
-                    for (i in 0 until xtlist.length()) {
-                        val item = xtlist.getJSONObject(i)
-                        val displayOrder = extractChooseQuestionNumber(item)
-                        val questionText = cleanQuestion(item.optString("xt_nr", ""))
-                        val answer = item.optString("answer", "")
-                        val xxlist = item.optJSONArray("xxlist")
-                        val options = if (xxlist != null && xxlist.length() > 0) {
-                            (0 until xxlist.length()).map { j ->
-                                val opt = xxlist.getJSONObject(j)
-                                "${opt.optString("xx_mc")}. ${cleanText(opt.optString("xx_nr"))}"
-                            }
-                        } else emptyList()
-
-                        val answerText = if (options.isNotEmpty()) {
-                            options.joinToString("\n") + "\n正确答案: $answer"
-                        } else "正确答案: $answer"
-
-                        chooseQuestions.add(Question(
-                            order = questionIndex + 1,
-                            sectionOrder = chooseQuestions.size + 1,
-                            sectionCaption = "听后选择",
-                            typeName = "听后选择",
-                            questionText = questionText,
-                            answers = listOf(answerText),
-                            originalText = null,
-                            category = "simple_expression_ufi",
-                            displayOrder = displayOrder
-                        ))
-                        questionIndex++
-                    }
-                }
-                "collector.fill" -> {
-                    val infoObj = json.optJSONObject("info") ?: continue
-                    val stdArray = infoObj.optJSONArray("std") ?: continue
-
-                    for (i in 0 until stdArray.length()) {
-                        val item = stdArray.getJSONObject(i)
-                        val number = item.optString("xth", "")
-                        val displayOrder = extractQuestionNumber(item, "xth", "value")
-                        val answer = cleanText(item.optString("value", ""))
-
-                        fillQuestions.add(Question(
-                            order = questionIndex + 1,
-                            sectionOrder = fillQuestions.size + 1,
-                            sectionCaption = "听后记录",
-                            typeName = "听后记录",
-                            questionText = "第${number}题",
-                            answers = listOf(answer),
-                            originalText = null,
-                            category = "simple_expression_ufi",
-                            displayOrder = displayOrder
-                        ))
-                        questionIndex++
-                    }
-                }
-                "collector.picture" -> {
-                    val infoObj = json.optJSONObject("info") ?: continue
-                    val stdArray = infoObj.optJSONArray("std")
-                    val answers = if (stdArray != null && stdArray.length() > 0) {
-                        (0 until stdArray.length()).map { idx ->
-                            cleanText(stdArray.getJSONObject(idx).optString("value", ""))
-                        }
-                    } else listOf("暂无标准答案")
-                    val topicTitle = infoObj.optString("topic", "听后转述")
-
-                    pictureQuestions.add(Question(
-                        order = questionIndex + 1,
-                        sectionOrder = pictureQuestions.size + 1,
-                        sectionCaption = "听后转述",
-                        typeName = "听后转述",
-                        questionText = topicTitle,
-                        answers = answers,
-                        originalText = infoObj.optString("value", ""),
-                        category = "topic",
-                        displayOrder = extractQuestionNumber(infoObj, "topic", "value")
-                    ))
-                    questionIndex++
-                }
-                "collector.dialogue" -> {
-                    val infoObj = json.optJSONObject("info") ?: continue
-                    val questionsArray = infoObj.optJSONArray("question") ?: continue
-
-                    for (i in 0 until questionsArray.length()) {
-                        val q = questionsArray.getJSONObject(i)
-                        val askText = cleanText(q.optString("ask", ""))
-                        val displayOrder = extractQuestionNumber(q, "ask", "question", "text")
-                        val stdArray = q.optJSONArray("std")
-                        val answers = if (stdArray != null && stdArray.length() > 0) {
-                            (0 until stdArray.length()).map { idx ->
-                                cleanText(stdArray.getJSONObject(idx).optString("value", ""))
-                            }
-                        } else listOf("暂无标准答案")
-
-                        dialogueQuestions.add(Question(
-                            order = questionIndex + 1,
-                            sectionOrder = dialogueQuestions.size + 1,
-                            sectionCaption = "回答问题",
-                            typeName = "回答问题",
-                            questionText = askText,
-                            answers = answers,
-                            originalText = null,
-                            category = "simple_expression_ufk",
-                            displayOrder = displayOrder
-                        ))
-                        questionIndex++
-                    }
-                }
-                // collector.read 跳过
-            }
-        }
-
-        // 按文档顺序组装：听后选择 → 听后记录 → 听后转述 → 回答问题
-        val sections = mutableListOf<Section>()
-        if (chooseQuestions.isNotEmpty()) {
-            sections.add(Section("听后选择", "simple_expression_ufi", "听后选择", sortChooseQuestionsByOfficialOrder(chooseQuestions), null))
-        }
-        if (fillQuestions.isNotEmpty()) {
-            sections.add(Section("听后记录", "simple_expression_ufi", "听后记录", sortQuestionsByOfficialOrder(fillQuestions), null))
-        }
-        if (pictureQuestions.isNotEmpty()) {
-            sections.add(Section("听后转述", "topic", "听后转述", sortQuestionsByOfficialOrder(pictureQuestions), null))
-        }
-        if (dialogueQuestions.isNotEmpty()) {
-            sections.add(Section("回答问题", "simple_expression_ufk", "回答问题", sortQuestionsByOfficialOrder(dialogueQuestions), null))
-        }
-
-        if (sections.isEmpty()) return emptyList()
-
-        val paperId = folders.first().name.hashCode().toLong()
-        return listOf(Paper(
-            paperId = paperId,
-            title = "北京高中 #${groupIndex + 1}",
-            dataFileName = folders.first().name,
-            fileSize = folders.sumOf { it.size },
-            sections = sections,
-            downloadTime = folders.first().lastModified,
-            regionLabel = "北京高中",
-            paperName = null
-        ))
-    }
-
-    /**
-     * 通用解析器（文件夹数量不匹配）
-     * 根据 structure_type 分发处理
-     */
     private fun parseGenericPapers(
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         groupIndex: Int,
         processedPaths: MutableSet<String>
+    ): List<Paper> = parseLocalResourcePapers(
+        reader,
+        folders,
+        groupIndex,
+        processedPaths,
+        LocalPaperKind.GENERIC
+    )
+
+    private fun parseLocalResourcePapers(
+        reader: ETS100FileReader.Reader,
+        folders: List<ETS100FileReader.FileItem>,
+        groupIndex: Int,
+        processedPaths: MutableSet<String>,
+        kind: LocalPaperKind
     ): List<Paper> {
-        Log.d(TAG, "parseGenericPapers: 第 $groupIndex 组，${folders.size} 个文件夹（通用解析）")
-        val allQuestions = mutableListOf<Question>()
+        Log.d(TAG, "parseLocalResourcePapers: 第 $groupIndex 组，${folders.size} 个文件夹，kind=$kind")
+        val templateSections = readLocalResourceTemplateSections(reader, folders)
+        val templateCursors = mutableMapOf<String, Int>()
+        val parsedSections = mutableListOf<LocalParsedSection>()
         var questionIndex = 0
 
-        for (folder in folders) {
+        for ((folderOrder, folder) in folders.withIndex()) {
             val contentPath = "${ETS100FileReader.Path.getResourceDir()}/${folder.name}/content.json"
             processedPaths.add(contentPath)
 
             val content = reader.readFile(contentPath) ?: continue
-            val json = JSONObject(content)
-            val (questions, _) = parseContentJson(json, questionIndex, "unknown", "未知题型", "通用练习")
+            val json = runCatching { JSONObject(content) }.getOrNull() ?: continue
+            val structureType = json.optString("structure_type", "")
+            val sectionInfo = inferLocalSectionInfo(kind, json)
+            val templateSection = nextLocalTemplateSection(templateSections, templateCursors, structureType)
+            val sourceOrder = templateSection?.let { templateSections.indexOf(it) } ?: folderOrder
+            val (questions, originalContent) = parseContentJson(
+                json = json,
+                startIndex = questionIndex,
+                category = sectionInfo.category,
+                typeName = sectionInfo.title,
+                sectionCaption = sectionInfo.title
+            )
 
             if (questions.isNotEmpty()) {
-                allQuestions.addAll(questions)
+                parsedSections.add(
+                    LocalParsedSection(
+                        info = sectionInfo,
+                        structureType = structureType,
+                        sourceOrder = sourceOrder,
+                        questions = questions,
+                        originalContent = originalContent,
+                        firstIndex = folderOrder,
+                        templateQuestionNumbers = templateSection?.questionNumbers.orEmpty()
+                    )
+                )
                 questionIndex += questions.size
+            } else {
+                Log.d(TAG, "parseLocalResourcePapers: 跳过空题型 ${folder.name}, order=$folderOrder")
             }
         }
 
-        if (allQuestions.isEmpty()) return emptyList()
+        if (parsedSections.isEmpty()) return emptyList()
 
-        val sections = listOf(Section(
-            caption = "通用练习",
-            category = "unknown",
-            typeName = "通用练习",
-            questions = sortQuestionsByOfficialOrder(allQuestions),
-            originalContent = null
-        ))
-
+        val orderedSections = mergeAndOrderLocalSections(parsedSections, kind.sectionOrder)
         val paperId = folders.first().name.hashCode().toLong()
-        return listOf(Paper(
-            paperId = paperId,
-            title = "通用练习 #${groupIndex + 1}",
-            dataFileName = folders.first().name,
-            fileSize = folders.sumOf { it.size },
-            sections = sections,
-            downloadTime = folders.first().lastModified,
-            regionLabel = "通用",
-            paperName = null
-        ))
+        return listOf(
+            Paper(
+                paperId = paperId,
+                title = "${kind.titlePrefix} #${groupIndex + 1}",
+                dataFileName = folders.first().name,
+                fileSize = folders.sumOf { it.size },
+                sections = orderedSections,
+                downloadTime = folders.first().lastModified,
+                regionLabel = kind.regionLabel,
+                paperName = null
+            )
+        )
+    }
+
+    private fun readLocalResourceTemplateSections(
+        reader: ETS100FileReader.Reader,
+        folders: List<ETS100FileReader.FileItem>
+    ): List<LocalResourceTemplateSection> {
+        val resourceDir = ETS100FileReader.Path.getResourceDir()
+        val candidateFolders = folders + reader.listFiles(resourceDir).filter { it.isDirectory }
+        val templateSections = mutableListOf<LocalResourceTemplateSection>()
+        val seenConfigFolders = mutableSetOf<String>()
+
+        for (folder in candidateFolders) {
+            if (!seenConfigFolders.add(folder.name)) continue
+            val resContent = reader.readFile("$resourceDir/${folder.name}/res.json") ?: continue
+            val json = runCatching { JSONObject(resContent) }.getOrNull() ?: continue
+            val examTypeList = json.optJSONArray("exam_type_list") ?: continue
+
+            for (typeIndex in 0 until examTypeList.length()) {
+                val examType = examTypeList.optJSONObject(typeIndex) ?: continue
+                val structureType = examType.optString("exam_type_collect", "")
+                val title = examType.optString("exam_type_name", structureType)
+                val examList = examType.optJSONArray("exam_list") ?: continue
+
+                for (examIndex in 0 until examList.length()) {
+                    val exam = examList.optJSONObject(examIndex) ?: continue
+                    templateSections.add(
+                        LocalResourceTemplateSection(
+                            structureType = structureType,
+                            title = title,
+                            questionNumbers = extractTemplateQuestionNumbers(exam)
+                        )
+                    )
+                }
+            }
+        }
+
+        if (templateSections.isNotEmpty()) {
+            Log.d(TAG, "readLocalResourceTemplateSections: 读取到 ${templateSections.size} 个模板题段")
+        }
+        return templateSections
+    }
+
+    private fun extractTemplateQuestionNumbers(exam: JSONObject): List<Int> {
+        val numbers = mutableListOf<Int>()
+        val examInfo = exam.optJSONArray("exam_info")
+        if (examInfo != null) {
+            for (index in 0 until examInfo.length()) {
+                val item = examInfo.optJSONObject(index) ?: continue
+                parsePositiveInt(item.optString("value", "").trim().trimEnd('.', '。'))?.let { numbers.add(it) }
+            }
+        }
+        if (numbers.isNotEmpty()) return numbers
+
+        val count = parsePositiveInt(exam.optString("exam_count", "")) ?: return emptyList()
+        val order = parsePositiveInt(exam.optString("exam_order", "")) ?: return emptyList()
+        val start = (order - 1) * count + 1
+        return (start until start + count).toList()
+    }
+
+    private fun nextLocalTemplateSection(
+        templateSections: List<LocalResourceTemplateSection>,
+        cursors: MutableMap<String, Int>,
+        structureType: String
+    ): LocalResourceTemplateSection? {
+        if (structureType.isEmpty()) return null
+        val matches = templateSections.filter { it.structureType == structureType }
+        if (matches.isEmpty()) return null
+        val cursor = cursors[structureType] ?: 0
+        cursors[structureType] = cursor + 1
+        return matches.getOrNull(cursor)
+    }
+    private fun mergeAndOrderLocalSections(
+        parsedSections: List<LocalParsedSection>,
+        sectionOrder: List<String>
+    ): List<Section> {
+        val mergedSections = parsedSections
+            .groupBy { it.info.title to it.info.category }
+            .map { (key, group) ->
+                val orderedGroup = group.sortedBy { it.firstIndex }
+                val first = orderedGroup.first()
+                val questions = sortLocalQuestionsAcrossPackages(orderedGroup)
+                Section(
+                    caption = key.first,
+                    category = key.second,
+                    typeName = key.first,
+                    questions = questions,
+                    originalContent = first.originalContent
+                )
+            }
+        return orderLocalSections(mergedSections, sectionOrder)
+    }
+
+    private fun sortLocalQuestionsAcrossPackages(
+        group: List<LocalParsedSection>
+    ): List<Question> {
+        val questionsByPackage = group.map { section ->
+            val sortedQuestions = sortLocalQuestions(section.questions)
+            if (section.templateQuestionNumbers.isNotEmpty()) {
+                sortedQuestions.mapIndexed { index, question ->
+                    val number = section.templateQuestionNumbers.getOrNull(index)
+                    if (number != null) {
+                        question.copy(sectionOrder = number, displayOrder = number)
+                    } else {
+                        question
+                    }
+                }
+            } else {
+                sortedQuestions
+            }
+        }
+        val allQuestions = questionsByPackage.flatten()
+        val displayOrders = allQuestions.mapNotNull { it.displayOrder }
+        val hasDuplicatedDisplayOrder = displayOrders.size != displayOrders.distinct().size
+
+        return if (hasDuplicatedDisplayOrder) {
+            questionsByPackage.flatten().mapIndexed { index, question ->
+                question.copy(
+                    sectionOrder = index + 1,
+                    displayOrder = index + 1
+                )
+            }
+        } else {
+            sortLocalQuestions(allQuestions)
+        }
+    }
+
+    private fun sortLocalQuestions(questions: List<Question>): List<Question> {
+        val hasAnyDisplayOrder = questions.any { it.displayOrder != null }
+        return if (hasAnyDisplayOrder) {
+            questions.sortedWith(questionOfficialOrderComparator)
+        } else {
+            questions.sortedBy { it.order }
+        }
+    }
+
+    private fun inferLocalSectionInfo(kind: LocalPaperKind, json: JSONObject): LocalSectionInfo {
+        val structureType = json.optString("structure_type", "")
+        return when (kind) {
+            LocalPaperKind.GUANGDONG_HIGH -> when (structureType) {
+                StructureType.COLLECTOR_READ -> LocalSectionInfo("模仿朗读", "read_chapter")
+                StructureType.COLLECTOR_3Q5A -> LocalSectionInfo("3问5答", "simple_expression_ufi")
+                else -> inferGenericSectionInfo(json)
+            }
+            LocalPaperKind.GUANGDONG_JUNIOR -> when (structureType) {
+                StructureType.COLLECTOR_READ -> LocalSectionInfo("模仿朗读", "read_chapter")
+                StructureType.COLLECTOR_PICTURE -> LocalSectionInfo("信息转述", "topic")
+                StructureType.COLLECTOR_ROLE -> inferGuangdongJuniorRoleSectionInfo(json)
+                else -> inferGenericSectionInfo(json)
+            }
+            LocalPaperKind.BEIJING_JUNIOR -> when (structureType) {
+                StructureType.COLLECTOR_CHOOSE -> LocalSectionInfo("听后选择", "simple_expression_ufi")
+                StructureType.COLLECTOR_ROLE -> LocalSectionInfo("听后回答", "simple_expression_ufk")
+                StructureType.COLLECTOR_PICTURE -> LocalSectionInfo("听后转述", "topic")
+                StructureType.COLLECTOR_READ -> LocalSectionInfo("短文朗读", "read_chapter")
+                else -> inferGenericSectionInfo(json)
+            }
+            LocalPaperKind.BEIJING_HIGH -> when (structureType) {
+                StructureType.COLLECTOR_CHOOSE -> LocalSectionInfo("听后选择", "simple_expression_ufi")
+                StructureType.COLLECTOR_FILL -> LocalSectionInfo("听后记录", "simple_expression_ufi")
+                StructureType.COLLECTOR_PICTURE -> LocalSectionInfo("听后转述", "topic")
+                StructureType.COLLECTOR_DIALOGUE -> LocalSectionInfo("回答问题", "simple_expression_ufk")
+                StructureType.COLLECTOR_READ -> LocalSectionInfo("短文朗读", "read_chapter")
+                else -> inferGenericSectionInfo(json)
+            }
+            LocalPaperKind.GENERIC -> inferGenericSectionInfo(json)
+        }
+    }
+
+    private fun inferGuangdongJuniorRoleSectionInfo(json: JSONObject): LocalSectionInfo {
+        val firstQuestion = json.optJSONObject("info")
+            ?.optJSONArray("question")
+            ?.optJSONObject(0)
+        val ask = firstQuestion?.optString("ask", "").orEmpty()
+        val askaudio = firstQuestion?.optString("askaudio", "").orEmpty()
+        val hasBr = ask.contains("<br>", ignoreCase = true)
+        val hasChinese = containsChinese(ask)
+        return when {
+            hasBr && askaudio.isNotEmpty() -> LocalSectionInfo("听选信息", "simple_expression_ufi")
+            askaudio.isNotEmpty() -> LocalSectionInfo("回答问题", "simple_expression_ufk")
+            hasChinese -> LocalSectionInfo("提问", "simple_expression_ufj")
+            else -> LocalSectionInfo("听选信息", "simple_expression_ufi")
+        }
+    }
+
+    private fun inferGenericSectionInfo(json: JSONObject): LocalSectionInfo {
+        return when (json.optString("structure_type", "")) {
+            StructureType.COLLECTOR_READ -> LocalSectionInfo("朗读", "read_chapter")
+            StructureType.COLLECTOR_ROLE -> LocalSectionInfo("问答", "simple_expression_ufk")
+            StructureType.COLLECTOR_3Q5A -> LocalSectionInfo("3问5答", "simple_expression_ufi")
+            StructureType.COLLECTOR_CHOOSE -> LocalSectionInfo("选择题", "simple_expression_ufi")
+            StructureType.COLLECTOR_FILL -> LocalSectionInfo("填空", "simple_expression_ufi")
+            StructureType.COLLECTOR_DIALOGUE -> LocalSectionInfo("回答问题", "simple_expression_ufk")
+            StructureType.COLLECTOR_PICTURE -> LocalSectionInfo("转述", "topic")
+            else -> LocalSectionInfo("未知题型", "unknown")
+        }
+    }
+
+    private fun orderLocalSections(
+        sections: List<Section>,
+        sectionOrder: List<String>
+    ): List<Section> {
+        if (sectionOrder.isEmpty()) return sections
+        val orderMap = sectionOrder.withIndex().associate { it.value to it.index }
+        return sections.withIndex()
+            .sortedWith(
+                compareBy<IndexedValue<Section>> {
+                    orderMap[it.value.typeName] ?: orderMap[it.value.caption] ?: Int.MAX_VALUE
+                }.thenBy { it.index }
+            )
+            .map { it.value }
     }
 
     /**
@@ -2134,3 +1915,17 @@ object ETS100AnswerReader {
         return result
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+

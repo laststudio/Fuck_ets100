@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,7 +42,7 @@ internal enum class PredictiveBackExitDirection {
 
 internal fun ComponentActivity.applyPredictiveBackWindowTheme() {
     setTheme(
-        if (SettingsManager.getPredictiveBackMode() == PredictiveBackMode.AOSP) {
+        if (SettingsManager.getPredictiveBackMode().usesTransparentActivityWindow()) {
             R.style.Theme_Fe_Transparent
         } else {
             R.style.Theme_Fe
@@ -53,11 +54,15 @@ internal fun <T : ComponentActivity> predictiveBackActivityClass(
     transparentActivity: Class<T>,
     opaqueActivity: Class<out T>
 ): Class<out T> {
-    return if (SettingsManager.getPredictiveBackMode() == PredictiveBackMode.AOSP) {
+    return if (SettingsManager.getPredictiveBackMode().usesTransparentActivityWindow()) {
         transparentActivity
     } else {
         opaqueActivity
     }
+}
+
+private fun PredictiveBackMode.usesTransparentActivityWindow(): Boolean {
+    return this == PredictiveBackMode.AOSP || this == PredictiveBackMode.KERNELSU_CLASSIC
 }
 
 @Composable
@@ -77,11 +82,64 @@ internal fun PredictiveBackContent(
         PredictiveBackMode.SLIDE -> {
             content()
         }
+        PredictiveBackMode.KERNELSU_CLASSIC -> {
+            KernelSuClassicPredictiveBackContent(
+                enabled = enabled,
+                onBack = onBack,
+                content = content
+            )
+        }
         PredictiveBackMode.NONE -> {
             BackHandler(enabled = enabled, onBack = onBack)
             content()
         }
     }
+}
+
+@Composable
+internal fun KernelSuClassicPredictiveBackContent(
+    enabled: Boolean = true,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val state = rememberAospPredictiveBackState()
+    val enterProgress = remember { Animatable(1f) }
+
+    LaunchedEffect(Unit) {
+        enterProgress.animateTo(
+            targetValue = 0f,
+            animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
+        )
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val containerHeightPx = with(density) { maxHeight.toPx() }
+        val containerWidthPx = with(density) { maxWidth.toPx() }
+        val deviceCornerRadius = rememberDeviceCornerRadius()
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationX = containerWidthPx * enterProgress.value
+                }
+                .kernelSuClassicPredictiveBackAnimation(
+                    state = state,
+                    containerHeightPx = containerHeightPx,
+                    deviceCornerRadius = deviceCornerRadius
+                )
+        ) {
+            content()
+        }
+    }
+
+    AospPredictiveBackHandler(
+        state = state,
+        enabled = enabled,
+        retainCompletedState = true,
+        onBack = onBack
+    )
 }
 
 internal class AospPredictiveBackState(
@@ -241,6 +299,34 @@ internal fun Modifier.aospPredictiveBackAnimation(
         .clip(RoundedCornerShape(deviceCornerRadius))
 }
 
+internal fun Modifier.kernelSuClassicPredictiveBackAnimation(
+    state: AospPredictiveBackState,
+    containerHeightPx: Float,
+    deviceCornerRadius: Dp
+): Modifier {
+    if (!state.isActive) {
+        return this
+    }
+
+    val backEvent = state.latestBackEvent
+    val edge = backEvent?.swipeEdge ?: BackEventCompat.EDGE_LEFT
+    val progress = state.progress
+    val pivotX = if (edge == BackEventCompat.EDGE_LEFT) 0.8f else 0.2f
+    val pivotY = if (backEvent != null && containerHeightPx > 0f) {
+        (backEvent.touchY / containerHeightPx).coerceIn(0.1f, 0.9f)
+    } else {
+        0.5f
+    }
+
+    return this
+        .graphicsLayer {
+            transformOrigin = TransformOrigin(pivotX, pivotY)
+            scaleX = 1f - 0.1f * progress
+            scaleY = 1f - 0.1f * progress
+            alpha = 1f - progress
+        }
+        .clip(RoundedCornerShape(deviceCornerRadius))
+}
 
 @Composable
 internal fun rememberDeviceCornerRadius(defaultRadius: Dp = 16.dp): Dp {

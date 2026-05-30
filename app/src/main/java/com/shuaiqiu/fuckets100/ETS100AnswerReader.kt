@@ -425,7 +425,7 @@ object ETS100AnswerReader {
 
         val resourceFolders = scanResourceFolders(reader)
         val resourceOrderMap = buildResourceOrderMap(reader)
-        val groupedFolders = groupResourceFolders(resourceFolders)
+        val groupedFolders = groupResourceFolders(reader, resourceFolders)
         Log.i(TAG, "readPapers: 得到 ${groupedFolders.size} 组试卷")
 
         val exerciseGroupPapers = mutableListOf<Paper>()
@@ -483,7 +483,7 @@ object ETS100AnswerReader {
 
         val resourceFolders = scanResourceFolders(reader)
         val resourceOrderMap = buildResourceOrderMap(reader)
-        val groupedFolders = groupResourceFolders(resourceFolders)
+        val groupedFolders = groupResourceFolders(reader, resourceFolders)
         Log.i(TAG, "readPapersParallel: 得到 ${groupedFolders.size} 组试卷")
 
         val parallelLimit = when (mode) {

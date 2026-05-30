@@ -98,3 +98,4 @@ app/build/
 app/build/outputs/apk/
 .codegraph/.gitignore
 pwd.json
+config/__pycache__/sync_manual_config.cpython-313.pyc

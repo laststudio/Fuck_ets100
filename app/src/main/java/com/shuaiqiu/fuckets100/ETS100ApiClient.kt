@@ -485,26 +485,38 @@ object ETS100ApiClient {
             
             val baseUrl = bodyObj.optString("base_url", Config.CDN_BASE_URL)
             val dataArray = bodyObj.optJSONArray("data") ?: org.json.JSONArray()
+            Log.i(TAG, "homework_list parsed: baseUrl=$baseUrl, dataCount=${dataArray.length()}")
             
             val homeworks = mutableListOf<HomeworkInfo>()
             for (i in 0 until dataArray.length()) {
                 val item = dataArray.getJSONObject(i)
+                val homeworkId = item.optString("id", "")
                 val name = item.optString("name", "未知作业")
                 
                 // 解析 struct.contents 获取作业详情
                 val struct = item.optJSONObject("struct")
                 val contentsArray = struct?.optJSONArray("contents") ?: org.json.JSONArray()
+                Log.i(
+                    TAG,
+                    "homework[$i]: id=$homeworkId, name=$name, " +
+                        "structKeys=${struct?.keys()?.asSequence()?.toList().orEmpty()}, " +
+                        "contentsCount=${contentsArray.length()}"
+                )
                 
                 val contents = mutableListOf<HomeworkContent>()
                 for (j in 0 until contentsArray.length()) {
                     val content = contentsArray.getJSONObject(j)
+                    val groupName = content.optString("group_name", "")
+                    val url = content.optString("url", "")
+                    Log.i(TAG, "homework[$i].content[$j]: groupName=$groupName, url=$url")
                     contents.add(HomeworkContent(
-                        groupName = content.optString("group_name", ""),
-                        url = content.optString("url", "")
+                        groupName = groupName,
+                        url = url
                     ))
                 }
                 
                 homeworks.add(HomeworkInfo(
+                    id = homeworkId,
                     name = name,
                     contents = contents
                 ))
@@ -531,6 +543,7 @@ object ETS100ApiClient {
     )
     
     data class HomeworkInfo(
+        val id: String,
         val name: String,
         val contents: List<HomeworkContent>
     )

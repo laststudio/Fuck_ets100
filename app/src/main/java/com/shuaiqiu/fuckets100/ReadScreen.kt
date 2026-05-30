@@ -119,6 +119,8 @@ private object LocalReadProgressState {
     var phase by mutableStateOf(LocalParsePhase.IDLE)
     var doneCount by mutableIntStateOf(0)
     var totalCount by mutableIntStateOf(0)
+    var sectionCount by mutableIntStateOf(0)
+    var questionCount by mutableIntStateOf(0)
     var parsedGroupIndexes by mutableStateOf(emptySet<Int>())
     var message by mutableStateOf("")
     var parseJob: Job? = null
@@ -129,10 +131,17 @@ private object LocalReadProgressState {
         phase = LocalParsePhase.IDLE
         doneCount = 0
         totalCount = 0
+        sectionCount = 0
+        questionCount = 0
         parsedGroupIndexes = emptySet()
         message = ""
     }
 }
+
+private fun List<ETS100AnswerReader.Paper>.totalSectionCount(): Int = sumOf { it.sections.size }
+
+private fun List<ETS100AnswerReader.Paper>.totalQuestionCount(): Int =
+    sumOf { paper -> paper.sections.sumOf { section -> section.questions.size } }
 
 private fun ETS100AnswerReader.Paper.isLocalAnswerLoading(): Boolean {
     return sections.any { it.category == LOCAL_PAPER_LOADING_CATEGORY }
@@ -145,12 +154,30 @@ private fun ETS100AnswerReader.Paper.isLocalAnswerLoading(): Boolean {
  * 用于在列表中显示"未加载"状态喵~
  */
 private fun createCloudHomeworkPlaceholder(homework: ETS100ApiClient.HomeworkInfo): ETS100AnswerReader.Paper {
-    return ETS100AnswerReader.Paper(
-        paperId = homework.name.hashCode().toLong(),
-        title = homework.name,
-        dataFileName = "",
-        fileSize = 0L,
-        sections = listOf(
+    val identity = cloudHomeworkIdentity(homework)
+    val placeholderSections = homework.contents.mapIndexed { index, content ->
+        val title = content.groupName.ifBlank { "云端内容 ${index + 1}" }
+        ETS100AnswerReader.Section(
+            caption = title,
+            category = cloudHomeworkCategoryFromGroupName(title),
+            typeName = title,
+            questions = listOf(
+                ETS100AnswerReader.Question(
+                    order = index + 1,
+                    sectionOrder = 1,
+                    sectionCaption = title,
+                    typeName = title,
+                    questionText = "未下载",
+                    answers = emptyList(),
+                    originalText = null,
+                    category = cloudHomeworkCategoryFromGroupName(title),
+                    displayOrder = index + 1
+                )
+            ),
+            originalContent = null
+        )
+    }.ifEmpty {
+        listOf(
             ETS100AnswerReader.Section(
                 caption = "云端作业",
                 category = "cloud_homework",
@@ -158,11 +185,30 @@ private fun createCloudHomeworkPlaceholder(homework: ETS100ApiClient.HomeworkInf
                 questions = emptyList(),
                 originalContent = null
             )
-        ),
+        )
+    }
+
+    return ETS100AnswerReader.Paper(
+        paperId = identity.hashCode().toLong(),
+        title = homework.name,
+        dataFileName = "",
+        fileSize = 0L,
+        sections = placeholderSections,
         downloadTime = 0L,
         regionLabel = "云端",
         paperName = homework.name
     )
+}
+
+private fun cloudHomeworkCategoryFromGroupName(groupName: String): String {
+    return when {
+        groupName.contains("朗读") -> "read_chapter"
+        groupName.contains("转述") -> "topic"
+        groupName.contains("询问") || groupName.contains("提问") -> "simple_expression_ufj"
+        groupName.contains("回答") || groupName.contains("问答") -> "simple_expression_ufk"
+        groupName.contains("选择") || groupName.contains("听选") || groupName.contains("记录") -> "simple_expression_ufi"
+        else -> "cloud_homework"
+    }
 }
 
 private fun cloudHomeworkStatusLabel(status: String): String {
@@ -177,7 +223,14 @@ private fun cloudHomeworkRequestStatuses(status: String): List<String> {
     }
 }
 
-private fun cloudHomeworkCacheKey(status: String, homeworkName: String): String = "$status:$homeworkName"
+private fun cloudHomeworkIdentity(homework: ETS100ApiClient.HomeworkInfo): String {
+    if (homework.id.isNotBlank()) return homework.id
+    val contentSignature = homework.contents.joinToString("|") { "${it.groupName}:${it.url}" }
+    return "${homework.name}:$contentSignature"
+}
+
+private fun cloudHomeworkCacheKey(status: String, homework: ETS100ApiClient.HomeworkInfo): String =
+    "$status:${cloudHomeworkIdentity(homework)}"
 
 private fun sortCloudQuestionsByOfficialOrder(
     questions: List<ETS100AnswerReader.Question>
@@ -356,6 +409,14 @@ fun ReadScreen(
             homeworkList.map { hw -> createCloudHomeworkPlaceholder(hw) }
         }
     }
+    val loadedLocalSectionCount by remember { derivedStateOf { papers.totalSectionCount() } }
+    val loadedLocalQuestionCount by remember { derivedStateOf { papers.totalQuestionCount() } }
+    val downloadedCloudPapers by remember {
+        derivedStateOf { downloadedPapers.values.flatten() }
+    }
+    val downloadedCloudQuestionCount by remember {
+        derivedStateOf { downloadedCloudPapers.totalQuestionCount() }
+    }
     
     // 分区颜色映射 - 宝贝这个和试卷详情页面的颜色一致喵~
     val categoryColors = mapOf(
@@ -381,6 +442,12 @@ fun ReadScreen(
         val timestamp = timeFormatter.format(java.util.Date())
         val entry = LogEntry(timestamp = timestamp, level = level, category = category, message = message)
         debugLog = debugLog + entry
+        val logcatMessage = "[${category.label}] $message"
+        when (level) {
+            LogLevel.ERROR -> Log.e(TAG, logcatMessage)
+            LogLevel.WARN -> Log.w(TAG, logcatMessage)
+            else -> Log.i(TAG, logcatMessage)
+        }
     }
 
     fun saveCloudReadState() {
@@ -453,6 +520,21 @@ fun ReadScreen(
                     result.onSuccess { response ->
                         addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ status=$requestStatus 获取到 ${response.homeworks.size} 个作业")
                         addLog(LogLevel.INFO, LogCategory.SYSTEM, "📡 API 返回的 base_url = ${response.baseUrl}")
+                        response.homeworks.forEachIndexed { index, homework ->
+                            addLog(
+                                LogLevel.DEBUG,
+                                LogCategory.PAPER,
+                                "   ├─ 作业[$index] id=${homework.id.ifBlank { "<empty>" }}, " +
+                                    "name=${homework.name}, contents=${homework.contents.size}"
+                            )
+                            homework.contents.forEachIndexed { contentIndex, content ->
+                                addLog(
+                                    LogLevel.DEBUG,
+                                    LogCategory.PAPER,
+                                    "   │  ├─ content[$contentIndex] group=${content.groupName}, url=${content.url}"
+                                )
+                            }
+                        }
                     }.onFailure { e ->
                         lastError = e
                         addLog(LogLevel.ERROR, LogCategory.SYSTEM, "✗ status=$requestStatus 获取作业列表失败: ${e.message}")
@@ -508,6 +590,15 @@ fun ReadScreen(
             CloudHomeworkState.cloudBaseUrl = latestBaseUrl
             saveCloudReadState()
             addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 合并得到 ${mergedHomeworks.size} 个${cloudHomeworkStatusLabel(status)}")
+            mergedHomeworks.forEachIndexed { index, homework ->
+                addLog(
+                    LogLevel.INFO,
+                    LogCategory.PAPER,
+                    "📚 合并作业[$index]: id=${homework.id.ifBlank { "<empty>" }}, " +
+                        "name=${homework.name}, contents=${homework.contents.size}, " +
+                        "key=${cloudHomeworkCacheKey(status, homework)}"
+                )
+            }
             success = true
         }
 
@@ -579,7 +670,7 @@ fun ReadScreen(
     ) {
         addLog(LogLevel.INFO, LogCategory.SYSTEM, "📥 开始下载作业: ${homeworkInfo.name}, 共 ${homeworkInfo.contents.size} 个内容")
 
-        val cacheKey = cloudHomeworkCacheKey(status, homeworkInfo.name)
+        val cacheKey = cloudHomeworkCacheKey(status, homeworkInfo)
         if (downloadedPapers.containsKey(cacheKey)) {
             addLog(LogLevel.INFO, LogCategory.SYSTEM, "📁 缓存命中，作业已下载喵~")
             Toast.makeText(context, "该作业已下载喵~", Toast.LENGTH_SHORT).show()
@@ -601,7 +692,7 @@ fun ReadScreen(
             val allSections = mutableListOf<ETS100AnswerReader.Section>()
             var questionIndex = 0
 
-            for (content in homeworkInfo.contents) {
+            for ((contentIndex, content) in homeworkInfo.contents.withIndex()) {
                 // 1. 构造完整 URL
                 val zipUrl = if (content.url.startsWith("http")) {
                     content.url.replaceFirst("http://", "https://")
@@ -618,7 +709,12 @@ fun ReadScreen(
                     addLog(LogLevel.WARN, LogCategory.SYSTEM, "⚠️ 无法从 URL 提取文件名: ${content.url}")
                     continue
                 }
-                addLog(LogLevel.INFO, LogCategory.SYSTEM, "⬇️ 下载 ${content.groupName}: $zipFileName")
+                addLog(
+                    LogLevel.INFO,
+                    LogCategory.SYSTEM,
+                    "⬇️ 内容 ${contentIndex + 1}/${homeworkInfo.contents.size}: " +
+                        "group=${content.groupName}, url=${content.url}, zip=$zipFileName"
+                )
 
                 val zipFile = File(cacheDir, zipFileName)
                 if (zipFile.exists() && zipFile.length() > 0) {
@@ -707,10 +803,18 @@ fun ReadScreen(
                     try {
                         val json = org.json.JSONObject(contentJson)
                         val structureType = json.optString("structure_type", "")
+                        val questionCountInJson = json.optJSONObject("info")?.optJSONArray("question")?.length() ?: 0
+                        val chooseCountInJson = json.optJSONObject("info")?.optJSONArray("xtlist")?.length() ?: 0
+                        val stdCountInJson = json.optJSONObject("info")?.optJSONArray("std")?.length() ?: 0
 
                         addLog(LogLevel.INFO, LogCategory.SECTION, "📄 解析 content.json")
                         addLog(LogLevel.INFO, LogCategory.SECTION, "   ├─ structure_type: $structureType")
                         addLog(LogLevel.INFO, LogCategory.SECTION, "   ├─ group_name: ${content.groupName}")
+                        addLog(
+                            LogLevel.INFO,
+                            LogCategory.SECTION,
+                            "   ├─ raw数量: question=$questionCountInJson, xtlist=$chooseCountInJson, std=$stdCountInJson"
+                        )
 
                         val (questions, originalContent) = ETS100AnswerReader.parseContentJson(
                             json = json,
@@ -723,7 +827,11 @@ fun ReadScreen(
                         if (questions.isEmpty()) {
                             addLog(LogLevel.WARN, LogCategory.QUESTION, "   └─ ⚠️ 未解析到任何题目！")
                         } else {
-                            addLog(LogLevel.SUCCESS, LogCategory.QUESTION, "   ├─ ✅ 解析到 ${questions.size} 道题")
+                            addLog(
+                                LogLevel.SUCCESS,
+                                LogCategory.QUESTION,
+                                "   ├─ ✅ content ${contentIndex + 1}/${homeworkInfo.contents.size} 解析到 ${questions.size} 道题"
+                            )
                             for ((i, q) in questions.withIndex()) {
                                 val isLast = i == questions.size - 1
                                 val prefix = if (isLast) "   │   └─" else "   │   ├─"
@@ -747,6 +855,11 @@ fun ReadScreen(
                                 originalContent = originalContent
                             ))
                             questionIndex += questions.size
+                            addLog(
+                                LogLevel.INFO,
+                                LogCategory.SYSTEM,
+                                "   └─ 累计: sections=${allSections.size}, questions=$questionIndex"
+                            )
                         }
                     } catch (e: Exception) {
                         addLog(LogLevel.ERROR, LogCategory.FILE, "   └─ ✗ 解析 content.json 失败: ${e.message}")
@@ -992,10 +1105,14 @@ fun ReadScreen(
                                                         }
                                                     }
                                                 }
+                                                LocalReadProgressState.sectionCount = papers.totalSectionCount()
+                                                LocalReadProgressState.questionCount = papers.totalQuestionCount()
                                                 addLog(
                                                     LogLevel.SUCCESS,
                                                     LogCategory.PAPER,
-                                                    "✓ 已解析第 ${groupIndex + 1} 份试卷 (${LocalReadProgressState.doneCount}/${LocalReadProgressState.totalCount})"
+                                                    "✓ 已解析第 ${groupIndex + 1} 份试卷 " +
+                                                        "(${LocalReadProgressState.doneCount}/${LocalReadProgressState.totalCount})，" +
+                                                        "累计 ${LocalReadProgressState.sectionCount} 个分区、${LocalReadProgressState.questionCount} 道题"
                                                 )
                                             }
                                         }
@@ -1045,8 +1162,10 @@ fun ReadScreen(
                                             val parseCostMs = System.currentTimeMillis() - parseStartMs
                                             addLog(LogLevel.SUCCESS, LogCategory.SYSTEM, "✓ 答案后台解析完成，耗时 ${parseCostMs}ms")
                                             LocalReadProgressState.doneCount = LocalReadProgressState.totalCount
+                                            LocalReadProgressState.sectionCount = totalSections
+                                            LocalReadProgressState.questionCount = totalQuestions
                                             LocalReadProgressState.phase = LocalParsePhase.COMPLETED
-                                            LocalReadProgressState.message = "列表扫描 ${summaryCostMs}ms，答案解析 ${parseCostMs}ms"
+                                            LocalReadProgressState.message = "共 ${fullResult.papers.size} 份试卷、$totalSections 个分区、$totalQuestions 道题"
                                         } else {
                                             addLog(LogLevel.WARN, LogCategory.SYSTEM, "后台解析未返回完整试卷，保留当前试卷列表")
                                             LocalReadProgressState.phase = LocalParsePhase.FAILED
@@ -1152,10 +1271,31 @@ fun ReadScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator()
                             Spacer(modifier = Modifier.height(16.dp))
+                            val loadingTitle = if (currentMode == ActivationMode.CLOUD) {
+                                "正在加载云端作业..."
+                            } else {
+                                when (LocalReadProgressState.phase) {
+                                    LocalParsePhase.SCANNING -> "正在扫描试卷列表..."
+                                    LocalParsePhase.PARSING -> "正在解析答案..."
+                                    else -> "正在加载试卷..."
+                                }
+                            }
                             Text(
-                                "正在加载试卷...",
+                                loadingTitle,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            val statsText = if (currentMode == ActivationMode.CLOUD) {
+                                "已下载 ${downloadedCloudPapers.size} 份作业，累计 $downloadedCloudQuestionCount 道题"
+                            } else {
+                                "已发现 ${papers.size} 份试卷，${loadedLocalSectionCount} 个分区，${loadedLocalQuestionCount} 道题"
+                            }
+                            Text(
+                                statsText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
@@ -1236,7 +1376,7 @@ fun ReadScreen(
                                     }
                                 }
                                 itemsIndexed(homeworkList) { paperIndex, homeworkInfo ->
-                                    val homeworkKey = cloudHomeworkCacheKey(selectedCloudHomeworkStatus, homeworkInfo.name)
+                                    val homeworkKey = cloudHomeworkCacheKey(selectedCloudHomeworkStatus, homeworkInfo)
                                     val isDownloaded = downloadedHomeworkNames.contains(homeworkKey)
                                     val isDownloading = cloudDownloadingHomeworks.contains(homeworkKey)
                                     val isFailed = failedCloudHomeworks.contains(homeworkKey)
@@ -1342,6 +1482,8 @@ fun ReadScreen(
                                             phase = LocalReadProgressState.phase,
                                             doneCount = LocalReadProgressState.doneCount,
                                             totalCount = LocalReadProgressState.totalCount,
+                                            sectionCount = LocalReadProgressState.sectionCount,
+                                            questionCount = LocalReadProgressState.questionCount,
                                             message = LocalReadProgressState.message
                                         )
                                     }
@@ -1482,6 +1624,8 @@ private fun LocalAnswerParsingCard(
     phase: LocalParsePhase,
     doneCount: Int,
     totalCount: Int,
+    sectionCount: Int,
+    questionCount: Int,
     message: String
 ) {
     val isFinished = phase == LocalParsePhase.COMPLETED
@@ -1508,6 +1652,7 @@ private fun LocalAnswerParsingCard(
         LocalParsePhase.FAILED -> message.ifBlank { "后台解析失败，请重新读取" }
         LocalParsePhase.IDLE -> message
     }
+    val statsText = "已解析 $sectionCount 个分区 · $questionCount 道题"
     val iconColor = when {
         isFinished -> Color(0xFF22C55E)
         isFailed -> MaterialTheme.colorScheme.error
@@ -1569,6 +1714,14 @@ private fun LocalAnswerParsingCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (sectionCount > 0 || questionCount > 0) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = statsText,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
             if (!isFinished && !isFailed) {
@@ -3438,8 +3591,13 @@ private fun PaperListItem(
                             )
                         }
                         else -> {
+                            val countText = if (isDownloaded || paper.regionLabel != "云端") {
+                                "${paper.sections.size} 个分区 · ${paper.sections.sumOf { it.questions.size }} 道题目"
+                            } else {
+                                "预计 ${paper.sections.size} 个分区 · ${paper.sections.sumOf { it.questions.size }} 个内容"
+                            }
                             Text(
-                                text = "${paper.sections.size} 个分区 · ${paper.sections.sumOf { it.questions.size }} 道题目",
+                                text = countText,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

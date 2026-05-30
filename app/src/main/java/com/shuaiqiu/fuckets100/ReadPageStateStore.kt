@@ -317,6 +317,7 @@ object ReadPageStateStore {
         forEach { homework ->
             array.put(
                 JSONObject()
+                    .put("id", homework.id)
                     .put("name", homework.name)
                     .put("contents", homework.contents.toHomeworkContentJsonArray())
             )
@@ -352,6 +353,7 @@ object ReadPageStateStore {
         return (0 until array.length()).mapNotNull { index ->
             array.optJSONObject(index)?.let { json ->
                 ETS100ApiClient.HomeworkInfo(
+                    id = json.optString("id"),
                     name = json.optString("name"),
                     contents = parseHomeworkContents(json.optJSONArray("contents"))
                 )

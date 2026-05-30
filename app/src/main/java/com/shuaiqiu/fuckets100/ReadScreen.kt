@@ -252,7 +252,9 @@ fun ReadScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val cachedLocalSnapshot = remember { ReadPageStateStore.loadLocal(context) }
+    val cachedLocalSnapshot = remember(currentMode) {
+        ReadPageStateStore.loadLocal(context)?.takeIf { it.mode == currentMode }
+    }
     val cachedCloudSnapshot = remember {
         ReadPageStateStore.loadCloud(context)?.also { snapshot ->
             if (CloudHomeworkState.homeworkListsByStatus.isEmpty() &&
@@ -1019,6 +1021,7 @@ fun ReadScreen(
                                             ReadPageStateStore.saveLocal(
                                                 context,
                                                 ReadPageStateStore.LocalSnapshot(
+                                                    mode = currentMode,
                                                     readerInfo = fullResult.readerInfo,
                                                     dataFiles = fullResult.dataFiles,
                                                     resourceFiles = fullResult.resourceFiles,
@@ -1125,6 +1128,8 @@ fun ReadScreen(
                         showCloudReadConfirmDialog = true
                     } else {
                         // 本地模式：重新加载本地试卷喵~
+                        ETS100AnswerReader.clearResourceScanCache(currentMode)
+                        ReadPageStateStore.clearLocal(context)
                         reloadTrigger++
                     }
                 }

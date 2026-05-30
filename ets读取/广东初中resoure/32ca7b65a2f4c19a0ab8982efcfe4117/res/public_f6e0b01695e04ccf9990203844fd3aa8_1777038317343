@@ -1,0 +1,15 @@
+<xml_result>
+
+  <simple_expression_ufi lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.38M5.81.38.0">
+    <rec_paper>
+      <rec_paper beg_pos="226" content="rec_paper" end_pos="445" except_info="0" is_rejected="false" keywords="plane ticket" phone_score="3.785581" reject_type="0" total_score="4.988401" word_hit_of_each_kw="1.00">
+        <sentence content="a plane ticket " index="0">
+          <word beg_pos="243" content="a" end_pos="265"/>
+          <word beg_pos="265" content="plane" end_pos="311"/>
+          <word beg_pos="311" content="ticket" end_pos="403"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufi>
+
+</xml_result>

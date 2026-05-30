@@ -24,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -43,12 +42,24 @@ internal enum class PredictiveBackExitDirection {
 
 internal fun ComponentActivity.applyPredictiveBackWindowTheme() {
     setTheme(
-        if (SettingsManager.getPredictiveBackMode() != PredictiveBackMode.NONE) {
-            R.style.Theme_Fe_Transparent
-        } else {
-            R.style.Theme_Fe
+        when (SettingsManager.getPredictiveBackMode()) {
+            PredictiveBackMode.AOSP -> R.style.Theme_Fe_Transparent
+            PredictiveBackMode.KERNELSU_CLASSIC -> R.style.Theme_Fe_KernelSuClassic
+            else -> R.style.Theme_Fe
         }
     )
+}
+
+internal fun <T : ComponentActivity> predictiveBackActivityClass(
+    transparentActivity: Class<T>,
+    opaqueActivity: Class<out T>,
+    kernelSuClassicActivity: Class<out T>
+): Class<out T> {
+    return when (SettingsManager.getPredictiveBackMode()) {
+        PredictiveBackMode.AOSP -> transparentActivity
+        PredictiveBackMode.KERNELSU_CLASSIC -> kernelSuClassicActivity
+        else -> opaqueActivity
+    }
 }
 
 @Composable
@@ -66,7 +77,10 @@ internal fun PredictiveBackContent(
             )
         }
         PredictiveBackMode.SLIDE -> {
-            SlidePredictiveBackContent(
+            content()
+        }
+        PredictiveBackMode.KERNELSU_CLASSIC -> {
+            KernelSuClassicPredictiveBackContent(
                 enabled = enabled,
                 onBack = onBack,
                 content = content
@@ -80,7 +94,7 @@ internal fun PredictiveBackContent(
 }
 
 @Composable
-internal fun SlidePredictiveBackContent(
+internal fun KernelSuClassicPredictiveBackContent(
     enabled: Boolean = true,
     onBack: () -> Unit,
     content: @Composable () -> Unit
@@ -89,19 +103,19 @@ internal fun SlidePredictiveBackContent(
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val density = LocalDensity.current
-        val containerWidthPx = with(density) { maxWidth.toPx() }
+        val containerHeightPx = with(density) { maxHeight.toPx() }
         val deviceCornerRadius = rememberDeviceCornerRadius()
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .slidePredictiveBackAnimation(
+                .kernelSuClassicPredictiveBackAnimation(
                     state = state,
-                    containerWidthPx = containerWidthPx,
+                    containerHeightPx = containerHeightPx,
                     deviceCornerRadius = deviceCornerRadius
                 )
         ) {
-            SlideEnterContent(enabled = true, content = content)
+            content()
         }
     }
 
@@ -109,6 +123,7 @@ internal fun SlidePredictiveBackContent(
         state = state,
         enabled = enabled,
         retainCompletedState = true,
+        animateCommit = false,
         onBack = onBack
     )
 }
@@ -145,6 +160,7 @@ internal class AospPredictiveBackState(
     suspend fun handleBackGesture(
         progressEvents: Flow<BackEventCompat>,
         retainCompletedState: Boolean,
+        animateCommit: Boolean,
         onBack: () -> Unit
     ) {
         var completed = false
@@ -156,12 +172,14 @@ internal class AospPredictiveBackState(
                 latestBackEvent = event
             }
 
-            exitAnimatable.snapTo(0f)
-            exitAnimatable.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
-            )
             completed = true
+            if (animateCommit) {
+                exitAnimatable.snapTo(0f)
+                exitAnimatable.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                )
+            }
             onBack()
         } catch (_: CancellationException) {
             exitAnimatable.animateTo(
@@ -188,12 +206,14 @@ internal fun AospPredictiveBackHandler(
     state: AospPredictiveBackState,
     enabled: Boolean,
     retainCompletedState: Boolean = false,
+    animateCommit: Boolean = true,
     onBack: () -> Unit
 ) {
     PredictiveBackHandler(enabled = enabled) { progress ->
         state.handleBackGesture(
             progressEvents = progress,
             retainCompletedState = retainCompletedState,
+            animateCommit = animateCommit,
             onBack = onBack
         )
     }
@@ -210,7 +230,7 @@ internal fun AospPredictiveBackContent(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val containerHeightPx = with(density) { maxHeight.toPx() }
-        val predictiveBackOffsetPx = with(density) { 96.dp.toPx() }
+        val containerWidthPx = with(density) { maxWidth.toPx() }
         val deviceCornerRadius = rememberDeviceCornerRadius()
 
         Box(
@@ -219,7 +239,7 @@ internal fun AospPredictiveBackContent(
                 .aospPredictiveBackAnimation(
                     state = state,
                     containerHeightPx = containerHeightPx,
-                    exitingOffsetPx = predictiveBackOffsetPx,
+                    exitingOffsetPx = containerWidthPx,
                     deviceCornerRadius = deviceCornerRadius
                 )
         ) {
@@ -247,9 +267,10 @@ internal fun Modifier.aospPredictiveBackAnimation(
 
     val backEvent = state.latestBackEvent
     val edge = backEvent?.swipeEdge ?: BackEventCompat.EDGE_LEFT
-    val gestureProgress = state.progress
+    val gestureProgress = (backEvent?.progress ?: 0f).coerceIn(0f, 1f)
+    val linearExitProgress = state.exitAnimatable.value.coerceIn(0f, 1f)
     val emphasizedExitProgress = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-        .transform(state.exitAnimatable.value.coerceIn(0f, 1f))
+        .transform(linearExitProgress)
     val maxScale = 0.85f
     val dragScale = 1f - (1f - maxScale) * gestureProgress
     val pivotX = if (edge == BackEventCompat.EDGE_LEFT) 0.8f else 0.2f
@@ -265,85 +286,37 @@ internal fun Modifier.aospPredictiveBackAnimation(
             scaleX = dragScale
             scaleY = dragScale
             translationX = exitingOffsetPx * state.directionMultiplier * emphasizedExitProgress
-            alpha = (1f - ((emphasizedExitProgress - 0.7f) / 0.3f)).coerceIn(0f, 1f)
         }
         .clip(RoundedCornerShape(deviceCornerRadius))
 }
 
-internal fun Modifier.slidePredictiveBackAnimation(
+internal fun Modifier.kernelSuClassicPredictiveBackAnimation(
     state: AospPredictiveBackState,
-    containerWidthPx: Float,
+    containerHeightPx: Float,
     deviceCornerRadius: Dp
 ): Modifier {
-    val gestureProgress = state.latestBackEvent?.progress ?: 0f
-    val emphasizedExitProgress = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-        .transform(state.exitAnimatable.value.coerceIn(0f, 1f))
-    val progress = max(gestureProgress, emphasizedExitProgress).coerceIn(0f, 1f)
-
-    return slidePageLayer(
-        progress = progress,
-        containerWidthPx = containerWidthPx,
-        deviceCornerRadius = deviceCornerRadius
-    )
-}
-
-@Composable
-internal fun SlideEnterContent(
-    enabled: Boolean,
-    content: @Composable () -> Unit
-) {
-    val enterProgress = remember { Animatable(if (enabled) 1f else 0f) }
-
-    LaunchedEffect(enabled) {
-        if (enabled) {
-            enterProgress.snapTo(1f)
-            enterProgress.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing)
-            )
-        } else {
-            enterProgress.snapTo(0f)
-        }
-    }
-
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val density = LocalDensity.current
-        val containerWidthPx = with(density) { maxWidth.toPx() }
-        val deviceCornerRadius = rememberDeviceCornerRadius()
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .slidePageLayer(
-                    progress = enterProgress.value,
-                    containerWidthPx = containerWidthPx,
-                    deviceCornerRadius = deviceCornerRadius
-                )
-        ) {
-            content()
-        }
-    }
-}
-
-private fun Modifier.slidePageLayer(
-    progress: Float,
-    containerWidthPx: Float,
-    deviceCornerRadius: Dp
-): Modifier {
-    if (progress <= 0.001f) {
+    if (!state.isActive) {
         return this
     }
 
-    val pageShape = RoundedCornerShape(deviceCornerRadius)
-
-    return graphicsLayer {
-        shape = pageShape
-        clip = true
-        shadowElevation = 20.dp.toPx()
-        ambientShadowColor = Color.Black.copy(alpha = 0.26f)
-        spotShadowColor = Color.Black.copy(alpha = 0.32f)
-        translationX = containerWidthPx * progress.coerceIn(0f, 1f)
+    val backEvent = state.latestBackEvent
+    val edge = backEvent?.swipeEdge ?: BackEventCompat.EDGE_LEFT
+    val progress = state.progress
+    val pivotX = if (edge == BackEventCompat.EDGE_LEFT) 0.8f else 0.2f
+    val pivotY = if (backEvent != null && containerHeightPx > 0f) {
+        (backEvent.touchY / containerHeightPx).coerceIn(0.1f, 0.9f)
+    } else {
+        0.5f
     }
+
+    return this
+        .graphicsLayer {
+            transformOrigin = TransformOrigin(pivotX, pivotY)
+            scaleX = 1f - 0.1f * progress
+            scaleY = 1f - 0.1f * progress
+            alpha = 1f - progress
+        }
+        .clip(RoundedCornerShape(deviceCornerRadius))
 }
 
 @Composable

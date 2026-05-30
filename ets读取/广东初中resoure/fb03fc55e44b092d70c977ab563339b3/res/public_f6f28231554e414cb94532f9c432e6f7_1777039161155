@@ -1,0 +1,20 @@
+<xml_result>
+
+  <simple_expression_ufj lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
+    <rec_paper>
+      <rec_paper beg_pos="25" content="rec_paper" end_pos="713" except_info="0" is_rejected="false" keywords="what else traditional activities foshan have|what else traditional events foshan have|what else traditional activities there foshan|what else traditional events there foshan" phone_score="3.101751" reject_type="0" total_score="4.085512" word_hit_of_each_kw="0.83|0.67|0.67|0.50">
+        <sentence content="" index="0"/>
+        <sentence content="what other traditional activities does foshan have " index="1">
+          <word beg_pos="225" content="what" end_pos="302"/>
+          <word beg_pos="302" content="other" end_pos="347"/>
+          <word beg_pos="347" content="traditional" end_pos="435"/>
+          <word beg_pos="435" content="activities" end_pos="531"/>
+          <word beg_pos="531" content="does" end_pos="590"/>
+          <word beg_pos="590" content="foshan" end_pos="653"/>
+          <word beg_pos="653" content="have" end_pos="693"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufj>
+
+</xml_result>

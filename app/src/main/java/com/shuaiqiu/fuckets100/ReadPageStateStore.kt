@@ -11,6 +11,7 @@ object ReadPageStateStore {
     private const val KEY_CLOUD = "cloud_snapshot"
 
     data class LocalSnapshot(
+        val mode: ActivationMode,
         val readerInfo: String,
         val dataFiles: List<ETS100FileReader.FileItem>,
         val resourceFiles: List<ETS100FileReader.FileItem>,
@@ -60,6 +61,7 @@ object ReadPageStateStore {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private fun LocalSnapshot.toJson(): JSONObject = JSONObject()
+        .put("mode", mode.name)
         .put("readerInfo", readerInfo)
         .put("dataFiles", dataFiles.toFileJsonArray())
         .put("resourceFiles", resourceFiles.toFileJsonArray())
@@ -73,12 +75,19 @@ object ReadPageStateStore {
         .put("downloadedHomeworkNames", JSONArray(downloadedHomeworkNames.toList()))
         .put("failedCloudHomeworks", JSONArray(failedCloudHomeworks.toList()))
 
-    private fun parseLocalSnapshot(json: JSONObject): LocalSnapshot = LocalSnapshot(
-        readerInfo = json.optString("readerInfo", ""),
-        dataFiles = parseFileItems(json.optJSONArray("dataFiles")),
-        resourceFiles = parseFileItems(json.optJSONArray("resourceFiles")),
-        papers = parsePapers(json.optJSONArray("papers"))
-    )
+    private fun parseLocalSnapshot(json: JSONObject): LocalSnapshot {
+        val mode = json.optString("mode", "").let { rawMode ->
+            ActivationMode.entries.firstOrNull { it.name == rawMode }
+        } ?: error("Local snapshot missing activation mode")
+
+        return LocalSnapshot(
+            mode = mode,
+            readerInfo = json.optString("readerInfo", ""),
+            dataFiles = parseFileItems(json.optJSONArray("dataFiles")),
+            resourceFiles = parseFileItems(json.optJSONArray("resourceFiles")),
+            papers = parsePapers(json.optJSONArray("papers"))
+        )
+    }
 
     private fun parseCloudSnapshot(json: JSONObject): CloudSnapshot = CloudSnapshot(
         selectedStatus = json.optString("selectedStatus", CloudHomeworkState.STATUS_CURRENT),

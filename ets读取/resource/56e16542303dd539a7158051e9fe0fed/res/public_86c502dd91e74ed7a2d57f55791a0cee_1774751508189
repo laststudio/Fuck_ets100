@@ -1,9 +1,0 @@
-<xml_result>
-
-  <simple_expression_ufi lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
-    <rec_paper>
-      <rec_paper except_info="28673" is_rejected="true" keywords="drawing|painting" phone_score="0.000000" reject_type="68" total_score="0.000000" word_hit_of_each_kw="0.00|0.00"/>
-    </rec_paper>
-  </simple_expression_ufi>
-
-</xml_result>

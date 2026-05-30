@@ -10,7 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.Color
 
-class AnswerActivity : ComponentActivity() {
+open class AnswerActivity : ComponentActivity() {
     private var paperKey: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,7 +65,14 @@ class AnswerActivity : ComponentActivity() {
         private const val EXTRA_PAPER_KEY = "paper_key"
 
         fun createIntent(context: Context, paperKey: String): Intent {
-            return Intent(context, AnswerActivity::class.java).putExtra(EXTRA_PAPER_KEY, paperKey)
+            return Intent(
+                context,
+                predictiveBackActivityClass(
+                    AnswerActivity::class.java,
+                    AnswerOpaqueActivity::class.java,
+                    AnswerKernelSuClassicActivity::class.java
+                )
+            ).putExtra(EXTRA_PAPER_KEY, paperKey)
         }
     }
 }

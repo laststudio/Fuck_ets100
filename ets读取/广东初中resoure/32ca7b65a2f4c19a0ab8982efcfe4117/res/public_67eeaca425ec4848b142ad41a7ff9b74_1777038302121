@@ -1,0 +1,15 @@
+<xml_result>
+
+  <simple_expression_ufi lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.38M5.81.38.0">
+    <rec_paper>
+      <rec_paper beg_pos="245" content="rec_paper" end_pos="493" except_info="0" is_rejected="false" keywords="friday afternoon|first day afternoon|first day" phone_score="4.971016" reject_type="0" total_score="4.992108" word_hit_of_each_kw="1.00|0.33|0.00">
+        <sentence content="on friday afternoon " index="0">
+          <word beg_pos="259" content="on" end_pos="290"/>
+          <word beg_pos="290" content="friday" end_pos="354"/>
+          <word beg_pos="354" content="afternoon" end_pos="432"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufi>
+
+</xml_result>

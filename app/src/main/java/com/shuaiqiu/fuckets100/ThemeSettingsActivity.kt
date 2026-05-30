@@ -12,7 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 
-class ThemeSettingsActivity : ComponentActivity() {
+open class ThemeSettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
@@ -42,7 +42,11 @@ class ThemeSettingsActivity : ComponentActivity() {
                         onDynamicColorChanged = { useDynamicColor = it },
                         onPredictiveBackChanged = {
                             predictiveBackMode = it
-                            recreate()
+                            startActivity(
+                                createIntent(this).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                            )
+                            finish()
+                            overridePendingTransition(0, 0)
                         }
                     )
                 }
@@ -52,7 +56,14 @@ class ThemeSettingsActivity : ComponentActivity() {
 
     companion object {
         fun createIntent(context: Context): Intent {
-            return Intent(context, ThemeSettingsActivity::class.java)
+            return Intent(
+                context,
+                predictiveBackActivityClass(
+                    ThemeSettingsActivity::class.java,
+                    ThemeSettingsOpaqueActivity::class.java,
+                    ThemeSettingsKernelSuClassicActivity::class.java
+                )
+            )
         }
     }
 }

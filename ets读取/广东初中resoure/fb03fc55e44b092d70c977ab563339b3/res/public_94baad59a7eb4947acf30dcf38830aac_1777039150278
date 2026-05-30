@@ -1,0 +1,16 @@
+<xml_result>
+
+  <simple_expression_ufj lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
+    <rec_paper>
+      <rec_paper beg_pos="254" content="rec_paper" end_pos="487" except_info="0" is_rejected="false" keywords="cars pass through|road open cars|cars have way through|vehicles pass through|road open vehicles|vehicles have way through|cars go through|vehicles go through|cars drive through|vehicles drive through" phone_score="2.802715" reject_type="0" total_score="4.285738" word_hit_of_each_kw="1.00|0.33|0.50|0.67|0.00|0.25|1.00|0.67|0.67|0.33">
+        <sentence content="can cars pass through " index="0">
+          <word beg_pos="264" content="can" end_pos="307"/>
+          <word beg_pos="307" content="cars" end_pos="358"/>
+          <word beg_pos="358" content="pass" end_pos="423"/>
+          <word beg_pos="423" content="through" end_pos="466"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufj>
+
+</xml_result>

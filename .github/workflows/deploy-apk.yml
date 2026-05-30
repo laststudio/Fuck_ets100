@@ -42,6 +42,7 @@ jobs:
             "ANDROID_KEYSTORE_PASSWORD"
             "ANDROID_KEY_ALIAS"
             "ANDROID_KEY_PASSWORD"
+            "CONFIG_GITHUB_TOKEN"
             "GITEE_USERNAME"
             "GITEE_TOKEN"
             "LANZOU_USERNAME"
@@ -59,6 +60,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          CONFIG_GITHUB_TOKEN: ${{ secrets.CONFIG_GITHUB_TOKEN }}
           GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           LANZOU_USERNAME: ${{ secrets.LANZOU_USERNAME }}
@@ -69,14 +71,16 @@ jobs:
         shell: bash
         run: python scripts/release/read_version.py --github-output "$GITHUB_OUTPUT"
 
-      - name: 生成 APK 下载直链
+      - name: 生成默认更新下载地址
         id: download
         shell: bash
+        env:
+          UPDATE_DOWNLOAD_URL: ${{ vars.UPDATE_DOWNLOAD_URL || 'https://oplist.lastudio.cc/Fe_release' }}
         run: |
           set -euo pipefail
-          apk_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${{ steps.version.outputs.tag_name }}/${{ steps.version.outputs.apk_name }}"
+          apk_url="${UPDATE_DOWNLOAD_URL}"
           echo "apk_url=${apk_url}" >> "$GITHUB_OUTPUT"
-          echo "APK 下载链接：${apk_url}"
+          echo "默认更新下载地址：${apk_url}"
 
       - name: 生成发布说明
         shell: bash
@@ -165,49 +169,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 更新 Gitee 远程配置
+      - name: 同步远程配置仓库
         shell: bash
         run: |
           set -euo pipefail
-          echo "RELEASE_FORCE_UPDATE=${RELEASE_FORCE_UPDATE}"
-          echo "RELEASE_KILL_SWITCH=${RELEASE_KILL_SWITCH}"
-          echo "RELEASE_DONATE_ENABLED=${RELEASE_DONATE_ENABLED}"
-          echo "GITEE_CHANGELOG_FILE=${GITEE_CHANGELOG_FILE}"
-          RELEASE_ANNOUNCEMENT_UPDATED_AT="${RELEASE_ANNOUNCEMENT_UPDATED_AT:-$(date +%F)}"
-          echo "RELEASE_ANNOUNCEMENT_UPDATED_AT=${RELEASE_ANNOUNCEMENT_UPDATED_AT}"
-          if [ -n "${RELEASE_NOTICE_MESSAGE}" ]; then
-            echo "RELEASE_NOTICE_MESSAGE 已配置。"
-          else
-            echo "RELEASE_NOTICE_MESSAGE 为空。"
-          fi
-          if [ -n "${RELEASE_ANNOUNCEMENT_MESSAGE}" ]; then
-            echo "RELEASE_ANNOUNCEMENT_MESSAGE 已配置。"
-          else
-            echo "RELEASE_ANNOUNCEMENT_MESSAGE 为空，将使用 RELEASE_NOTICE_MESSAGE 兜底。"
-          fi
           python scripts/release/update_remote_config.py \
             --version-code "${{ steps.version.outputs.version_code }}" \
             --version-name "${{ steps.version.outputs.version_name }}" \
             --apk-url "${{ steps.download.outputs.apk_url }}" \
             --message-file current_changelog.md \
-            --source-changelog-file update.md \
-            --changelog-file "${GITEE_CHANGELOG_FILE}" \
-            --announcement-updated-at "${RELEASE_ANNOUNCEMENT_UPDATED_AT}"
+            --local-config-file config/config.json \
+            --source-changelog-file update.md
         env:
+          CONFIG_GITHUB_TOKEN: ${{ secrets.CONFIG_GITHUB_TOKEN }}
+          CONFIG_GITHUB_REPO: ${{ vars.CONFIG_GITHUB_REPO || 'laststudio/Fe_config' }}
+          CONFIG_GITHUB_BRANCH: ${{ vars.CONFIG_GITHUB_BRANCH || 'main' }}
           GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           GITEE_CONFIG_REPO: ${{ vars.GITEE_CONFIG_REPO || 'qiuqiqiuqid/fe_config' }}
           GITEE_CONFIG_BRANCH: ${{ vars.GITEE_CONFIG_BRANCH || 'master' }}
-          GITEE_CONFIG_FILE: ${{ vars.GITEE_CONFIG_FILE || 'config.json' }}
-          RELEASE_FORCE_UPDATE: ${{ vars.RELEASE_FORCE_UPDATE || 'false' }}
-          RELEASE_KILL_SWITCH: ${{ vars.RELEASE_KILL_SWITCH || 'false' }}
-          RELEASE_NOTICE_MESSAGE: ${{ vars.RELEASE_NOTICE_MESSAGE || '' }}
-          RELEASE_ANNOUNCEMENT_TITLE: ${{ vars.RELEASE_ANNOUNCEMENT_TITLE || '' }}
-          RELEASE_ANNOUNCEMENT_MESSAGE: ${{ vars.RELEASE_ANNOUNCEMENT_MESSAGE || '' }}
-          RELEASE_ANNOUNCEMENT_UPDATED_AT: ${{ vars.RELEASE_ANNOUNCEMENT_UPDATED_AT || '' }}
-          RELEASE_ANNOUNCEMENT_URL: ${{ vars.RELEASE_ANNOUNCEMENT_URL || '' }}
-          RELEASE_CHANGELOG_URL: ${{ vars.RELEASE_CHANGELOG_URL || '' }}
-          RELEASE_CHANGELOG_TITLE: ${{ vars.RELEASE_CHANGELOG_TITLE || '更新日志' }}
-          RELEASE_CHANGELOG_SUMMARY: ${{ vars.RELEASE_CHANGELOG_SUMMARY || '' }}
-          GITEE_CHANGELOG_FILE: ${{ vars.GITEE_CHANGELOG_FILE || 'update.md' }}
-          RELEASE_DONATE_ENABLED: ${{ vars.RELEASE_DONATE_ENABLED || 'true' }}
+          REMOTE_CONFIG_FILE: ${{ vars.REMOTE_CONFIG_FILE || 'config.json' }}
+          REMOTE_CHANGELOG_FILE: ${{ vars.REMOTE_CHANGELOG_FILE || 'update.md' }}

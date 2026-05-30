@@ -9,7 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 
-class ShareActivity : ComponentActivity() {
+open class ShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         applyPredictiveBackWindowTheme()
         super.onCreate(savedInstanceState)
@@ -53,7 +53,14 @@ class ShareActivity : ComponentActivity() {
         private const val EXTRA_PAPER_KEY = "paper_key"
 
         fun createIntent(context: Context, paperKey: String): Intent {
-            return Intent(context, ShareActivity::class.java).putExtra(EXTRA_PAPER_KEY, paperKey)
+            return Intent(
+                context,
+                predictiveBackActivityClass(
+                    ShareActivity::class.java,
+                    ShareOpaqueActivity::class.java,
+                    ShareKernelSuClassicActivity::class.java
+                )
+            ).putExtra(EXTRA_PAPER_KEY, paperKey)
         }
     }
 }

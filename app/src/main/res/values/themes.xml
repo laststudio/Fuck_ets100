@@ -17,4 +17,15 @@
         <item name="android:windowIsFloating">false</item>
         <item name="android:windowDisablePreview">true</item>
     </style>
+
+    <style name="Theme.Fe.KernelSuClassic" parent="Theme.Fe.Transparent">
+        <item name="android:windowAnimationStyle">@style/Animation.Fe.KernelSuClassic</item>
+    </style>
+
+    <style name="Animation.Fe.KernelSuClassic" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/kernelsu_classic_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/kernelsu_classic_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/kernelsu_classic_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/kernelsu_classic_close_exit</item>
+    </style>
 </resources>

@@ -1,0 +1,15 @@
+<xml_result>
+
+  <simple_expression_ufi lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.35M5.81.35.0">
+    <rec_paper>
+      <rec_paper beg_pos="256" content="rec_paper" end_pos="424" except_info="0" is_rejected="false" keywords="near window|close window" phone_score="4.690447" reject_type="0" total_score="4.996220" word_hit_of_each_kw="1.00|1.00">
+        <sentence content="near the window " index="0">
+          <word beg_pos="264" content="near" end_pos="314"/>
+          <word beg_pos="314" content="the" end_pos="331"/>
+          <word beg_pos="331" content="window" end_pos="397"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufi>
+
+</xml_result>

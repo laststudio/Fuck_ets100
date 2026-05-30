@@ -15,8 +15,11 @@ import java.net.URLConnection
  */
 object RemoteConfigManager {
     private const val TAG = "RemoteConfigManager"
-    private const val CONFIG_URL = "https://raw.giteeusercontent.com/qiuqiqiuqid/fe_config/raw/master/config.json"
-    private const val DEFAULT_CHANGELOG_URL = "https://raw.giteeusercontent.com/qiuqiqiuqid/fe_config/raw/master/update.md"
+    private val CONFIG_URLS = listOf(
+        "https://raw.githubusercontent.com/laststudio/Fe_config/main/config.json",
+        "https://raw.giteeusercontent.com/qiuqiqiuqid/fe_config/raw/master/config.json"
+    )
+    private const val DEFAULT_CHANGELOG_URL = "https://raw.githubusercontent.com/laststudio/Fe_config/main/update.md"
     private const val TIMEOUT_MS = 5000L  // 5秒超时喵~
     
     /**
@@ -50,6 +53,36 @@ object RemoteConfigManager {
         )
     }
     
+    private suspend fun fetchFirstAvailableConfig(): Triple<String, String, Long> {
+        val errors = mutableListOf<String>()
+
+        for (configUrl in CONFIG_URLS) {
+            Log.d(TAG, "📡 尝试 URL: $configUrl")
+            val startTime = System.currentTimeMillis()
+            try {
+                val response = withTimeoutOrNull(TIMEOUT_MS) {
+                    val urlConnection = URL(configUrl).openConnection() as URLConnection
+                    urlConnection.connectTimeout = TIMEOUT_MS.toInt()
+                    urlConnection.readTimeout = TIMEOUT_MS.toInt()
+                    urlConnection.connect()
+                    urlConnection.inputStream.bufferedReader().readText()
+                }
+
+                if (response.isNullOrBlank()) {
+                    errors += "$configUrl: empty or timeout"
+                    Log.w(TAG, "⚠️ 配置源失败: $configUrl empty or timeout")
+                    continue
+                }
+
+                return Triple(response, configUrl, System.currentTimeMillis() - startTime)
+            } catch (e: Exception) {
+                errors += "$configUrl: ${e.javaClass.simpleName}: ${e.message}"
+                Log.w(TAG, "⚠️ 配置源失败: $configUrl ${e.message}")
+            }
+        }
+
+        throw NetworkException("所有远程配置源均失败: ${errors.joinToString(" | ")}")
+    }
     /**
      * 获取远程配置
      * 在 IO 线程执行，不阻塞主线程
@@ -64,30 +97,13 @@ object RemoteConfigManager {
             try {
                 Log.d(TAG, "═══════════════════════════════════════════")
                 Log.d(TAG, "🌐 开始连接远程配置服务器...")
-                Log.d(TAG, "📡 URL: $CONFIG_URL")
                 Log.d(TAG, "⏱️ 超时设置: ${TIMEOUT_MS}ms")
-                
-                val startTime = System.currentTimeMillis()
-                
-                // 使用 withTimeoutOrNull 实现 5 秒超时
-                val response = withTimeoutOrNull(TIMEOUT_MS) {
-                    val urlConnection = URL(CONFIG_URL).openConnection() as URLConnection
-                    urlConnection.connectTimeout = TIMEOUT_MS.toInt()
-                    urlConnection.readTimeout = TIMEOUT_MS.toInt()
-                    urlConnection.connect()
-                    urlConnection.inputStream.bufferedReader().readText()
-                }
-                
-                if (response == null) {
-                    // 超时
-                    Log.e(TAG, "❌ 连接超时: 超过${TIMEOUT_MS}ms未获取到数据")
-                    throw NetworkException("连接超时: 超过${TIMEOUT_MS}ms未获取到数据")
-                }
-                
-                val endTime = System.currentTimeMillis()
-                Log.d(TAG, "✅ 连接成功! 响应时间: ${endTime - startTime}ms")
+
+                val (response, sourceUrl, elapsedMs) = fetchFirstAvailableConfig()
+                Log.d(TAG, "✅ 连接成功! 响应时间: ${elapsedMs}ms")
+                Log.d(TAG, "📡 成功来源: $sourceUrl")
                 Log.d(TAG, "📦 原始响应: ${response.take(200)}...")
-                
+
                 val json = JSONObject(response)
                 
                 val noticeMessage = json.optString("noticeMessage", "")
@@ -215,3 +231,6 @@ object RemoteConfigManager {
         }
     }
 }
+
+
+

@@ -253,7 +253,31 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.slidePopExitTransi
     )
 }
 
-/**
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.fadeOnlyEnterTransition(): EnterTransition {
+    if (isRootTabTransition()) {
+        return EnterTransition.None
+    }
+
+    return fadeIn()
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.fadeOnlyExitTransition(): ExitTransition {
+    if (isRootTabTransition()) {
+        return ExitTransition.None
+    }
+
+    return fadeOut()
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.fadeAndScalePopExitTransition(): ExitTransition {
+    if (isRootTabTransition()) {
+        return ExitTransition.None
+    }
+
+    return scaleOut(targetScale = 0.9f) + fadeOut()
+}
+
+/** 
  * 搴旂敤涓荤晫闈㈢粍鍚堝嚱鏁? */
 @Composable
 fun FeAppMain() {
@@ -416,20 +440,32 @@ fun FeAppMain() {
                             }
                         ),
                     enterTransition = {
-                        if (predictiveBackMode == PredictiveBackMode.NONE) EnterTransition.None
-                        else slideEnterTransition()
+                        when (predictiveBackMode) {
+                            PredictiveBackMode.NONE -> EnterTransition.None
+                            PredictiveBackMode.KERNELSU_CLASSIC -> fadeOnlyEnterTransition()
+                            else -> slideEnterTransition()
+                        }
                     },
                     exitTransition = {
-                        if (predictiveBackMode == PredictiveBackMode.NONE) ExitTransition.None
-                        else slideExitTransition()
+                        when (predictiveBackMode) {
+                            PredictiveBackMode.NONE -> ExitTransition.None
+                            PredictiveBackMode.KERNELSU_CLASSIC -> fadeOnlyExitTransition()
+                            else -> slideExitTransition()
+                        }
                     },
                     popEnterTransition = {
-                        if (predictiveBackMode == PredictiveBackMode.NONE) EnterTransition.None
-                        else slidePopEnterTransition()
+                        when (predictiveBackMode) {
+                            PredictiveBackMode.NONE -> EnterTransition.None
+                            PredictiveBackMode.KERNELSU_CLASSIC -> fadeOnlyEnterTransition()
+                            else -> slidePopEnterTransition()
+                        }
                     },
                     popExitTransition = {
-                        if (predictiveBackMode == PredictiveBackMode.NONE) ExitTransition.None
-                        else slidePopExitTransition()
+                        when (predictiveBackMode) {
+                            PredictiveBackMode.NONE -> ExitTransition.None
+                            PredictiveBackMode.KERNELSU_CLASSIC -> fadeAndScalePopExitTransition()
+                            else -> slidePopExitTransition()
+                        }
                     }
                 ) {
 
@@ -457,9 +493,7 @@ fun FeAppMain() {
                     }
                     
                     composable(Screen.Debug.route) {
-                        SlideEnterContent(enabled = predictiveBackMode == PredictiveBackMode.SLIDE) {
-                            DebugScreen(navController = navController)
-                        }
+                        DebugScreen(navController = navController)
                     }
                 }
             }

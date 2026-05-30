@@ -14,7 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 
-class ActivationActivity : ComponentActivity() {
+open class ActivationActivity : ComponentActivity() {
     private val cloudActivationLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -71,7 +71,14 @@ class ActivationActivity : ComponentActivity() {
 
     companion object {
         fun createIntent(context: Context): Intent {
-            return Intent(context, ActivationActivity::class.java)
+            return Intent(
+                context,
+                predictiveBackActivityClass(
+                    ActivationActivity::class.java,
+                    ActivationOpaqueActivity::class.java,
+                    ActivationKernelSuClassicActivity::class.java
+                )
+            )
         }
     }
 }

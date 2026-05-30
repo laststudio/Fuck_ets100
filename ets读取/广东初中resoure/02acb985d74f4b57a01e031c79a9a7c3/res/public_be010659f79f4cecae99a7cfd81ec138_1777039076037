@@ -1,0 +1,19 @@
+<xml_result>
+
+  <simple_expression_ufk lan="en" region="guangdong_zk" region_version="1" type="study" version="V4.1.0R6.81.20.38M5.81.38.0">
+    <rec_paper>
+      <rec_paper beg_pos="245" content="rec_paper" end_pos="606" except_info="0" is_rejected="false" keywords="thirty minutes plane took off|thirty minutes plane left|half hour plane took off|half hour plane left|our" phone_score="3.086959" reject_type="0" total_score="4.866520" word_hit_of_each_kw="1.00|0.75|0.80|0.50|0.00">
+        <sentence content="thirty minutes before the plane took off " index="0">
+          <word beg_pos="247" content="thirty" end_pos="321"/>
+          <word beg_pos="321" content="minutes" end_pos="379"/>
+          <word beg_pos="379" content="before" end_pos="437"/>
+          <word beg_pos="437" content="the" end_pos="453"/>
+          <word beg_pos="453" content="plane" end_pos="496"/>
+          <word beg_pos="496" content="took" end_pos="529"/>
+          <word beg_pos="529" content="off" end_pos="570"/>
+        </sentence>
+      </rec_paper>
+    </rec_paper>
+  </simple_expression_ufk>
+
+</xml_result>

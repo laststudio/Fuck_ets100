@@ -8,3 +8,5 @@
 *.pro text working-tree-encoding=UTF-8 eol=lf
 *.kt linguist-language=Kotlin
 *.js linguist-detectable=false
+*.html linguist-detectable=false
+*.py linguist-detectable=false

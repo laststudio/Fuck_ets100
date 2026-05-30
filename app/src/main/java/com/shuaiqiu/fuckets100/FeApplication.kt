@@ -64,7 +64,10 @@ class FeApplication : Application() {
     
     override fun onCreate() {
         super.onCreate()
-        
+
+        // 清理分享缓存文件
+        cleanupShareCache()
+
         // 设置应用全局上下文
         appCtx = this.applicationContext
         
@@ -84,6 +87,29 @@ class FeApplication : Application() {
         Log.d(TAG, "FeApplication onCreate | isSui: $isSui")
     }
     
+
+    /**
+     * 清理分享产生的缓存文件（PNG图片）
+     * 每次启动时自动清理，避免缓存无限增长
+     */
+    private fun cleanupShareCache() {
+        try {
+            val cacheDir = cacheDir
+            val files = cacheDir.listFiles() ?: return
+            var count = 0
+            for (file in files) {
+                if (file.name.startsWith("Fe_Answer_") && file.name.endsWith(".png")) {
+                    if (file.delete()) count++
+                }
+            }
+            if (count > 0) {
+                Log.d(TAG, "Cleaned up $count share cache files")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to cleanup share cache", e)
+        }
+    }
+
     /**
      * 检查远程配置
      * 包含KillSwitch检查和提示消息显示,控制应用是否显示"程序异常"提示

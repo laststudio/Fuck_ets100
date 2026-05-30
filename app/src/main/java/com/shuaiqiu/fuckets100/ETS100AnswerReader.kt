@@ -245,7 +245,7 @@ object ETS100AnswerReader {
         )
     }
 
-    private fun cleanAnswerText(text: String): String {
+    internal fun cleanAnswerText(text: String): String {
         return cleanDisplayText(text, splitPipes = true)
     }
 

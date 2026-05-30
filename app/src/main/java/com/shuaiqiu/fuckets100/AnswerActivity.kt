@@ -23,7 +23,7 @@ open class AnswerActivity : ComponentActivity() {
         val paper = PaperStore.get(paperKey)
 
         if (paper == null) {
-            Toast.makeText(this, "试卷数据已失效，请重新打开", Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(this, "试卷数据已失效，请重新打开", android.widget.Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -45,8 +45,11 @@ open class AnswerActivity : ComponentActivity() {
                         paper = paper,
                         onBack = { finish() },
                         categoryColors = answerCategoryColors(),
-                        onShare = {
-                            startActivity(ShareActivity.createIntent(this, paperKey!!))
+                        onCopyText = {
+                            val text = formatPaperAsText(paper)
+                            val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText(paper.title, text))
+                            android.widget.Toast.makeText(this, "已复制答案到剪贴板", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     )
                 }

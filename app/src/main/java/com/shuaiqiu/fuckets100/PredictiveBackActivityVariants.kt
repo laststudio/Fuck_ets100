@@ -28,9 +28,7 @@ class RemoteContentOpaqueActivity : RemoteContentActivity()
 
 class RemoteContentKernelSuClassicActivity : RemoteContentActivity()
 
-class ShareOpaqueActivity : ShareActivity()
 
-class ShareKernelSuClassicActivity : ShareActivity()
 
 class ThemeSettingsOpaqueActivity : ThemeSettingsActivity()
 

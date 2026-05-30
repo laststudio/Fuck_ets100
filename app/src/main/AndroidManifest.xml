@@ -49,12 +49,7 @@
             android:enableOnBackInvokedCallback="true"
             android:theme="@style/Theme.Fe.Transparent" />
 
-        <activity
-            android:name=".ShareActivity"
-            android:exported="false"
-            android:label="@string/app_name"
-            android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.Fe.Transparent" />
+
 
         <activity
             android:name=".DonateActivity"
@@ -112,12 +107,7 @@
             android:enableOnBackInvokedCallback="true"
             android:theme="@style/Theme.Fe" />
 
-        <activity
-            android:name=".ShareOpaqueActivity"
-            android:exported="false"
-            android:label="@string/app_name"
-            android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.Fe" />
+
 
         <activity
             android:name=".DonateOpaqueActivity"
@@ -175,12 +165,7 @@
             android:enableOnBackInvokedCallback="true"
             android:theme="@style/Theme.Fe.KernelSuClassic" />
 
-        <activity
-            android:name=".ShareKernelSuClassicActivity"
-            android:exported="false"
-            android:label="@string/app_name"
-            android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.Fe.KernelSuClassic" />
+
 
         <activity
             android:name=".DonateKernelSuClassicActivity"
@@ -240,7 +225,7 @@
             android:exported="true"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
         
-        <!-- FileProvider 用于分享图片和 HTML 文件 -->
+        <!-- FileProvider -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

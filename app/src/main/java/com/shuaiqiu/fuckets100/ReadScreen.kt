@@ -1,5 +1,7 @@
-package com.shuaiqiu.fuckets100
+﻿package com.shuaiqiu.fuckets100
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.*
@@ -328,9 +330,11 @@ fun ReadScreen(
         context.startActivity(AnswerActivity.createIntent(context, paperKey))
     }
 
-    fun openShare(paper: ETS100AnswerReader.Paper) {
-        val paperKey = PaperStore.put(paper)
-        context.startActivity(ShareActivity.createIntent(context, paperKey))
+    fun copyPaperText(paper: ETS100AnswerReader.Paper) {
+        val text = formatPaperAsText(paper)
+        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText(paper.title, text))
+        android.widget.Toast.makeText(context, "已复制答案到剪贴板", android.widget.Toast.LENGTH_SHORT).show()
     }
     
     // 调试相关状态 - 使用结构化日志系统
@@ -1349,8 +1353,8 @@ fun ReadScreen(
                                     selectedPaper = null
                                 },
                                 categoryColors = categoryColors,
-                                onShare = {
-                                    openShare(paper)
+                                onCopyText = {
+                                    copyPaperText(paper)
                                 }
                             )
                         } else {
@@ -1381,11 +1385,7 @@ fun ReadScreen(
                                     val isDownloading = cloudDownloadingHomeworks.contains(homeworkKey)
                                     val isFailed = failedCloudHomeworks.contains(homeworkKey)
                                     val downloadProgress = cloudDownloadProgress[homeworkKey]
-                                    val paper = if (isDownloaded) {
-                                        downloadedPapers[homeworkKey]?.firstOrNull() ?: createCloudHomeworkPlaceholder(homeworkInfo)
-                                    } else {
-                                        createCloudHomeworkPlaceholder(homeworkInfo)
-                                    }
+                                    val paper = createCloudHomeworkPlaceholder(homeworkInfo)
                                     PaperListItem(
                                         paper = paper,
                                         paperIndex = paperIndex,
@@ -1464,9 +1464,8 @@ fun ReadScreen(
                                     selectedPaper = null
                                 },
                                 categoryColors = categoryColors,
-                                onShare = {
-                                    // 保存试卷到 FeApplication 并跳转到分享页面
-                                    openShare(paper)
+                                onCopyText = {
+                                    copyPaperText(paper)
                                 }
                             )
                         } else {
@@ -1921,7 +1920,7 @@ private fun ExpandableCrossFab(
  * 小小的圆形按钮，带图标和文字标签
  */
 @Composable
-private fun SubFabItem(
+internal fun SubFabItem(
     icon: ImageVector,
     label: String,
     containerColor: Color,
@@ -3055,8 +3054,11 @@ fun PaperDetailScreen(
     paper: ETS100AnswerReader.Paper,
     onBack: () -> Unit,
     categoryColors: Map<String, Color>,
-    onShare: () -> Unit = {}
+    onCopyText: () -> Unit = {}
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+    val defaultPrimaryColor = MaterialTheme.colorScheme.primary
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -3067,10 +3069,6 @@ fun PaperDetailScreen(
                 )
             )
     ) {
-        // 获取默认颜色 - 需要在 Composable 上下文中获取
-        val defaultPrimaryColor = MaterialTheme.colorScheme.primary
-        
-        // 顶部导航栏
         Surface(
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 4.dp
@@ -3084,14 +3082,7 @@ fun PaperDetailScreen(
                 IconButton(onClick = onBack) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回"
-                    )
-                }
-                IconButton(onClick = onShare) {
-                    Icon(
-                        Icons.Default.Share,
-                        contentDescription = "分享",
-                        tint = MaterialTheme.colorScheme.primary
+                        contentDescription = "\u8fd4\u56de"
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
@@ -3101,17 +3092,39 @@ fun PaperDetailScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "${paper.sections.sumOf { it.questions.size }} 道题目",
+                        text = paper.sections.sumOf { it.questions.size }.toString() + " \u9053\u9898\u76ee",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = "\u66f4\u591a\u64cd\u4f5c"
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("\u590d\u5236\u7b54\u6848") },
+                            onClick = {
+                                showMenu = false
+                                onCopyText()
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.ContentCopy, contentDescription = null)
+                            }
+                        )
+                    }
+                }
             }
         }
-        
+
         HorizontalDivider()
-        
-        // 题目列表
+
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -3122,13 +3135,11 @@ fun PaperDetailScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            paper.sections.forEachIndexed { sectionIndex, section ->
+            paper.sections.forEachIndexed { _, section ->
                 val categoryColor = categoryColors[section.category] ?: defaultPrimaryColor
-                
-                // 宝贝已移除搜索过滤，显示所有题目喵~
+
                 if (section.questions.isNotEmpty()) {
                     item {
-                        // 分区标题
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(vertical = 8.dp)
@@ -3159,11 +3170,10 @@ fun PaperDetailScreen(
                             }
                         }
                     }
-                    
-// 宝贝按 originalText 分组显示题目喵~
+
                     val groupedQuestions = section.questions.groupBy { it.originalText }
-                    
-                    groupedQuestions.forEach { (originalText, questionsInGroup) ->
+
+                    groupedQuestions.forEach { (_, questionsInGroup) ->
                         item {
                             MergedQuestionBlock(
                                 sectionTitle = section.title,
@@ -3178,10 +3188,6 @@ fun PaperDetailScreen(
     }
 }
 
-/**
- * 合并题目块组件
- * 宝贝这个组件用于显示同一原文下的多个题目，将它们合并在一个大块中喵~
- */
 @Composable
 private fun MergedQuestionBlock(
     sectionTitle: String,
@@ -3591,11 +3597,7 @@ private fun PaperListItem(
                             )
                         }
                         else -> {
-                            val countText = if (isDownloaded || paper.regionLabel != "云端") {
-                                "${paper.sections.size} 个分区 · ${paper.sections.sumOf { it.questions.size }} 道题目"
-                            } else {
-                                "预计 ${paper.sections.size} 个分区 · ${paper.sections.sumOf { it.questions.size }} 个内容"
-                            }
+                            val countText = "${paper.sections.size} 个分区 · ${paper.sections.sumOf { it.questions.size }} 个内容"
                             Text(
                                 text = countText,
                                 style = MaterialTheme.typography.bodySmall,
@@ -3603,7 +3605,7 @@ private fun PaperListItem(
                             )
                             // 宝贝显示下载时间喵~
                             Text(
-                                text = if (paper.downloadTime > 0) "下载时间: $downloadTimeStr" else "未加载",
+                                text = if (isDownloaded) "已下载" else "未加载",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
@@ -3755,6 +3757,34 @@ private fun CloudReadConfirmDialog(
     )
 }
 
+
+/**
+ * 将试卷格式化为纯文本，用于复制到剪贴板
+ */
+internal fun formatPaperAsText(paper: ETS100AnswerReader.Paper): String {
+    val sb = StringBuilder()
+    sb.appendLine(paper.title)
+    sb.appendLine()
+
+    for (section in paper.sections) {
+        if (section.questions.isEmpty()) continue
+        sb.appendLine(section.title)
+        sb.appendLine()
+
+        for (question in section.questions) {
+            val answers = question.answerList.take(2)
+            val answerText = answers.joinToString(" / ") { a ->
+                ETS100AnswerReader.cleanAnswerText(a).lines()
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .joinToString(" ")
+            }.ifEmpty { "" }
+            sb.append("Q").append(question.order).append(". ").appendLine(answerText)
+        }
+        sb.appendLine()
+    }
+    return sb.toString().trimEnd()
+}
 private fun formatFileSize(size: Long): String {
     return when {
         size < 1024 -> "$size B"
@@ -3762,3 +3792,9 @@ private fun formatFileSize(size: Long): String {
         else -> "${size / (1024 * 1024)} MB"
     }
 }
+
+
+
+
+
+

@@ -159,7 +159,7 @@ enum class PredictiveBackMode(
     val description: String
 ) {
     AOSP("缩放", "使用缩放式预见性返回动画"),
-    KERNELSU_CLASSIC("KernelSU", "使用 KernelSU Classic 返回动画"),
+    KERNELSU_CLASSIC("渐变", "使用渐变式预见性返回动画"),
     SLIDE("滑动", "使用系统自带预见性返回动画"),
     NONE("无", "关闭自定义预见性返回动画")
 }

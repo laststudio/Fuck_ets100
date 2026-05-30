@@ -253,37 +253,23 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.slidePopExitTransi
     )
 }
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.kernelSuClassicEnterTransition(): EnterTransition {
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.fadeOnlyEnterTransition(): EnterTransition {
     if (isRootTabTransition()) {
         return EnterTransition.None
     }
 
-    return slideInHorizontally(
-        initialOffsetX = { fullWidth -> fullWidth }
-    )
+    return fadeIn()
 }
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.kernelSuClassicExitTransition(): ExitTransition {
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.fadeOnlyExitTransition(): ExitTransition {
     if (isRootTabTransition()) {
         return ExitTransition.None
     }
 
-    return slideOutHorizontally(
-        targetOffsetX = { fullWidth -> -fullWidth }
-    )
+    return fadeOut()
 }
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.kernelSuClassicPopEnterTransition(): EnterTransition {
-    if (isRootTabTransition()) {
-        return EnterTransition.None
-    }
-
-    return slideInHorizontally(
-        initialOffsetX = { fullWidth -> -fullWidth }
-    )
-}
-
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.kernelSuClassicPopExitTransition(): ExitTransition {
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.fadeAndScalePopExitTransition(): ExitTransition {
     if (isRootTabTransition()) {
         return ExitTransition.None
     }
@@ -456,28 +442,28 @@ fun FeAppMain() {
                     enterTransition = {
                         when (predictiveBackMode) {
                             PredictiveBackMode.NONE -> EnterTransition.None
-                            PredictiveBackMode.KERNELSU_CLASSIC -> kernelSuClassicEnterTransition()
+                            PredictiveBackMode.KERNELSU_CLASSIC -> fadeOnlyEnterTransition()
                             else -> slideEnterTransition()
                         }
                     },
                     exitTransition = {
                         when (predictiveBackMode) {
                             PredictiveBackMode.NONE -> ExitTransition.None
-                            PredictiveBackMode.KERNELSU_CLASSIC -> kernelSuClassicExitTransition()
+                            PredictiveBackMode.KERNELSU_CLASSIC -> fadeOnlyExitTransition()
                             else -> slideExitTransition()
                         }
                     },
                     popEnterTransition = {
                         when (predictiveBackMode) {
                             PredictiveBackMode.NONE -> EnterTransition.None
-                            PredictiveBackMode.KERNELSU_CLASSIC -> kernelSuClassicPopEnterTransition()
+                            PredictiveBackMode.KERNELSU_CLASSIC -> fadeOnlyEnterTransition()
                             else -> slidePopEnterTransition()
                         }
                     },
                     popExitTransition = {
                         when (predictiveBackMode) {
                             PredictiveBackMode.NONE -> ExitTransition.None
-                            PredictiveBackMode.KERNELSU_CLASSIC -> kernelSuClassicPopExitTransition()
+                            PredictiveBackMode.KERNELSU_CLASSIC -> fadeAndScalePopExitTransition()
                             else -> slidePopExitTransition()
                         }
                     }

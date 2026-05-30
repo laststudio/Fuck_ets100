@@ -57,7 +57,8 @@ open class ShareActivity : ComponentActivity() {
                 context,
                 predictiveBackActivityClass(
                     ShareActivity::class.java,
-                    ShareOpaqueActivity::class.java
+                    ShareOpaqueActivity::class.java,
+                    ShareKernelSuClassicActivity::class.java
                 )
             ).putExtra(EXTRA_PAPER_KEY, paperKey)
         }

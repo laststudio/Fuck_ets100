@@ -69,7 +69,8 @@ open class AnswerActivity : ComponentActivity() {
                 context,
                 predictiveBackActivityClass(
                     AnswerActivity::class.java,
-                    AnswerOpaqueActivity::class.java
+                    AnswerOpaqueActivity::class.java,
+                    AnswerKernelSuClassicActivity::class.java
                 )
             ).putExtra(EXTRA_PAPER_KEY, paperKey)
         }

@@ -60,7 +60,8 @@ open class ThemeSettingsActivity : ComponentActivity() {
                 context,
                 predictiveBackActivityClass(
                     ThemeSettingsActivity::class.java,
-                    ThemeSettingsOpaqueActivity::class.java
+                    ThemeSettingsOpaqueActivity::class.java,
+                    ThemeSettingsKernelSuClassicActivity::class.java
                 )
             )
         }

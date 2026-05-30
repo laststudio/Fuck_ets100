@@ -73,7 +73,8 @@ open class DonateActivity : ComponentActivity() {
                 context,
                 predictiveBackActivityClass(
                     DonateActivity::class.java,
-                    DonateOpaqueActivity::class.java
+                    DonateOpaqueActivity::class.java,
+                    DonateKernelSuClassicActivity::class.java
                 )
             )
         }

@@ -110,7 +110,8 @@ open class RemoteContentActivity : ComponentActivity() {
                 context,
                 predictiveBackActivityClass(
                     RemoteContentActivity::class.java,
-                    RemoteContentOpaqueActivity::class.java
+                    RemoteContentOpaqueActivity::class.java,
+                    RemoteContentKernelSuClassicActivity::class.java
                 )
             ).apply {
                 putExtra(EXTRA_ANNOUNCEMENT_TITLE, announcementTitle)

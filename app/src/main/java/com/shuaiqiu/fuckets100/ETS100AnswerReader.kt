@@ -416,7 +416,7 @@ object ETS100AnswerReader {
         }
 
         val resourceFolders = scanResourceFolders(reader)
-        val resourceOrderMap = buildResourceOrderMap(reader)
+        val resourceOrderMap = emptyMap<String, Int>()
         val groupedFolders = groupResourceFolders(resourceFolders)
 
         return groupedFolders.mapIndexed { groupIndex, folderGroup ->

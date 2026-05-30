@@ -37,7 +37,8 @@ open class CloudActivationActivity : ComponentActivity() {
                 context,
                 predictiveBackActivityClass(
                     CloudActivationActivity::class.java,
-                    CloudActivationOpaqueActivity::class.java
+                    CloudActivationOpaqueActivity::class.java,
+                    CloudActivationKernelSuClassicActivity::class.java
                 )
             )
         }

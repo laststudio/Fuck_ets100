@@ -42,27 +42,24 @@ internal enum class PredictiveBackExitDirection {
 
 internal fun ComponentActivity.applyPredictiveBackWindowTheme() {
     setTheme(
-        if (SettingsManager.getPredictiveBackMode().usesTransparentActivityWindow()) {
-            R.style.Theme_Fe_Transparent
-        } else {
-            R.style.Theme_Fe
+        when (SettingsManager.getPredictiveBackMode()) {
+            PredictiveBackMode.AOSP -> R.style.Theme_Fe_Transparent
+            PredictiveBackMode.KERNELSU_CLASSIC -> R.style.Theme_Fe_KernelSuClassic
+            else -> R.style.Theme_Fe
         }
     )
 }
 
 internal fun <T : ComponentActivity> predictiveBackActivityClass(
     transparentActivity: Class<T>,
-    opaqueActivity: Class<out T>
+    opaqueActivity: Class<out T>,
+    kernelSuClassicActivity: Class<out T>
 ): Class<out T> {
-    return if (SettingsManager.getPredictiveBackMode().usesTransparentActivityWindow()) {
-        transparentActivity
-    } else {
-        opaqueActivity
+    return when (SettingsManager.getPredictiveBackMode()) {
+        PredictiveBackMode.AOSP -> transparentActivity
+        PredictiveBackMode.KERNELSU_CLASSIC -> kernelSuClassicActivity
+        else -> opaqueActivity
     }
-}
-
-private fun PredictiveBackMode.usesTransparentActivityWindow(): Boolean {
-    return this == PredictiveBackMode.AOSP || this == PredictiveBackMode.KERNELSU_CLASSIC
 }
 
 @Composable
@@ -103,27 +100,15 @@ internal fun KernelSuClassicPredictiveBackContent(
     content: @Composable () -> Unit
 ) {
     val state = rememberAospPredictiveBackState()
-    val enterProgress = remember { Animatable(1f) }
-
-    LaunchedEffect(Unit) {
-        enterProgress.animateTo(
-            targetValue = 0f,
-            animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
-        )
-    }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val containerHeightPx = with(density) { maxHeight.toPx() }
-        val containerWidthPx = with(density) { maxWidth.toPx() }
         val deviceCornerRadius = rememberDeviceCornerRadius()
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    translationX = containerWidthPx * enterProgress.value
-                }
                 .kernelSuClassicPredictiveBackAnimation(
                     state = state,
                     containerHeightPx = containerHeightPx,
@@ -138,6 +123,7 @@ internal fun KernelSuClassicPredictiveBackContent(
         state = state,
         enabled = enabled,
         retainCompletedState = true,
+        animateCommit = false,
         onBack = onBack
     )
 }
@@ -174,6 +160,7 @@ internal class AospPredictiveBackState(
     suspend fun handleBackGesture(
         progressEvents: Flow<BackEventCompat>,
         retainCompletedState: Boolean,
+        animateCommit: Boolean,
         onBack: () -> Unit
     ) {
         var completed = false
@@ -185,12 +172,14 @@ internal class AospPredictiveBackState(
                 latestBackEvent = event
             }
 
-            exitAnimatable.snapTo(0f)
-            exitAnimatable.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-            )
             completed = true
+            if (animateCommit) {
+                exitAnimatable.snapTo(0f)
+                exitAnimatable.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                )
+            }
             onBack()
         } catch (_: CancellationException) {
             exitAnimatable.animateTo(
@@ -217,12 +206,14 @@ internal fun AospPredictiveBackHandler(
     state: AospPredictiveBackState,
     enabled: Boolean,
     retainCompletedState: Boolean = false,
+    animateCommit: Boolean = true,
     onBack: () -> Unit
 ) {
     PredictiveBackHandler(enabled = enabled) { progress ->
         state.handleBackGesture(
             progressEvents = progress,
             retainCompletedState = retainCompletedState,
+            animateCommit = animateCommit,
             onBack = onBack
         )
     }

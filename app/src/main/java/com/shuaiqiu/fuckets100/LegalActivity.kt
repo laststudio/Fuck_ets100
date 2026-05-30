@@ -29,7 +29,8 @@ open class LegalActivity : ComponentActivity() {
                 context,
                 predictiveBackActivityClass(
                     LegalActivity::class.java,
-                    LegalOpaqueActivity::class.java
+                    LegalOpaqueActivity::class.java,
+                    LegalKernelSuClassicActivity::class.java
                 )
             )
         }

@@ -208,7 +208,7 @@ fun ThemeSettingsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
             Text(
-                "切换缩放、KernelSU、系统默认或关闭动画",
+                "切换缩放、渐变、系统默认或关闭动画",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -233,22 +233,6 @@ fun ThemeSettingsScreen(
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
                     .clickable { showPredictiveBackDialog = true }
-            )
-            
-            Spacer(Modifier.height(32.dp))
-            
-            // 预览区域
-            Text(
-                "主题预览", 
-                style = MaterialTheme.typography.titleMedium, 
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-            
-            Spacer(Modifier.height(12.dp))
-            
-            ThemePreviewCard(
-                modifier = Modifier.padding(horizontal = 16.dp)
             )
             
             Spacer(Modifier.height(88.dp))
@@ -347,184 +331,7 @@ fun ThemeCard(
     }
 }
 
-@Composable
-fun ThemePreviewCard(modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
 
-    ElevatedCard(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = colors.surfaceContainerLow)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    modifier = Modifier.size(40.dp),
-                    shape = CircleShape,
-                    color = colors.primaryContainer,
-                    contentColor = colors.onPrimaryContainer
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Palette, contentDescription = null)
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Material 3 配色",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.onSurface
-                    )
-                    Text(
-                        "当前应用正在使用的 ColorScheme",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ColorRoleChip(
-                        label = "Primary",
-                        color = colors.primary,
-                        contentColor = colors.onPrimary,
-                        modifier = Modifier.weight(1f)
-                    )
-                    ColorRoleChip(
-                        label = "Secondary",
-                        color = colors.secondary,
-                        contentColor = colors.onSecondary,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ColorRoleChip(
-                        label = "Tertiary",
-                        color = colors.tertiary,
-                        contentColor = colors.onTertiary,
-                        modifier = Modifier.weight(1f)
-                    )
-                    ColorRoleChip(
-                        label = "Error",
-                        color = colors.errorContainer,
-                        contentColor = colors.onErrorContainer,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                color = colors.surface,
-                contentColor = colors.onSurface,
-                tonalElevation = 1.dp
-            ) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(
-                        "Surface",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = colors.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "背景、容器、文字和按钮都会跟随这里的实际主题色。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { }) {
-                            Text("Filled")
-                        }
-                        FilledTonalButton(onClick = { }) {
-                            Text("Tonal")
-                        }
-                        OutlinedButton(onClick = { }) {
-                            Text("Outlined")
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(10.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(colors.surfaceContainerHighest),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .weight(0.38f)
-                        .background(colors.primary)
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .weight(0.28f)
-                        .background(colors.secondary)
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .weight(0.22f)
-                        .background(colors.tertiary)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ColorRoleChip(
-    label: String,
-    color: Color,
-    contentColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier.height(56.dp),
-        shape = RoundedCornerShape(14.dp),
-        color = color,
-        contentColor = contentColor
-    ) {
-        Box(
-            modifier = Modifier.padding(horizontal = 10.dp),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
 
 @Composable
 private fun themeModeSegmentedButtonColors(): SegmentedButtonColors {

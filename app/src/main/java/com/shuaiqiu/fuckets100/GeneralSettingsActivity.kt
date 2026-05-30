@@ -29,7 +29,8 @@ open class GeneralSettingsActivity : ComponentActivity() {
                 context,
                 predictiveBackActivityClass(
                     GeneralSettingsActivity::class.java,
-                    GeneralSettingsOpaqueActivity::class.java
+                    GeneralSettingsOpaqueActivity::class.java,
+                    GeneralSettingsKernelSuClassicActivity::class.java
                 )
             )
         }

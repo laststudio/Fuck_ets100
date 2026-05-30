@@ -75,7 +75,8 @@ open class ActivationActivity : ComponentActivity() {
                 context,
                 predictiveBackActivityClass(
                     ActivationActivity::class.java,
-                    ActivationOpaqueActivity::class.java
+                    ActivationOpaqueActivity::class.java,
+                    ActivationKernelSuClassicActivity::class.java
                 )
             )
         }

@@ -39,6 +39,7 @@ object ETS100ApiClient {
     
     object Endpoints {
         const val LOGIN = "/user/login"
+        const val LOGIN_ZT = "/user/login-zt"
         const val ECARD_LIST = "/m/ecard/list"
         const val HOMEWORK_LIST = "/g/homework/list"
         const val REBIND_CODE = "/user/rebind-code"  // 设备绑定端点
@@ -371,14 +372,87 @@ object ETS100ApiClient {
     }
 
     /**
+     * 讯飞网页登录
+     * POST /user/login-zt
+     *
+     * @param login 手机号（从 checkLogin 请求参数 i 获取）
+     * @param userId 畅言用户 ID（从 checkLogin 响应 uid 获取）
+     * @param sucUserToken 验证 token（从 checkLogin 响应 captchaResult 获取）
+     * @param deviceCode 机器码
+     * @return 登录结果，包含 token
+     */
+    suspend fun loginZt(
+        login: String,
+        userId: String,
+        sucUserToken: String,
+        deviceCode: String
+    ): Result<LoginResponse> {
+        Log.d(TAG, "loginZt: login=$login, userId=$userId, deviceCode=$deviceCode")
+
+        val bodyData = mapOf(
+            "r" to "user/login-zt",
+            "params" to mapOf(
+                "sn" to RequestConfig.DEFAULT_SN,
+                "login" to login,
+                "user_id" to userId,
+                "device_name" to "Android",
+                "device_code" to deviceCode,
+                "suc_user_token" to sucUserToken,
+                "suc_device_name" to "Other",
+                "os_type" to "android",
+                "system" to RequestConfig.DEFAULT_SYSTEM,
+                "global_client_version" to "",
+                "sign_response" to 1
+            )
+        )
+
+        return postRequest(Endpoints.LOGIN_ZT, bodyData).mapCatching { responseBody ->
+            Log.d(TAG, "===== 讯飞网页登录 API 响应 =====")
+            Log.d(TAG, "原始响应: $responseBody")
+
+            val json = responseBody.parseJson()
+            val code = json.optInt("code", -999)
+            Log.d(TAG, "login-zt 响应 code=$code, bodyKeys=${json.optJSONObject("body")?.keys()?.asSequence()?.toList().orEmpty()}")
+            if (code != -999 && code != 0) {
+                val msg = json.optString("msg", "")
+                Log.e(TAG, "login-zt 返回失败: code=$code, msg=$msg")
+                throw Exception(msg.ifEmpty { "讯飞登录失败，错误码: $code" })
+            }
+
+            val bodyObj = json.optJSONObject("body")
+            val token = bodyObj?.optString("token") ?: ""
+            Log.d(
+                TAG,
+                "login-zt token 解析结果: token=${maskSensitiveToken(token)}, tokenLength=${token.length}"
+            )
+            if (token.isEmpty()) {
+                throw Exception("讯飞登录失败：未获取到 token")
+            }
+
+            Log.i(TAG, "✓ 讯飞网页登录成功！token 长度: ${token.length}")
+            LoginResponse(
+                token = token,
+                recentAccountId = bodyObj?.optString("recent_account_id")?.takeIf { it.isNotBlank() }
+            )
+        }
+    }
+
+    /**
      * 获取父账户ID列表
      * POST /m/ecard/list
      * 
      * @param token 登录返回的 token
      * @return 父账户 ID
      */
-    suspend fun getEcardList(token: String): Result<String> {
-        Log.d(TAG, "getEcardList")
+    suspend fun getEcardList(token: String, preferredAccountId: String? = null): Result<String> {
+        return getEcardSelection(token, preferredAccountId).map { it.parentAccountId }
+    }
+
+    suspend fun getEcardSelection(
+        token: String,
+        preferredAccountId: String? = null
+    ): Result<EcardSelectionResult> {
+        Log.d(TAG, "getEcardList: preferredAccountId=$preferredAccountId")
         
         val bodyData = mapOf(
             "r" to "m/ecard/list",
@@ -404,27 +478,51 @@ object ETS100ApiClient {
             
             // 喵~ body 格式: {"0": {"parent_id": "123456"}}
             if (bodyObj != null && bodyObj.length() > 0) {
-                // 获取第一个 key（通常是 "0"）
-                val iterator = bodyObj.keys()
-                val firstKey = if (iterator.hasNext()) iterator.next() else null
+                Log.i(TAG, "ecard/list 返回账户条目数: ${bodyObj.length()}")
+                val diagnosticKeys = bodyObj.keys()
+                while (diagnosticKeys.hasNext()) {
+                    val key = diagnosticKeys.next()
+                    val account = bodyObj.optJSONObject(key)
+                    Log.i(
+                        TAG,
+                        "ecard[$key]: id=${account?.optString("id")}, " +
+                            "parent_id=${account?.optString("parent_id")}, " +
+                            "user_account_id=${account?.optString("user_account_id")}, " +
+                            "name=${account?.optString("name")}, " +
+                            "grade=${account?.optString("grade")}, " +
+                            "status=${account?.optString("status")}, " +
+                            "mobile_status=${account?.optString("mobile_status")}, " +
+                            "out_of_date=${account?.optString("out_of_date")}, " +
+                            "class_id=${account?.optString("class_id")}, " +
+                            "class_name=${account?.optString("class_name")}, " +
+                            "machine_code_status=${account?.optString("machine_code_status")}"
+                    )
+                }
+
+                val ecardAccounts = parseEcardAccounts(bodyObj)
+                val selectedAccount = selectEcardAccount(ecardAccounts, preferredAccountId)
+                val firstKey = selectedAccount?.key
                 
                 if (firstKey == null) {
                     Log.e(TAG, "body 没有任何字段")
                     throw Exception("未找到账户信息")
                 }
                 
-                Log.d(TAG, "使用第一个账户 key: $firstKey")
+                Log.d(TAG, "使用账户 key: $firstKey")
                 
-                val firstAccount = bodyObj.optJSONObject(firstKey)
-                val parentId = firstAccount?.optString("parent_id") ?: ""
+                val parentId = selectedAccount.parentId
                 
                 if (parentId.isEmpty()) {
-                    Log.e(TAG, "parent_id 为空！打印账户内容: $firstAccount")
+                    Log.e(TAG, "parent_id 为空！打印账户内容: $selectedAccount")
                     throw Exception("未找到账户信息")
                 }
                 
                 Log.i(TAG, "✓ 获取父账户ID成功: $parentId")
-                parentId
+                EcardSelectionResult(
+                    parentAccountId = parentId,
+                    selectedAccount = selectedAccount,
+                    validAccounts = ecardAccounts.filter { it.isValid }
+                )
             } else {
                 Log.e(TAG, "bodyObj 为空或长度为0")
                 throw Exception("未找到账户信息")
@@ -446,6 +544,11 @@ object ETS100ApiClient {
         status: String = CloudHomeworkState.STATUS_CURRENT
     ): Result<HomeworkListResponse> {
         Log.d(TAG, "getHomeworkList: parentAccountId=$parentAccountId, status=$status")
+        Log.i(
+            TAG,
+            "准备请求 homework/list: parent_account_id=$parentAccountId, " +
+                "status=$status, token=${maskSensitiveToken(token)}, tokenLength=${token.length}"
+        )
 
         val bodyData = mapOf(
             "r" to "g/homework/list",
@@ -477,6 +580,14 @@ object ETS100ApiClient {
             Log.d(TAG, "homework_list response: $responseBody")
             
             val json = responseBody.parseJson()
+            val code = json.optInt("code", -999)
+            if (code != -999 && code != 0) {
+                Log.e(
+                    TAG,
+                    "homework/list 返回业务错误: code=$code, msg=${json.optString("msg")}, " +
+                        "parent_account_id=$parentAccountId, status=$status, token=${maskSensitiveToken(token)}"
+                )
+            }
             val bodyObj = json.optJSONObject("body")
             
             if (bodyObj == null) {
@@ -534,8 +645,36 @@ object ETS100ApiClient {
     // ============================================================================
     
     data class LoginResponse(
-        val token: String
+        val token: String,
+        val recentAccountId: String? = null
     )
+
+    data class EcardSelectionResult(
+        val parentAccountId: String,
+        val selectedAccount: EcardAccount,
+        val validAccounts: List<EcardAccount>
+    )
+
+    data class EcardAccount(
+        val key: String,
+        val id: String,
+        val parentId: String,
+        val userAccountId: String,
+        val name: String,
+        val grade: String,
+        val status: String,
+        val mobileStatus: String,
+        val outOfDate: String,
+        val classId: String,
+        val className: String,
+        val machineCodeStatus: String
+    ) {
+        val isValid: Boolean
+            get() = status == "0" &&
+                outOfDate == "0" &&
+                classId.isNotBlank() &&
+                mobileStatus == "1"
+    }
     
     data class HomeworkListResponse(
         val baseUrl: String,
@@ -707,5 +846,74 @@ object ETS100ApiClient {
             .replace("\n", "\\n")
             .replace("\r", "\\r")
             .replace("\t", "\\t")
+    }
+
+    private fun maskSensitiveToken(token: String): String {
+        if (token.isBlank()) return "(empty)"
+        if (token.length <= 12) return "${token.take(3)}***${token.takeLast(3)}"
+        return "${token.take(6)}***${token.takeLast(6)}"
+    }
+
+    private fun parseEcardAccounts(bodyObj: org.json.JSONObject): List<EcardAccount> {
+        val accounts = mutableListOf<EcardAccount>()
+        val keys = bodyObj.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val account = bodyObj.optJSONObject(key) ?: continue
+            accounts += EcardAccount(
+                key = key,
+                id = account.optString("id"),
+                parentId = account.optString("parent_id"),
+                userAccountId = account.optString("user_account_id"),
+                name = account.optString("name"),
+                grade = account.optString("grade"),
+                status = account.optString("status"),
+                mobileStatus = account.optString("mobile_status"),
+                outOfDate = account.optString("out_of_date"),
+                classId = account.optString("class_id"),
+                className = account.optString("class_name"),
+                machineCodeStatus = account.optString("machine_code_status")
+            )
+        }
+        return accounts
+    }
+
+    private fun selectEcardAccount(
+        accounts: List<EcardAccount>,
+        preferredAccountId: String?
+    ): EcardAccount? {
+        if (!preferredAccountId.isNullOrBlank()) {
+            accounts.firstOrNull { account ->
+                account.id == preferredAccountId && account.isValid
+            }?.let { selected ->
+                Log.i(
+                    TAG,
+                    "按保存/推荐 ecard_id 选择有效账户: key=${selected.key}, " +
+                        "id=${selected.id}, parent_id=${selected.parentId}, name=${selected.name}"
+                )
+                return selected
+            }
+            Log.w(TAG, "preferredAccountId=$preferredAccountId 未匹配到有效账户")
+        }
+
+        accounts.firstOrNull { it.isValid }?.let { selected ->
+            Log.i(
+                TAG,
+                "按有效班级选择账户: key=${selected.key}, " +
+                    "id=${selected.id}, parent_id=${selected.parentId}, name=${selected.name}"
+            )
+            return selected
+        }
+
+        accounts.firstOrNull()?.let { selected ->
+            Log.w(
+                TAG,
+                "未找到有效班级账户，回退第一个账户: key=${selected.key}, " +
+                    "id=${selected.id}, parent_id=${selected.parentId}, name=${selected.name}"
+            )
+            return selected
+        }
+
+        return null
     }
 }

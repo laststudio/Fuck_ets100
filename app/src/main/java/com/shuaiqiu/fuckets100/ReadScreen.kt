@@ -399,6 +399,7 @@ fun ReadScreen(
     var homeworkListsByStatus by remember { mutableStateOf(CloudHomeworkState.homeworkListsByStatus) }
     var isLoadingCloudHomework by remember { mutableStateOf(CloudHomeworkState.isLoading) }
     var cloudHomeworkError by remember { mutableStateOf(CloudHomeworkState.error) }
+    var changyanTokenExpired by remember { mutableStateOf(false) }
     var cloudBaseUrl by remember { mutableStateOf(CloudHomeworkState.cloudBaseUrl) }
     var downloadedPapers by remember { mutableStateOf(CloudHomeworkState.downloadedPapers) }
     var downloadedHomeworkNames by remember { mutableStateOf(CloudHomeworkState.downloadedHomeworkNames) }
@@ -429,6 +430,13 @@ fun ReadScreen(
     }
     val downloadedCloudQuestionCount by remember {
         derivedStateOf { downloadedCloudPapers.totalQuestionCount() }
+    }
+    val shouldOpenChangyanLoginDirectly by remember {
+        derivedStateOf {
+            currentMode == ActivationMode.CLOUD &&
+                cloudHomeworkError != null &&
+                ETS100AuthManager.isChangyanWebLogin(context)
+        }
     }
     
     // 分区颜色映射 - 宝贝这个和试卷详情页面的颜色一致喵~
@@ -515,6 +523,7 @@ fun ReadScreen(
 
         isLoadingCloudHomework = true
         cloudHomeworkError = null
+        changyanTokenExpired = false
         CloudHomeworkState.isLoading = true
         CloudHomeworkState.error = null
         addLog(LogLevel.INFO, LogCategory.SYSTEM, "☁️ 开始加载${cloudHomeworkStatusLabel(status)}列表")
@@ -560,6 +569,21 @@ fun ReadScreen(
         var responses = requestHomeworkLists(savedToken)
 
         if (responses.isEmpty()) {
+            if (ETS100AuthManager.isChangyanWebLogin(context)) {
+                val login = ETS100AuthManager.getPhone(context).orEmpty()
+                cloudHomeworkError = "企业账号 Token 已失效，请重新进行讯飞登录"
+                changyanTokenExpired = true
+                CloudHomeworkState.error = cloudHomeworkError
+                addLog(
+                    LogLevel.WARN,
+                    LogCategory.SYSTEM,
+                    "企业登录 Token 请求失败，不执行账号密码重登；login=$login，保留已选账号上下文，等待重新讯飞登录"
+                )
+                isLoadingCloudHomework = false
+                CloudHomeworkState.isLoading = false
+                return
+            }
+
             addLog(LogLevel.WARN, LogCategory.SYSTEM, "保存的 Token 请求失败，尝试重新登录后重试")
             val phone = ETS100AuthManager.getPhone(context)
             val savedPassword = ETS100AuthManager.getPassword(context)
@@ -597,6 +621,7 @@ fun ReadScreen(
         val hasAnySuccessfulRequest = responses.isNotEmpty()
 
         if (hasAnySuccessfulRequest) {
+            changyanTokenExpired = false
             homeworkListsByStatus = homeworkListsByStatus + (status to mergedHomeworks)
             cloudBaseUrl = latestBaseUrl
             CloudHomeworkState.homeworkListsByStatus = homeworkListsByStatus
@@ -1338,8 +1363,16 @@ fun ReadScreen(
                                 color = MaterialTheme.colorScheme.error
                             )
                             Spacer(modifier = Modifier.height(24.dp))
-                            Button(onClick = onNavigateToActivation) {
-                                Text("前往激活")
+                            Button(
+                                onClick = {
+                                    if (shouldOpenChangyanLoginDirectly) {
+                                        context.startActivity(ChangyanWebLoginActivity.createIntent(context))
+                                    } else {
+                                        onNavigateToActivation()
+                                    }
+                                }
+                            ) {
+                                Text(if (shouldOpenChangyanLoginDirectly) "前往登录" else "前往激活")
                             }
                         }
                     }
@@ -3917,8 +3950,6 @@ private fun formatFileSize(size: Long): String {
         else -> "${size / (1024 * 1024)} MB"
     }
 }
-
-
 
 
 

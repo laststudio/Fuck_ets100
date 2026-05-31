@@ -57,8 +57,15 @@ open class ChangyanWebLoginActivity : ComponentActivity() {
             settings.domStorageEnabled = true
             settings.databaseEnabled = true
             settings.cacheMode = WebSettings.LOAD_DEFAULT
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = true
+            settings.builtInZoomControls = true
+            settings.displayZoomControls = false
+            settings.setSupportZoom(true)
+            settings.textZoom = 100
+            setInitialScale(INITIAL_PAGE_SCALE)
             settings.userAgentString = MOBILE_USER_AGENT
-            Log.i(TAG, "WebView 初始化完成: ua=${settings.userAgentString}")
+            Log.i(TAG, "WebView 初始化完成: ua=${settings.userAgentString}, scale=$INITIAL_PAGE_SCALE")
             addJavascriptInterface(ChangyanBridge(), "etsBridge")
             webChromeClient = object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
@@ -361,12 +368,13 @@ open class ChangyanWebLoginActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "ChangyanWebLogin"
+        private const val INITIAL_PAGE_SCALE = 85
         private const val MOBILE_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 16; PLC110 Build/BP2A.250605.015) " +
                 "AppleWebKit/537.36 (KHTML, like Gecko) " +
                 "Chrome/148.0.7778.120 Mobile Safari/537.36"
         private const val LOGIN_URL =
-            "https://pass.changyan.com/login?nextpage=aHR0cHM6Ly93d3cuZXRzMTAwLmNvbS9sb2dpbkNoZWNrLmh0bWw=&customConfig=e3ZpZXdfdHlwZToiV0VCIixoaWRkZW5fbW9kdWxlOiAiaGVhZGVyLHRhaWwsbG9naW5CeVZlcmlmeUNvZGUscmVnaXN0ZXIsbG9naW5CeVRoaXJkTG9naW4iLHByb2R1Y3RfYXBwa2V5OiJxaW5nZGFvX2V0cyIsIm5lZWRUaWNrZXQiOiJ0cnVlIiwibG9naW5fbm90QXV0byI6InRydWUifQ&from=ew&appId=pass6port18"
+            "https://pass.changyan.com/login?nextpage=aHR0cHM6Ly93d3cuZXRzMTAwLmNvbS9sb2dpbkNoZWNrLmh0bWw=&customConfig=e2hpZGRlbl9tb2R1bGU6ICJoZWFkZXIsdGFpbCxsb2dpbkJ5VmVyaWZ5Q29kZSxyZWdpc3Rlcixsb2dpbkJ5VGhpcmRMb2dpbiIscHJvZHVjdF9hcHBrZXk6InFpbmdkYW9fZXRzIiwibmVlZFRpY2tldCI6InRydWUiLCJsb2dpbl9ub3RBdXRvIjoidHJ1ZSJ9&from=ew&appId=pass6port18"
 
         fun createIntent(context: Context): Intent {
             return Intent(

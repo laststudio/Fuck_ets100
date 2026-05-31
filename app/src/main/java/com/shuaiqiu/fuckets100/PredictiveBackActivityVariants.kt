@@ -12,6 +12,10 @@ class CloudActivationOpaqueActivity : CloudActivationActivity()
 
 class CloudActivationKernelSuClassicActivity : CloudActivationActivity()
 
+class ChangyanWebLoginOpaqueActivity : ChangyanWebLoginActivity()
+
+class ChangyanWebLoginKernelSuClassicActivity : ChangyanWebLoginActivity()
+
 class DonateOpaqueActivity : DonateActivity()
 
 class DonateKernelSuClassicActivity : DonateActivity()

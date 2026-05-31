@@ -2,6 +2,8 @@ package com.shuaiqiu.fuckets100
 
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +41,13 @@ fun CloudActivationScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val changyanLoginLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            onLoginSuccess()
+        }
+    }
     
     // 表单状态
     var phone by remember { mutableStateOf("") }
@@ -89,6 +98,7 @@ fun CloudActivationScreen(
                         
                         // 保存登录信息
                         ETS100AuthManager.saveLoginInfo(context, phone, loginResponse.token, parentAccountId)
+                        ETS100AuthManager.saveLoginMethod(context, ETS100AuthManager.LOGIN_METHOD_PASSWORD)
                         ETS100AuthManager.savePassword(context, password)
                         
                         withContext(Dispatchers.Main) {
@@ -130,6 +140,7 @@ fun CloudActivationScreen(
                                     
                                     // 保存登录信息
                                     ETS100AuthManager.saveLoginInfo(context, e.phone, bindResponse.token, parentAccountId)
+                                    ETS100AuthManager.saveLoginMethod(context, ETS100AuthManager.LOGIN_METHOD_PASSWORD)
                                     ETS100AuthManager.savePassword(context, e.password)
                                     
                                     withContext(Dispatchers.Main) {
@@ -291,6 +302,19 @@ fun CloudActivationScreen(
                     Spacer(Modifier.width(8.dp))
                     Text("登 录", style = MaterialTheme.typography.titleMedium)
                 }
+            }
+
+            TextButton(
+                onClick = {
+                    Log.d("CloudActivationScreen", "点击讯飞登录，准备启动 ChangyanWebLoginActivity")
+                    changyanLoginLauncher.launch(ChangyanWebLoginActivity.createIntent(context))
+                },
+                enabled = !isLoading
+            ) {
+                Text(
+                    text = "讯飞登录",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
             
             Spacer(modifier = Modifier.height(24.dp))

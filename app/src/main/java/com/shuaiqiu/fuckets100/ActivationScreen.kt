@@ -93,6 +93,7 @@ fun ActivationSettingsScreen(
     }
 
     val successColor = Color(0xFF4ADE80)
+    val hasLocalBasicPermissions = hasFilesPerm && hasAppListPerm
 
     Scaffold(
         topBar = {
@@ -109,7 +110,7 @@ fun ActivationSettingsScreen(
                 FeModeStatusCard(
                     currentMode = currentMode,
                     shizukuState = shizukuState,
-                    hasAllBasicPermissions = hasFilesPerm && hasOverlayPerm && hasAppListPerm,
+                    hasAllBasicPermissions = hasLocalBasicPermissions,
                     cloudLoggedIn = cloudLoggedIn,
                     cloudPhone = cloudPhone,
                     context = context
@@ -237,7 +238,7 @@ fun ActivationSettingsScreen(
                                         FeRootActivationPanel(context)
                                     }
                                     ActivationMode.DIRECT_READ -> {
-                                        FeDirectReadActivationPanel(hasFilesPerm && hasOverlayPerm && hasAppListPerm)
+                                        FeDirectReadActivationPanel(hasLocalBasicPermissions)
                                     }
                                     ActivationMode.CLOUD -> {
                                         FeCloudActivationPanel(

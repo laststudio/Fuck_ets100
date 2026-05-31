@@ -18,6 +18,8 @@ object ETS100AuthManager {
 
     private const val TAG = "ETS100AuthManager"
     private const val PREFS_NAME = "ets100_auth"
+    const val LOGIN_METHOD_PASSWORD = "password"
+    const val LOGIN_METHOD_CHANGYAN_WEB = "changyan_web"
 
     // ============================================================================
     // 认证信息 Key
@@ -30,6 +32,11 @@ object ETS100AuthManager {
         const val PARENT_ACCOUNT_ID = "parent_account_id"
         const val IS_LOGGED_IN = "is_logged_in"
         const val PASSWORD = "password"
+        const val LOGIN_METHOD = "login_method"
+        const val SELECTED_ECARD_ID = "selected_ecard_id"
+        const val SELECTED_ECARD_NAME = "selected_ecard_name"
+        const val SELECTED_ECARD_GRADE = "selected_ecard_grade"
+        const val SELECTED_ECARD_CLASS_ID = "selected_ecard_class_id"
     }
 
     // ============================================================================
@@ -127,6 +134,39 @@ object ETS100AuthManager {
         Log.d(TAG, "保存登录信息成功: phone=$phone")
     }
 
+    fun saveLoginMethod(context: Context, method: String) {
+        val prefs = getPrefs(context)
+        prefs.edit().putString(Keys.LOGIN_METHOD, method).apply()
+        Log.d(TAG, "保存登录方式: $method")
+    }
+
+    fun getLoginMethod(context: Context): String? {
+        val prefs = getPrefs(context)
+        return prefs.getString(Keys.LOGIN_METHOD, null)
+    }
+
+    fun isChangyanWebLogin(context: Context): Boolean {
+        return getLoginMethod(context) == LOGIN_METHOD_CHANGYAN_WEB
+    }
+
+    fun saveSelectedEcard(
+        context: Context,
+        ecardId: String,
+        name: String,
+        grade: String,
+        classId: String
+    ) {
+        val prefs = getPrefs(context)
+        prefs.edit().apply {
+            putString(Keys.SELECTED_ECARD_ID, ecardId)
+            putString(Keys.SELECTED_ECARD_NAME, name)
+            putString(Keys.SELECTED_ECARD_GRADE, grade)
+            putString(Keys.SELECTED_ECARD_CLASS_ID, classId)
+            apply()
+        }
+        Log.d(TAG, "保存选择账号: id=$ecardId, name=$name, grade=$grade, classId=$classId")
+    }
+
     /**
      * 获取 Token
      * 喵~ 没有 Token 返回 null 喵！
@@ -152,6 +192,11 @@ object ETS100AuthManager {
     fun getParentAccountId(context: Context): String? {
         val prefs = getPrefs(context)
         return prefs.getString(Keys.PARENT_ACCOUNT_ID, null)
+    }
+
+    fun getSelectedEcardId(context: Context): String? {
+        val prefs = getPrefs(context)
+        return prefs.getString(Keys.SELECTED_ECARD_ID, null)
     }
 
     /**

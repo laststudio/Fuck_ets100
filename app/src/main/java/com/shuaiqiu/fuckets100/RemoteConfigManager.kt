@@ -16,8 +16,8 @@ import java.net.URLConnection
 object RemoteConfigManager {
     private const val TAG = "RemoteConfigManager"
     private val CONFIG_URLS = listOf(
-        "https://raw.githubusercontent.com/laststudio/Fe_config/main/config.json",
-        "https://raw.giteeusercontent.com/qiuqiqiuqid/fe_config/raw/master/config.json"
+        "https://raw.giteeusercontent.com/qiuqiqiuqid/fe_config/raw/master/config.json",
+        "https://raw.githubusercontent.com/laststudio/Fe_config/main/config.json"
     )
     private const val DEFAULT_CHANGELOG_URL = "https://raw.githubusercontent.com/laststudio/Fe_config/main/update.md"
     private const val TIMEOUT_MS = 5000L  // 5秒超时喵~
@@ -231,6 +231,5 @@ object RemoteConfigManager {
         }
     }
 }
-
 
 

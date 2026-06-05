@@ -8,6 +8,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urljoin
 
 import requests
 from requests_toolbelt import MultipartEncoder
@@ -15,8 +16,9 @@ from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 
 
-ACCOUNT_URL = "https://pc.woozooo.com/account.php"
-MYDISK_URL = "https://pc.woozooo.com/mydisk.php"
+ACCOUNT_URL = "https://pc.woozooo.com/account.php?action=login"
+ACCOUNTS_LOGIN_URL = "https://accounts.woozooo.com/accounts.php?action=login&ref=pc.woozooo.com"
+ACCOUNTS_POST_URL = "https://accounts.woozooo.com/accounts.php"
 MYDISK_URL = "https://pc.woozooo.com/mydisk.php"
 DOUPLOAD_URL = "https://pc.woozooo.com/doupload.php"
 FILEUP_URL = "https://pc.woozooo.com/html5up.php"
@@ -36,35 +38,129 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 
+def calc_acw_sc_v2(html_text: str) -> str:
+    arg1 = re.search(r"arg1='([0-9A-Z]+)'", html_text)
+    if not arg1:
+        raise RuntimeError("Could not read LanZouCloud acw challenge token.")
+
+    return hex_xor(unsbox(arg1.group(1)), "3000176000856006061501533003690027800375")
+
+
+def unsbox(value: str) -> str:
+    positions = [
+        15,
+        35,
+        29,
+        24,
+        33,
+        16,
+        1,
+        38,
+        10,
+        9,
+        19,
+        31,
+        40,
+        27,
+        22,
+        23,
+        25,
+        13,
+        6,
+        11,
+        39,
+        18,
+        20,
+        8,
+        14,
+        21,
+        32,
+        26,
+        2,
+        30,
+        7,
+        4,
+        17,
+        5,
+        3,
+        28,
+        34,
+        37,
+        12,
+        36,
+    ]
+    result = [""] * len(positions)
+    for index, char in enumerate(value):
+        for target_index, position in enumerate(positions):
+            if position == index + 1:
+                result[target_index] = char
+                break
+
+    return "".join(result)
+
+
+def hex_xor(left: str, right: str) -> str:
+    result = ""
+    for index in range(0, min(len(left), len(right)), 2):
+        value = int(left[index : index + 2], 16) ^ int(right[index : index + 2], 16)
+        result += f"{value:02x}"
+
+    return result
+
+
+def read_accounts_login_page(session: requests.Session) -> requests.Response:
+    response = session.get(ACCOUNTS_LOGIN_URL, headers=HEADERS, timeout=20, verify=False)
+    response.encoding = "utf-8"
+    if "arg1=" not in (response.text or ""):
+        return response
+
+    acw_sc_v2 = calc_acw_sc_v2(response.text)
+    session.cookies.set("acw_sc__v2", acw_sc_v2, domain="accounts.woozooo.com")
+    session.cookies.set("acw_sc__v2", acw_sc_v2, domain=".woozooo.com")
+
+    response = session.get(ACCOUNTS_LOGIN_URL, headers=HEADERS, timeout=20, verify=False)
+    response.encoding = "utf-8"
+    return response
+
+
 def login(username: str, password: str) -> tuple[requests.Session, str]:
     session = requests.Session()
-    login_page = session.get(ACCOUNT_URL, headers=HEADERS, timeout=20, verify=False)
-    login_page.encoding = "utf-8"
-    formhash = re.search(r'name="formhash" value="(.+?)"', login_page.text)
-    if not formhash:
-        raise RuntimeError("Could not read LanZouCloud login formhash.")
+    login_page = read_accounts_login_page(session)
+    if "uselogin" not in (login_page.text or ""):
+        raise RuntimeError(
+            "Could not read LanZouCloud login page, "
+            f"status={login_page.status_code}, body={compact_response_text(login_page.text)}"
+        )
 
+    login_headers = HEADERS.copy()
+    login_headers["Referer"] = ACCOUNTS_LOGIN_URL
+    login_headers["Origin"] = "https://accounts.woozooo.com"
     login_data = {
-        "action": "login",
-        "task": "login",
-        "ref": "",
-        "setSessionId": "",
-        "setToken": "",
-        "setSig": "",
-        "setScene": "",
-        "formhash": formhash.group(1),
+        "task": "uselogin",
         "username": username,
         "password": password,
+        "ref": "pc.woozooo.com",
     }
-    response = session.post(ACCOUNT_URL, data=login_data, headers=HEADERS, timeout=20, verify=False)
+    response = session.post(ACCOUNTS_POST_URL, data=login_data, headers=login_headers, timeout=20, verify=False)
     response.encoding = "utf-8"
+
+    data = require_json(response, "login")
+    if data.get("zt") not in (1, "1"):
+        raise RuntimeError(f"LanZouCloud login failed: {data}")
+
+    jump_url = urljoin("https://accounts.woozooo.com/", str(data.get("msgs", "")))
+    if not jump_url:
+        raise RuntimeError(f"LanZouCloud login response missing redirect URL: {data}")
+
+    jump_response = session.get(jump_url, headers=HEADERS, timeout=20, verify=False, allow_redirects=True)
+    jump_response.encoding = "utf-8"
 
     cookies = session.cookies.get_dict()
     uid = cookies.get("ylogin")
     if not uid:
         raise RuntimeError(
-            f"LanZouCloud login failed, status={response.status_code}, "
-            f"body={compact_response_text(response.text)}"
+            f"LanZouCloud login redirect failed, status={jump_response.status_code}, "
+            f"body={compact_response_text(jump_response.text)}"
         )
 
     return session, uid

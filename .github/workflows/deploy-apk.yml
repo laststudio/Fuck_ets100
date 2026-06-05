@@ -14,9 +14,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: 构建并发布 APK
+  build:
+    name: 构建 APK
     runs-on: ubuntu-latest
+
+    outputs:
+      version_code: ${{ steps.version.outputs.version_code }}
+      version_name: ${{ steps.version.outputs.version_name }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      apk_name: ${{ steps.version.outputs.apk_name }}
+      apk_url: ${{ steps.download.outputs.apk_url }}
 
     steps:
       - name: 检出代码
@@ -33,38 +40,9 @@ jobs:
       - name: 配置 Gradle 缓存
         uses: gradle/actions/setup-gradle@v4
 
-      - name: 校验发布密钥
+      - name: 校验版本与更新日志
         shell: bash
-        run: |
-          set -euo pipefail
-          required_secrets=(
-            "ANDROID_KEYSTORE_BASE64"
-            "ANDROID_KEYSTORE_PASSWORD"
-            "ANDROID_KEY_ALIAS"
-            "ANDROID_KEY_PASSWORD"
-            "CONFIG_GITHUB_TOKEN"
-            "GITEE_USERNAME"
-            "GITEE_TOKEN"
-            "LANZOU_USERNAME"
-            "LANZOU_PASSWORD"
-          )
-          for secret_name in "${required_secrets[@]}"; do
-            if [ -z "${!secret_name:-}" ]; then
-              echo "缺少 GitHub Secret：${secret_name}，无法发布。" >&2
-              exit 1
-            fi
-          done
-          echo "发布密钥校验通过。"
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          CONFIG_GITHUB_TOKEN: ${{ secrets.CONFIG_GITHUB_TOKEN }}
-          GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          LANZOU_USERNAME: ${{ secrets.LANZOU_USERNAME }}
-          LANZOU_PASSWORD: ${{ secrets.LANZOU_PASSWORD }}
+        run: python scripts/release/check_release_ready.py
 
       - name: 读取版本号
         id: version
@@ -134,12 +112,73 @@ jobs:
           echo "apk_path=${apk_target}" >> "$GITHUB_OUTPUT"
           echo "APK 已重命名为 ${apk_target}。"
 
-      - name: 上传 Actions 产物
+      - name: 上传待发布产物
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.version.outputs.apk_name }}
-          path: ${{ steps.artifact.outputs.apk_path }}
+          name: release-package
+          path: |
+            ${{ steps.artifact.outputs.apk_path }}
+            release_notes.md
+            current_changelog.md
           if-no-files-found: error
+
+  publish:
+    name: 手动确认后发布
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: release
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 校验发布密钥
+        shell: bash
+        run: |
+          set -euo pipefail
+          required_secrets=(
+            "CONFIG_GITHUB_TOKEN"
+            "GITEE_USERNAME"
+            "GITEE_TOKEN"
+            "LANZOU_USERNAME"
+            "LANZOU_PASSWORD"
+          )
+          for secret_name in "${required_secrets[@]}"; do
+            if [ -z "${!secret_name:-}" ]; then
+              echo "缺少 GitHub Secret：${secret_name}，无法发布。" >&2
+              exit 1
+            fi
+          done
+          echo "发布密钥校验通过。"
+        env:
+          CONFIG_GITHUB_TOKEN: ${{ secrets.CONFIG_GITHUB_TOKEN }}
+          GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          LANZOU_USERNAME: ${{ secrets.LANZOU_USERNAME }}
+          LANZOU_PASSWORD: ${{ secrets.LANZOU_PASSWORD }}
+
+      - name: 下载待发布产物
+        uses: actions/download-artifact@v4
+        with:
+          name: release-package
+          path: release-package
+
+      - name: 准备待发布文件
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk_path="release-package/${{ needs.build.outputs.apk_name }}"
+          if [ ! -f "$apk_path" ]; then
+            echo "没有找到待发布 APK：${apk_path}" >&2
+            exit 1
+          fi
+          echo "apk_path=${apk_path}" >> "$GITHUB_OUTPUT"
+          cp release-package/release_notes.md release_notes.md
+          cp release-package/current_changelog.md current_changelog.md
 
       - name: 安装蓝奏云上传依赖
         shell: bash
@@ -160,8 +199,8 @@ jobs:
       - name: 发布 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag_name }}
-          name: Fe v${{ steps.version.outputs.version_name }}
+          tag_name: ${{ needs.build.outputs.tag_name }}
+          name: Fe v${{ needs.build.outputs.version_name }}
           body_path: release_notes.md
           files: ${{ steps.artifact.outputs.apk_path }}
           fail_on_unmatched_files: true
@@ -174,9 +213,9 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/release/update_remote_config.py \
-            --version-code "${{ steps.version.outputs.version_code }}" \
-            --version-name "${{ steps.version.outputs.version_name }}" \
-            --apk-url "${{ steps.download.outputs.apk_url }}" \
+            --version-code "${{ needs.build.outputs.version_code }}" \
+            --version-name "${{ needs.build.outputs.version_name }}" \
+            --apk-url "${{ needs.build.outputs.apk_url }}" \
             --message-file current_changelog.md \
             --local-config-file config/config.json \
             --source-changelog-file update.md

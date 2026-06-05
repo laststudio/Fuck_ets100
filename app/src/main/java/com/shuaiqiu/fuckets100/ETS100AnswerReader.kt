@@ -456,11 +456,20 @@ object ETS100AnswerReader {
 
         val resourceFolders = scanResourceFolders(reader)
         val resourceOrderMap = emptyMap<String, Int>()
-        val groupedFolders = groupResourceFolders(reader, resourceFolders)
+        val isPrivilegedMode = mode == ActivationMode.ROOT || mode == ActivationMode.SHIZUKU
+        val groupedFolders = if (isPrivilegedMode) {
+            groupResourceFoldersFast(resourceFolders)
+        } else {
+            groupResourceFolders(reader, resourceFolders)
+        }
 
         return groupedFolders.mapIndexed { groupIndex, folderGroup ->
             val orderedFolderGroup = orderResourceFoldersByPaperStructure(folderGroup, resourceOrderMap)
-            createPaperSummary(reader, orderedFolderGroup, groupIndex)
+            if (isPrivilegedMode) {
+                createFastPaperSummary(orderedFolderGroup, groupIndex)
+            } else {
+                createPaperSummary(reader, orderedFolderGroup, groupIndex)
+            }
         }
     }
 
@@ -648,6 +657,31 @@ object ETS100AnswerReader {
         )
     }
 
+    private fun createFastPaperSummary(
+        folders: List<ETS100FileReader.FileItem>,
+        groupIndex: Int
+    ): Paper {
+        val firstFolder = folders.firstOrNull()
+        return Paper(
+            paperId = (firstFolder?.name ?: "paper_$groupIndex").hashCode().toLong(),
+            title = "试卷 #${groupIndex + 1}",
+            dataFileName = firstFolder?.name.orEmpty(),
+            fileSize = folders.sumOf { it.size },
+            sections = listOf(
+                Section(
+                    caption = "答案解析中",
+                    category = "local_loading",
+                    typeName = "解析中",
+                    questions = emptyList(),
+                    originalContent = null
+                )
+            ),
+            downloadTime = firstFolder?.lastModified ?: 0L,
+            regionLabel = "解析中",
+            paperName = null
+        )
+    }
+
     private fun parseResourceGroup(
         reader: ETS100FileReader.Reader,
         orderedFolderGroup: List<ETS100FileReader.FileItem>,
@@ -768,6 +802,43 @@ object ETS100AnswerReader {
 
         Log.w(TAG, "groupResourceFolders: resource 修改时间不可靠，按 content.json 结构兜底拆分")
         return groupByKnownPaperFolderCounts(reader, folders)
+    }
+
+    private fun groupResourceFoldersFast(
+        folders: List<ETS100FileReader.FileItem>
+    ): List<List<ETS100FileReader.FileItem>> {
+        if (folders.isEmpty()) return emptyList()
+        val hasReliableTime = folders.any { it.lastModified > 0L } &&
+            folders.map { it.lastModified }.distinct().size > 1
+
+        if (hasReliableTime) {
+            return groupByTime(folders, thresholdMs = 2000L)
+        }
+
+        val groupSizes = listOf(13, 10, 7, 3)
+        val groups = mutableListOf<List<ETS100FileReader.FileItem>>()
+        var index = 0
+        while (index < folders.size) {
+            val remaining = folders.size - index
+            val size = groupSizes
+                .firstOrNull { remaining >= it && canSplitByKnownGroupSizes(remaining - it, groupSizes) }
+                ?: groupSizes.firstOrNull { remaining >= it && (remaining == it || (remaining - it) >= 3) }
+                ?: remaining.coerceAtMost(13)
+            groups.add(folders.subList(index, index + size))
+            index += size
+        }
+
+        Log.d(TAG, "groupResourceFoldersFast: ${folders.size} 个文件夹快速拆成 ${groups.size} 组")
+        return groups
+    }
+
+    private fun canSplitByKnownGroupSizes(
+        count: Int,
+        groupSizes: List<Int>
+    ): Boolean {
+        if (count == 0) return true
+        if (count < (groupSizes.minOrNull() ?: 0)) return false
+        return groupSizes.any { count >= it && canSplitByKnownGroupSizes(count - it, groupSizes) }
     }
 
     private fun groupByKnownPaperFolderCounts(
@@ -945,6 +1016,12 @@ object ETS100AnswerReader {
         val questionNumbers: List<Int>
     )
 
+    private data class LocalResourceTemplate(
+        val folder: ETS100FileReader.FileItem,
+        val sections: List<LocalResourceTemplateSection>,
+        val profile: ResourceGroupProfile
+    )
+
     private fun parseGuangdongHighPapers(
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
@@ -1018,7 +1095,7 @@ object ETS100AnswerReader {
         kind: LocalPaperKind
     ): List<Paper> {
         Log.d(TAG, "parseLocalResourcePapers: 第 $groupIndex 组，${folders.size} 个文件夹，kind=$kind")
-        val templateSections = readLocalResourceTemplateSections(reader, folders)
+        val templateSections = readLocalResourceTemplateSections(reader, folders, kind)
         val baseStid = readLocalBaseStid(reader, folders)
         val templateCursors = mutableMapOf<String, Int>()
         val parsedSections = mutableListOf<LocalParsedSection>()
@@ -1086,54 +1163,146 @@ object ETS100AnswerReader {
 
     private fun readLocalResourceTemplateSections(
         reader: ETS100FileReader.Reader,
-        folders: List<ETS100FileReader.FileItem>
+        folders: List<ETS100FileReader.FileItem>,
+        kind: LocalPaperKind
     ): List<LocalResourceTemplateSection> {
         val resourceDir = ETS100FileReader.Path.getResourceDir()
-        val candidateFolders = folders + reader.listFiles(resourceDir).filter { it.isDirectory }
-        val templateSections = mutableListOf<LocalResourceTemplateSection>()
-        val seenConfigFolders = mutableSetOf<String>()
+        val groupNames = folders.mapTo(mutableSetOf()) { it.name }
+        val groupTemplates = folders
+            .mapNotNull { readLocalResourceTemplate(reader, resourceDir, it) }
+            .filter { isTemplateCompatibleWithKind(it.profile, kind) }
 
-        for (folder in candidateFolders) {
-            if (!seenConfigFolders.add(folder.name)) continue
-            val resContent = reader.readFile("$resourceDir/${folder.name}/res.json") ?: continue
-            val json = runCatching { JSONObject(resContent) }.getOrNull() ?: continue
-            val examTypeList = json.optJSONArray("exam_type_list") ?: continue
+        val templateSections = if (groupTemplates.isNotEmpty()) {
+            groupTemplates.flatMap { it.sections }
+        } else {
+            val groupTimeRange = folders.map { it.lastModified }.filter { it > 0L }
+            val candidateTemplates = reader.listFiles(resourceDir)
+                .asSequence()
+                .filter { it.isDirectory && it.name !in groupNames }
+                .map { resolveTemplateFolderModifiedTime(reader, resourceDir, it) }
+                .filter { isTemplateNearGroup(it, groupTimeRange) }
+                .mapNotNull { readLocalResourceTemplate(reader, resourceDir, it) }
+                .filter { isTemplateCompatibleWithKind(it.profile, kind) }
+                .toList()
 
-            for (typeIndex in 0 until examTypeList.length()) {
-                val examType = examTypeList.optJSONObject(typeIndex) ?: continue
-                val structureType = examType.optString("exam_type_collect", "")
-                val title = examType.optString("exam_type_name", structureType)
-                val examList = examType.optJSONArray("exam_list")
-
-                if (examList != null && examList.length() > 0) {
-                    for (examIndex in 0 until examList.length()) {
-                        val exam = examList.optJSONObject(examIndex) ?: continue
-                        templateSections.add(
-                            LocalResourceTemplateSection(
-                                structureType = structureType,
-                                title = title,
-                                templateOrder = extractTemplateOrder(exam, templateSections.size + 1),
-                                questionNumbers = extractTemplateQuestionNumbers(exam)
-                            )
-                        )
-                    }
-                } else if (examType.has("exam_id")) {
-                    templateSections.add(
-                        LocalResourceTemplateSection(
-                            structureType = structureType,
-                            title = title,
-                            templateOrder = extractTemplateOrder(examType, templateSections.size + 1),
-                            questionNumbers = extractTemplateQuestionNumbers(examType)
-                        )
-                    )
-                }
-            }
+            candidateTemplates
+                .minByOrNull { templateDistanceFromGroup(it.folder, groupTimeRange) }
+                ?.sections
+                .orEmpty()
         }
 
         if (templateSections.isNotEmpty()) {
             Log.d(TAG, "readLocalResourceTemplateSections: 读取到 ${templateSections.size} 个模板题段")
         }
         return templateSections
+    }
+
+    private fun resolveTemplateFolderModifiedTime(
+        reader: ETS100FileReader.Reader,
+        resourceDir: String,
+        folder: ETS100FileReader.FileItem
+    ): ETS100FileReader.FileItem {
+        if (folder.lastModified > 0L) return folder
+        val modifiedTime = reader.getFileModifiedTime("$resourceDir/${folder.name}")
+        return folder.copy(lastModified = modifiedTime)
+    }
+
+    private fun readLocalResourceTemplate(
+        reader: ETS100FileReader.Reader,
+        resourceDir: String,
+        folder: ETS100FileReader.FileItem
+    ): LocalResourceTemplate? {
+        val resContent = reader.readFile("$resourceDir/${folder.name}/res.json") ?: return null
+        val json = runCatching { JSONObject(resContent) }.getOrNull() ?: return null
+        val examTypeList = json.optJSONArray("exam_type_list") ?: return null
+        val templateSections = mutableListOf<LocalResourceTemplateSection>()
+
+        for (typeIndex in 0 until examTypeList.length()) {
+            val examType = examTypeList.optJSONObject(typeIndex) ?: continue
+            val structureType = examType.optString("exam_type_collect", "")
+            val title = examType.optString("exam_type_name", structureType)
+            val examList = examType.optJSONArray("exam_list")
+
+            if (examList != null && examList.length() > 0) {
+                for (examIndex in 0 until examList.length()) {
+                    val exam = examList.optJSONObject(examIndex) ?: continue
+                    templateSections.add(
+                        LocalResourceTemplateSection(
+                            structureType = structureType,
+                            title = title,
+                            templateOrder = extractTemplateOrder(exam, templateSections.size + 1),
+                            questionNumbers = extractTemplateQuestionNumbers(exam)
+                        )
+                    )
+                }
+            } else if (examType.has("exam_id")) {
+                templateSections.add(
+                    LocalResourceTemplateSection(
+                        structureType = structureType,
+                        title = title,
+                        templateOrder = extractTemplateOrder(examType, templateSections.size + 1),
+                        questionNumbers = extractTemplateQuestionNumbers(examType)
+                    )
+                )
+            }
+        }
+
+        if (templateSections.isEmpty()) return null
+        return LocalResourceTemplate(
+            folder = folder,
+            sections = templateSections,
+            profile = buildTemplateProfile(templateSections)
+        )
+    }
+
+    private fun buildTemplateProfile(
+        templateSections: List<LocalResourceTemplateSection>
+    ): ResourceGroupProfile {
+        val structureTypes = templateSections
+            .mapTo(mutableSetOf()) { it.structureType }
+        val structureTypeCounts = templateSections
+            .groupingBy { it.structureType }
+            .eachCount()
+        val hasChoose = StructureType.COLLECTOR_CHOOSE in structureTypes
+        val hasFill = StructureType.COLLECTOR_FILL in structureTypes
+        val hasDialogue = StructureType.COLLECTOR_DIALOGUE in structureTypes
+        return ResourceGroupProfile(
+            structureTypes = structureTypes,
+            folderCount = templateSections.size,
+            structureTypeCounts = structureTypeCounts,
+            hasBeijingChooseData = hasChoose,
+            hasBeijingFillData = hasFill,
+            hasBeijingDialogueData = hasDialogue
+        )
+    }
+
+    private fun isTemplateCompatibleWithKind(
+        profile: ResourceGroupProfile,
+        kind: LocalPaperKind
+    ): Boolean {
+        return when (kind) {
+            LocalPaperKind.GUANGDONG_HIGH -> profile.hasGuangdongHighData
+            LocalPaperKind.GUANGDONG_JUNIOR -> profile.hasGuangdongJuniorData
+            LocalPaperKind.BEIJING_JUNIOR -> profile.hasBeijingChooseData
+            LocalPaperKind.BEIJING_HIGH -> profile.hasBeijingFillData || profile.hasBeijingDialogueData
+            LocalPaperKind.GENERIC -> true
+        }
+    }
+
+    private fun isTemplateNearGroup(
+        folder: ETS100FileReader.FileItem,
+        groupTimeRange: List<Long>
+    ): Boolean {
+        if (groupTimeRange.isEmpty() || folder.lastModified <= 0L) return false
+        return templateDistanceFromGroup(folder, groupTimeRange) <= 2000L
+    }
+
+    private fun templateDistanceFromGroup(
+        folder: ETS100FileReader.FileItem,
+        groupTimeRange: List<Long>
+    ): Long {
+        if (groupTimeRange.isEmpty() || folder.lastModified <= 0L) return Long.MAX_VALUE
+        return groupTimeRange.minOf { kotlin.math.abs(folder.lastModified - it) }
     }
 
     private fun extractTemplateOrder(exam: JSONObject, fallback: Int): Int {
@@ -2145,5 +2314,3 @@ object ETS100AnswerReader {
         return result
     }
 }
-
-

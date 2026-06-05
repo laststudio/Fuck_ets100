@@ -171,14 +171,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apk_path="release-package/${{ needs.build.outputs.apk_name }}"
-          if [ ! -f "$apk_path" ]; then
-            echo "没有找到待发布 APK：${apk_path}" >&2
+          apk_path="$(find release-package -name "${{ needs.build.outputs.apk_name }}" -type f | head -n 1)"
+          if [ -z "${apk_path:-}" ] || [ ! -f "$apk_path" ]; then
+            echo "没有找到待发布 APK：${{ needs.build.outputs.apk_name }}" >&2
+            find release-package -maxdepth 3 -type f >&2
             exit 1
           fi
           echo "apk_path=${apk_path}" >> "$GITHUB_OUTPUT"
-          cp release-package/release_notes.md release_notes.md
-          cp release-package/current_changelog.md current_changelog.md
+          release_notes_path="$(find release-package -name release_notes.md -type f | head -n 1)"
+          changelog_path="$(find release-package -name current_changelog.md -type f | head -n 1)"
+          if [ -z "${release_notes_path:-}" ] || [ -z "${changelog_path:-}" ]; then
+            echo "没有找到发布说明或当前更新日志。" >&2
+            find release-package -maxdepth 3 -type f >&2
+            exit 1
+          fi
+          cp "$release_notes_path" release_notes.md
+          cp "$changelog_path" current_changelog.md
 
       - name: 安装蓝奏云上传依赖
         shell: bash

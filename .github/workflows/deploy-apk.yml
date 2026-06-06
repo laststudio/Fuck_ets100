@@ -1,9 +1,6 @@
 name: 发布正式版 APK
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -30,6 +27,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: 校验手动发布分支
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            echo "正式版发布只能手动从 main 分支运行，当前分支：${{ github.ref_name }}" >&2
+            exit 1
+          fi
+          echo "手动发布分支校验通过：main"
 
       - name: 配置 JDK
         uses: actions/setup-java@v4

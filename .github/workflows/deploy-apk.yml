@@ -112,6 +112,40 @@ jobs:
           echo "apk_path=${apk_target}" >> "$GITHUB_OUTPUT"
           echo "APK 已重命名为 ${apk_target}。"
 
+      - name: 生成发布审批摘要
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk_path="${{ steps.artifact.outputs.apk_path }}"
+          apk_size="$(du -h "$apk_path" | cut -f1)"
+          apk_sha256="$(sha256sum "$apk_path" | cut -d ' ' -f1)"
+          {
+            echo "# 发布审批摘要"
+            echo
+            echo "## 构建结果"
+            echo "- 编译状态：成功"
+            echo "- APK 文件：${{ steps.version.outputs.apk_name }}"
+            echo "- APK 大小：${apk_size}"
+            echo "- APK SHA256：\`${apk_sha256}\`"
+            echo
+            echo "## 版本信息"
+            echo "- versionName：${{ steps.version.outputs.version_name }}"
+            echo "- versionCode：${{ steps.version.outputs.version_code }}"
+            echo "- Git 标签：${{ steps.version.outputs.tag_name }}"
+            echo "- 默认更新下载地址：${{ steps.download.outputs.apk_url }}"
+            echo
+            echo "## 工作流信息"
+            echo "- 触发方式：${{ github.event_name }}"
+            echo "- 分支：${{ github.ref_name }}"
+            echo "- 提交：\`${{ github.sha }}\`"
+            echo "- 构建编号：${{ github.run_number }}"
+            echo
+            echo "## 本次更新日志"
+            echo
+            cat current_changelog.md
+          } > release_review.md
+          cat release_review.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: 上传待发布产物
         uses: actions/upload-artifact@v4
         with:
@@ -120,14 +154,16 @@ jobs:
             ${{ steps.artifact.outputs.apk_path }}
             release_notes.md
             current_changelog.md
+            release_review.md
           if-no-files-found: error
 
   publish:
-    name: 手动确认后发布
+    name: 手动确认发布 Fe v${{ needs.build.outputs.version_name }}
     runs-on: ubuntu-latest
     needs: build
     environment:
       name: release
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
     steps:
       - name: 检出代码

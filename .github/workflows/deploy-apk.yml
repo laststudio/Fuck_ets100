@@ -1,9 +1,6 @@
 name: 发布正式版 APK
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -30,6 +27,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: 校验手动发布分支
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            echo "正式版发布只能手动从 main 分支运行，当前分支：${{ github.ref_name }}" >&2
+            exit 1
+          fi
+          echo "手动发布分支校验通过：main"
 
       - name: 配置 JDK
         uses: actions/setup-java@v4
@@ -112,6 +119,40 @@ jobs:
           echo "apk_path=${apk_target}" >> "$GITHUB_OUTPUT"
           echo "APK 已重命名为 ${apk_target}。"
 
+      - name: 生成发布审批摘要
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk_path="${{ steps.artifact.outputs.apk_path }}"
+          apk_size="$(du -h "$apk_path" | cut -f1)"
+          apk_sha256="$(sha256sum "$apk_path" | cut -d ' ' -f1)"
+          {
+            echo "# 发布审批摘要"
+            echo
+            echo "## 构建结果"
+            echo "- 编译状态：成功"
+            echo "- APK 文件：${{ steps.version.outputs.apk_name }}"
+            echo "- APK 大小：${apk_size}"
+            echo "- APK SHA256：\`${apk_sha256}\`"
+            echo
+            echo "## 版本信息"
+            echo "- versionName：${{ steps.version.outputs.version_name }}"
+            echo "- versionCode：${{ steps.version.outputs.version_code }}"
+            echo "- Git 标签：${{ steps.version.outputs.tag_name }}"
+            echo "- 默认更新下载地址：${{ steps.download.outputs.apk_url }}"
+            echo
+            echo "## 工作流信息"
+            echo "- 触发方式：${{ github.event_name }}"
+            echo "- 分支：${{ github.ref_name }}"
+            echo "- 提交：\`${{ github.sha }}\`"
+            echo "- 构建编号：${{ github.run_number }}"
+            echo
+            echo "## 本次更新日志"
+            echo
+            cat current_changelog.md
+          } > release_review.md
+          cat release_review.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: 上传待发布产物
         uses: actions/upload-artifact@v4
         with:
@@ -120,14 +161,16 @@ jobs:
             ${{ steps.artifact.outputs.apk_path }}
             release_notes.md
             current_changelog.md
+            release_review.md
           if-no-files-found: error
 
   publish:
-    name: 手动确认后发布
+    name: 手动确认发布 Fe v${{ needs.build.outputs.version_name }}
     runs-on: ubuntu-latest
     needs: build
     environment:
       name: release
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
     steps:
       - name: 检出代码
@@ -145,6 +188,9 @@ jobs:
             "GITEE_TOKEN"
             "LANZOU_USERNAME"
             "LANZOU_PASSWORD"
+            "ONEBOT_HTTP_URL"
+            "ONEBOT_GROUP_ID"
+            "ONEBOT_ACCESS_TOKEN"
           )
           for secret_name in "${required_secrets[@]}"; do
             if [ -z "${!secret_name:-}" ]; then
@@ -159,6 +205,9 @@ jobs:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           LANZOU_USERNAME: ${{ secrets.LANZOU_USERNAME }}
           LANZOU_PASSWORD: ${{ secrets.LANZOU_PASSWORD }}
+          ONEBOT_HTTP_URL: ${{ secrets.ONEBOT_HTTP_URL }}
+          ONEBOT_GROUP_ID: ${{ secrets.ONEBOT_GROUP_ID }}
+          ONEBOT_ACCESS_TOKEN: ${{ secrets.ONEBOT_ACCESS_TOKEN }}
 
       - name: 下载待发布产物
         uses: actions/download-artifact@v4
@@ -180,13 +229,15 @@ jobs:
           echo "apk_path=${apk_path}" >> "$GITHUB_OUTPUT"
           release_notes_path="$(find release-package -name release_notes.md -type f | head -n 1)"
           changelog_path="$(find release-package -name current_changelog.md -type f | head -n 1)"
-          if [ -z "${release_notes_path:-}" ] || [ -z "${changelog_path:-}" ]; then
-            echo "没有找到发布说明或当前更新日志。" >&2
+          review_path="$(find release-package -name release_review.md -type f | head -n 1)"
+          if [ -z "${release_notes_path:-}" ] || [ -z "${changelog_path:-}" ] || [ -z "${review_path:-}" ]; then
+            echo "没有找到发布说明、当前更新日志或审批摘要。" >&2
             find release-package -maxdepth 3 -type f >&2
             exit 1
           fi
           cp "$release_notes_path" release_notes.md
           cp "$changelog_path" current_changelog.md
+          cp "$review_path" release_review.md
 
       - name: 安装蓝奏云上传依赖
         shell: bash
@@ -237,3 +288,24 @@ jobs:
           GITEE_CONFIG_BRANCH: ${{ vars.GITEE_CONFIG_BRANCH || 'master' }}
           REMOTE_CONFIG_FILE: ${{ vars.REMOTE_CONFIG_FILE || 'config.json' }}
           REMOTE_CHANGELOG_FILE: ${{ vars.REMOTE_CHANGELOG_FILE || 'update.md' }}
+
+      - name: 发送 OneBot 群通知
+        shell: bash
+        env:
+          ONEBOT_HTTP_URL: ${{ secrets.ONEBOT_HTTP_URL }}
+          ONEBOT_GROUP_ID: ${{ secrets.ONEBOT_GROUP_ID }}
+          ONEBOT_ACCESS_TOKEN: ${{ secrets.ONEBOT_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          {
+            echo "新版本发布啦喵~"
+            echo "最新版本为${{ needs.build.outputs.version_name }}"
+            echo "前往网盘下载:oplist.lastudio.cc"
+          } > onebot_message.txt
+          python scripts/release/notify_onebot.py \
+            --api-url "${ONEBOT_HTTP_URL}" \
+            --group-id "${ONEBOT_GROUP_ID}" \
+            --message-file onebot_message.txt \
+            --upload-file "${{ steps.artifact.outputs.apk_path }}" \
+            --upload-name "${{ needs.build.outputs.apk_name }}" \
+            --access-token "${ONEBOT_ACCESS_TOKEN:-}"

@@ -306,6 +306,6 @@ jobs:
             --api-url "${ONEBOT_HTTP_URL}" \
             --group-id "${ONEBOT_GROUP_ID}" \
             --message-file onebot_message.txt \
-            --upload-file "${{ steps.artifact.outputs.apk_path }}" \
+            --upload-file "https://github.com/${{ github.repository }}/releases/download/${{ needs.build.outputs.tag_name }}/${{ needs.build.outputs.apk_name }}" \
             --upload-name "${{ needs.build.outputs.apk_name }}" \
             --access-token "${ONEBOT_ACCESS_TOKEN:-}"

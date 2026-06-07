@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import mimetypes
 import sys
 import urllib.error
 import urllib.request
@@ -71,51 +70,25 @@ def send_group_msg(api_url: str, group_id: str, message: str, access_token: str 
     return read_json_response(request, "OneBot send_group_msg")
 
 
-def encode_multipart_form(fields: dict[str, str], file_field: str, file_path: Path) -> tuple[bytes, str]:
-    boundary = "----FeOneBotReleaseBoundary"
-    mime_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
-    parts: list[bytes] = []
+def upload_group_file(api_url: str, group_id: str, file_ref: str, name: str, access_token: str | None) -> dict:
+    file_value = file_ref.strip()
+    if not file_value:
+        raise ValueError("Group upload file reference is empty.")
 
-    for name, value in fields.items():
-        parts.extend(
-            [
-                f"--{boundary}\r\n".encode("utf-8"),
-                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"),
-                str(value).encode("utf-8"),
-                b"\r\n",
-            ]
-        )
+    local_path = Path(file_value)
+    if local_path.exists():
+        file_value = str(local_path.resolve())
 
-    parts.extend(
-        [
-            f"--{boundary}\r\n".encode("utf-8"),
-            (
-                f'Content-Disposition: form-data; name="{file_field}"; '
-                f'filename="{file_path.name}"\r\n'
-            ).encode("utf-8"),
-            f"Content-Type: {mime_type}\r\n\r\n".encode("utf-8"),
-            file_path.read_bytes(),
-            b"\r\n",
-            f"--{boundary}--\r\n".encode("utf-8"),
-        ]
-    )
-    return b"".join(parts), boundary
-
-
-def upload_group_file(api_url: str, group_id: str, file_path: Path, name: str, access_token: str | None) -> dict:
-    if not file_path.is_file():
-        raise FileNotFoundError(f"Group upload file not found: {file_path}")
-
-    payload, boundary = encode_multipart_form(
-        fields={
+    payload = json.dumps(
+        {
             "group_id": str(int(group_id)),
+            "file": file_value,
             "name": name,
         },
-        file_field="file",
-        file_path=file_path,
-    )
+        ensure_ascii=False,
+    ).encode("utf-8")
     headers = {
-        "Content-Type": f"multipart/form-data; boundary={boundary}",
+        "Content-Type": "application/json",
         "Accept": "application/json",
     }
     if access_token:
@@ -151,9 +124,8 @@ def main() -> int:
                 print("OneBot notification skipped: message is empty.")
 
         if args.upload_file:
-            upload_path = Path(args.upload_file).resolve()
-            upload_name = args.upload_name or upload_path.name
-            data = upload_group_file(args.api_url, args.group_id, upload_path, upload_name, args.access_token or None)
+            upload_name = args.upload_name or Path(args.upload_file).name
+            data = upload_group_file(args.api_url, args.group_id, args.upload_file, upload_name, args.access_token or None)
             print(f"OneBot group file uploaded: {upload_name}, response={data.get('data')}")
     except Exception as exc:
         print(f"OneBot notification failed: {exc}", file=sys.stderr)

@@ -188,6 +188,9 @@ jobs:
             "GITEE_TOKEN"
             "LANZOU_USERNAME"
             "LANZOU_PASSWORD"
+            "ONEBOT_HTTP_URL"
+            "ONEBOT_GROUP_ID"
+            "ONEBOT_ACCESS_TOKEN"
           )
           for secret_name in "${required_secrets[@]}"; do
             if [ -z "${!secret_name:-}" ]; then
@@ -202,6 +205,9 @@ jobs:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           LANZOU_USERNAME: ${{ secrets.LANZOU_USERNAME }}
           LANZOU_PASSWORD: ${{ secrets.LANZOU_PASSWORD }}
+          ONEBOT_HTTP_URL: ${{ secrets.ONEBOT_HTTP_URL }}
+          ONEBOT_GROUP_ID: ${{ secrets.ONEBOT_GROUP_ID }}
+          ONEBOT_ACCESS_TOKEN: ${{ secrets.ONEBOT_ACCESS_TOKEN }}
 
       - name: 下载待发布产物
         uses: actions/download-artifact@v4
@@ -223,13 +229,15 @@ jobs:
           echo "apk_path=${apk_path}" >> "$GITHUB_OUTPUT"
           release_notes_path="$(find release-package -name release_notes.md -type f | head -n 1)"
           changelog_path="$(find release-package -name current_changelog.md -type f | head -n 1)"
-          if [ -z "${release_notes_path:-}" ] || [ -z "${changelog_path:-}" ]; then
-            echo "没有找到发布说明或当前更新日志。" >&2
+          review_path="$(find release-package -name release_review.md -type f | head -n 1)"
+          if [ -z "${release_notes_path:-}" ] || [ -z "${changelog_path:-}" ] || [ -z "${review_path:-}" ]; then
+            echo "没有找到发布说明、当前更新日志或审批摘要。" >&2
             find release-package -maxdepth 3 -type f >&2
             exit 1
           fi
           cp "$release_notes_path" release_notes.md
           cp "$changelog_path" current_changelog.md
+          cp "$review_path" release_review.md
 
       - name: 安装蓝奏云上传依赖
         shell: bash
@@ -280,3 +288,24 @@ jobs:
           GITEE_CONFIG_BRANCH: ${{ vars.GITEE_CONFIG_BRANCH || 'master' }}
           REMOTE_CONFIG_FILE: ${{ vars.REMOTE_CONFIG_FILE || 'config.json' }}
           REMOTE_CHANGELOG_FILE: ${{ vars.REMOTE_CHANGELOG_FILE || 'update.md' }}
+
+      - name: 发送 OneBot 群通知
+        shell: bash
+        env:
+          ONEBOT_HTTP_URL: ${{ secrets.ONEBOT_HTTP_URL }}
+          ONEBOT_GROUP_ID: ${{ secrets.ONEBOT_GROUP_ID }}
+          ONEBOT_ACCESS_TOKEN: ${{ secrets.ONEBOT_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          {
+            echo "新版本发布啦喵~"
+            echo "最新版本为${{ needs.build.outputs.version_name }}"
+            echo "前往网盘下载:oplist.lastudio.cc"
+          } > onebot_message.txt
+          python scripts/release/notify_onebot.py \
+            --api-url "${ONEBOT_HTTP_URL}" \
+            --group-id "${ONEBOT_GROUP_ID}" \
+            --message-file onebot_message.txt \
+            --upload-file "${{ steps.artifact.outputs.apk_path }}" \
+            --upload-name "${{ needs.build.outputs.apk_name }}" \
+            --access-token "${ONEBOT_ACCESS_TOKEN:-}"

@@ -301,6 +301,9 @@ jobs:
             echo "新版本发布啦喵~"
             echo "最新版本为${{ needs.build.outputs.version_name }}"
             echo "前往网盘下载:oplist.lastudio.cc"
+            echo
+            echo "更新日志:"
+            sed -E '/^##[[:space:]]+/d; /^>[[:space:]]*内部版本号/d; /^[[:space:]]*$/d' current_changelog.md
           } > onebot_message.txt
           python scripts/release/notify_onebot.py \
             --api-url "${ONEBOT_HTTP_URL}" \

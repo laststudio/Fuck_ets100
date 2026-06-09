@@ -3,7 +3,6 @@ package com.shuaiqiu.fuckets100
 import android.os.SystemClock
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,8 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -141,7 +138,7 @@ fun HomeScreen(
 
     // 系统状态标签和颜色
     val sysLabel = if (isTrulyActivated) "SYS_READY" else "SYS_OFFLINE"
-    val activeColor = if (isTrulyActivated) mode.hexColor else Color(0xFFDC2626) // 未激活时显示红色警告
+    val activeColor = if (isTrulyActivated) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
     
     Scaffold(
         topBar = { FeTopAppBar(title = "Fe") }
@@ -228,6 +225,16 @@ fun StatusCard(
     onNavigateToActivation: () -> Unit
 ) {
     val animatedColor by animateColorAsState(targetValue = activeColor, animationSpec = tween(600))
+    val statusContainerColor = if (isTrulyActivated) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.errorContainer
+    }
+    val statusContentColor = if (isTrulyActivated) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onErrorContainer
+    }
 
     // 根据当前状态显示不同的标题
     val displayTitle = when {
@@ -252,17 +259,6 @@ fun StatusCard(
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
-            // 背景渐变效果
-            Canvas(modifier = Modifier.matchParentSize()) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(animatedColor.copy(alpha = 0.2f), Color.Transparent),
-                        center = Offset(0f, size.height),
-                        radius = size.height * 0.8f
-                    )
-                )
-            }
-            
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -274,10 +270,10 @@ fun StatusCard(
                     Box(
                         Modifier
                             .size(48.dp)
-                            .background(animatedColor.copy(alpha = 0.12f), CircleShape),
+                            .background(statusContainerColor, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(displayIcon, null, tint = animatedColor)
+                        Icon(displayIcon, null, tint = statusContentColor)
                     }
                     Icon(
                         Icons.Default.Settings, 
@@ -291,13 +287,13 @@ fun StatusCard(
                     Text(
                         "STATUS", 
                         style = MaterialTheme.typography.labelSmall, 
-                        color = animatedColor.copy(alpha = 0.8f)
+                        color = animatedColor
                     )
                     Text(
                         displayTitle, 
                         style = MaterialTheme.typography.headlineMedium, 
                         fontWeight = FontWeight.Bold, 
-                        color = animatedColor
+                        color = MaterialTheme.colorScheme.onSurface
                     )
 
                     // 详细说明文字
@@ -313,7 +309,7 @@ fun StatusCard(
                         Text(
                             text = subText, 
                             style = MaterialTheme.typography.labelSmall, 
-                            color = animatedColor.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else if (mode == ActivationMode.SHIZUKU) {
                         val subText = when {
@@ -331,7 +327,7 @@ fun StatusCard(
                         Text(
                             text = subText, 
                             style = MaterialTheme.typography.labelSmall, 
-                            color = animatedColor.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else if (mode == ActivationMode.ROOT) {
                         val subText = when {
@@ -341,19 +337,19 @@ fun StatusCard(
                         Text(
                             text = subText, 
                             style = MaterialTheme.typography.labelSmall, 
-                            color = animatedColor.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else if (mode == ActivationMode.DIRECT_READ) {
                         Text(
                             text = "Direct Read 模式已就绪", 
                             style = MaterialTheme.typography.labelSmall, 
-                            color = animatedColor.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else if (mode == ActivationMode.DEFAULT) {
                         Text(
                             text = "请授权基础权限后选择激活模式", 
                             style = MaterialTheme.typography.labelSmall, 
-                            color = animatedColor.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

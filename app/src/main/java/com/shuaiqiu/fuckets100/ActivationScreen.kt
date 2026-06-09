@@ -92,7 +92,7 @@ fun ActivationSettingsScreen(
         ShizukuManager.addPermissionResultListener(permissionListener)
     }
 
-    val successColor = Color(0xFF4ADE80)
+    val successColor = MaterialTheme.colorScheme.primary
     val hasLocalBasicPermissions = hasFilesPerm && hasAppListPerm
 
     Scaffold(
@@ -177,15 +177,15 @@ fun ActivationSettingsScreen(
                 OutlinedCard(
                     onClick = { onModeSelected(mode) },
                     modifier = Modifier.fillMaxWidth(),
-                    border = BorderStroke(if(isSelected) 1.dp else (-1).dp, if(isSelected) mode.hexColor.copy(alpha=0.5f) else Color.Transparent),
+                    border = BorderStroke(if(isSelected) 1.dp else (-1).dp, if(isSelected) MaterialTheme.colorScheme.primary.copy(alpha=0.5f) else Color.Transparent),
                     colors = CardDefaults.outlinedCardColors(containerColor = if(isSelected) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.Top) {
-                            RadioButton(selected = isSelected, onClick = null, colors = RadioButtonDefaults.colors(selectedColor = mode.hexColor))
+                            RadioButton(selected = isSelected, onClick = null, colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary))
                             Column(Modifier.padding(start = 12.dp).weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                    Text(mode.name, fontWeight = FontWeight.Bold, color = if(isSelected) mode.hexColor else MaterialTheme.colorScheme.onSurface)
+                                    Text(mode.name, fontWeight = FontWeight.Bold, color = if(isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                                     val badgeContainerColor = when (mode) {
                                         ActivationMode.ROOT -> MaterialTheme.colorScheme.errorContainer
                                         ActivationMode.CLOUD -> if (cloudLoggedIn) successColor.copy(alpha = 0.18f) else MaterialTheme.colorScheme.errorContainer
@@ -213,7 +213,7 @@ fun ActivationSettingsScreen(
                             exit = shrinkVertically() + fadeOut()
                         ) {
                             Column {
-                                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = mode.hexColor.copy(alpha = 0.2f))
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
 
                                 when (mode) {
                                     ActivationMode.SHIZUKU -> {
@@ -255,7 +255,7 @@ fun ActivationSettingsScreen(
                                             Text("需要手动确认以完成激活", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             Button(
                                                 onClick = { Toast.makeText(context, "正在请求 ${mode.name} 激活...", Toast.LENGTH_SHORT).show() },
-                                                colors = ButtonDefaults.buttonColors(containerColor = mode.hexColor, contentColor = Color.Black),
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
                                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), modifier = Modifier.height(32.dp)
                                             ) { Text("执行激活", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold) }
                                         }
@@ -290,7 +290,7 @@ private fun getEtsAppInfo(
 @Composable
 private fun ActivationDeviceCard(etsAppInfo: Pair<Boolean, String>?) {
     val themePrimaryColor = MaterialTheme.colorScheme.primary
-    val successColor = Color(0xFF4ADE80)
+    val successColor = MaterialTheme.colorScheme.primary
     val errorColor = MaterialTheme.colorScheme.error
 
     ElevatedCard(
@@ -408,17 +408,17 @@ fun FeModeStatusCard(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     
-    val errorRedColor = Color(0xFFDC2626)
+    val errorRedColor = MaterialTheme.colorScheme.error
     
     val statusColor = when (currentMode) {
         ActivationMode.DEFAULT -> MaterialTheme.colorScheme.outline
-        ActivationMode.SHIZUKU -> if (shizukuState.isRunning && shizukuState.permissionGranted) Color(0xFF4ADE80) else errorRedColor
-        ActivationMode.ROOT -> if (hasAllBasicPermissions && isRootAvailable) Color(0xFF4ADE80) else errorRedColor
-        ActivationMode.DIRECT_READ -> if (hasAllBasicPermissions && isDirectReadAvailable) Color(0xFF4ADE80) else errorRedColor
-        ActivationMode.CLOUD -> if (cloudLoggedIn) Color(0xFF4ADE80) else errorRedColor
+        ActivationMode.SHIZUKU -> if (shizukuState.isRunning && shizukuState.permissionGranted) MaterialTheme.colorScheme.primary else errorRedColor
+        ActivationMode.ROOT -> if (hasAllBasicPermissions && isRootAvailable) MaterialTheme.colorScheme.primary else errorRedColor
+        ActivationMode.DIRECT_READ -> if (hasAllBasicPermissions && isDirectReadAvailable) MaterialTheme.colorScheme.primary else errorRedColor
+        ActivationMode.CLOUD -> if (cloudLoggedIn) MaterialTheme.colorScheme.primary else errorRedColor
     }
     
-    val isActive = statusColor == Color(0xFF4ADE80)
+    val isActive = statusColor == MaterialTheme.colorScheme.primary
     val animatedColor by animateColorAsState(statusColor, tween(800))
     
     val (statusTitle, statusDesc, statusDetail) = when (currentMode) {
@@ -523,9 +523,9 @@ fun FeModeStatusCard(
 @Composable
 fun FeDirectReadActivationPanel(hasAllBasicPermissions: Boolean) {
     val context = LocalContext.current
-    val directReadYellow = Color(0xFFFBBF24)
-    val successColor = Color(0xFF4ADE80)
-    val errorRedColor = Color(0xFFDC2626)
+    val directReadYellow = MaterialTheme.colorScheme.tertiary
+    val successColor = MaterialTheme.colorScheme.primary
+    val errorRedColor = MaterialTheme.colorScheme.error
     
     var isZWCAvailable by remember { mutableStateOf(false) }
     var isDirectReadAvailable by remember { mutableStateOf(false) }
@@ -683,7 +683,7 @@ fun FeDirectReadActivationPanel(hasAllBasicPermissions: Boolean) {
 @Composable
 fun FeShizukuStatusCard(shizukuState: ShizukuState, context: android.content.Context) {
     val isRunning = shizukuState.isRunning
-    val animatedColor by animateColorAsState(if (isRunning) Color(0xFF4ADE80) else MaterialTheme.colorScheme.error, tween(800))
+    val animatedColor by animateColorAsState(if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, tween(800))
 
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -746,7 +746,7 @@ fun FeShizukuActivationPanel(
     onRequestPermission: () -> Unit,
     onOpenShizuku: () -> Unit
 ) {
-    val successColor = Color(0xFF4ADE80)
+    val successColor = MaterialTheme.colorScheme.primary
 
     Column {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -789,7 +789,7 @@ fun FeShizukuActivationPanel(
                 } else {
                     Button(
                         onClick = onRequestPermission,
-                        colors = ButtonDefaults.buttonColors(containerColor = successColor, contentColor = Color.Black),
+                        colors = ButtonDefaults.buttonColors(containerColor = successColor, contentColor = MaterialTheme.colorScheme.onPrimary),
                         modifier = Modifier.weight(1f).height(40.dp)
                     ) {
                         Icon(Icons.Default.Security, null, modifier = Modifier.size(18.dp))
@@ -804,7 +804,7 @@ fun FeShizukuActivationPanel(
 
 @Composable
 fun FeRootActivationPanel(context: android.content.Context) {
-    val successColor = Color(0xFF4ADE80)
+    val successColor = MaterialTheme.colorScheme.primary
     val errorColor = MaterialTheme.colorScheme.error
     
     var isRootAvailable by remember { mutableStateOf(RootManager.isRootAvailable()) }
@@ -909,8 +909,8 @@ fun FeCloudActivationPanel(
     onNavigateToCloudActivation: () -> Unit,
     onNavigateToRead: () -> Unit
 ) {
-    val cloudColor = Color(0xFF60A5FA)
-    val successColor = Color(0xFF4ADE80)
+    val cloudColor = MaterialTheme.colorScheme.tertiary
+    val successColor = MaterialTheme.colorScheme.primary
     
     Column {
         Row(
@@ -966,7 +966,7 @@ fun FeCloudActivationPanel(
                         // 宝贝直接跳转到答题页面，云端模式入口喵~
                         onNavigateToRead()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = cloudColor, contentColor = Color.White),
+                    colors = ButtonDefaults.buttonColors(containerColor = cloudColor, contentColor = MaterialTheme.colorScheme.onTertiary),
                     modifier = Modifier.weight(1f).height(40.dp)
                 ) {
                     Icon(Icons.Default.Cloud, null, modifier = Modifier.size(18.dp))
@@ -981,7 +981,7 @@ fun FeCloudActivationPanel(
                     // 跳转到登录页面
                     onNavigateToCloudActivation()
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = cloudColor, contentColor = Color.White),
+                colors = ButtonDefaults.buttonColors(containerColor = cloudColor, contentColor = MaterialTheme.colorScheme.onTertiary),
                 modifier = Modifier.fillMaxWidth().height(40.dp)
             ) {
                 Icon(Icons.AutoMirrored.Filled.Login, null, modifier = Modifier.size(18.dp))

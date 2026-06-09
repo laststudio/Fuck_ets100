@@ -61,7 +61,7 @@ fun SettingsScreen(navController: NavHostController) {
                     }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
 
-                    SettingsListItem(Icons.Default.Palette, "主题", "莫奈系列与黑白系列主题切换") {
+                    SettingsListItem(Icons.Default.Palette, "主题", "彩色主题与明暗模式") {
                         context.startActivity(ThemeSettingsActivity.createIntent(context))
                     }
                 }

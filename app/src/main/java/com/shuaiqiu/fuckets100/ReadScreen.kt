@@ -1458,7 +1458,8 @@ fun ReadScreen(
                                         isLoading = isDownloading,
                                         isFailed = isFailed,
                                         isDownloaded = isDownloaded,
-                                        downloadProgress = downloadProgress
+                                        downloadProgress = downloadProgress,
+                                        isCloudMode = true
                                     )
                                 }
                             }
@@ -1642,10 +1643,8 @@ fun ReadScreen(
 @Composable
 private fun DeletingOverlay() {
     Dialog(onDismissRequest = {}) {
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            )
+        FeOutlinedCard(
+            containerColor = MaterialTheme.colorScheme.surface
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
@@ -1987,8 +1986,10 @@ internal fun SubFabItem(
     ) {
         // 文字标签
         Surface(
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            shape = RoundedCornerShape(4.dp)
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(12.dp),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
             Text(
                 text = label,
@@ -2210,17 +2211,20 @@ private fun QuestionItem(
     onClick: () -> Unit,
     categoryStyle: AnswerCategoryColor
 ) {
-    Card(
+    FeOutlinedCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) {
-                MaterialTheme.colorScheme.surfaceContainerHigh
-            } else {
-                MaterialTheme.colorScheme.surface
-            }
-        ),
+        containerColor = if (isSelected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        borderColor = if (isSelected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+        } else {
+            Color.Transparent
+        },
         onClick = onClick
     ) {
         Row(
@@ -2378,7 +2382,7 @@ private fun LogViewerPanel(debugLog: List<LogEntry>) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(16.dp))
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
@@ -2401,7 +2405,7 @@ private fun LogViewerPanel(debugLog: List<LogEntry>) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(16.dp))
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
@@ -2422,7 +2426,7 @@ private fun LogStatBadge(label: String, count: Int, level: LogLevel) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Text(
@@ -2480,7 +2484,7 @@ private fun LogEntryItem(entry: LogEntry) {
         Box(
             modifier = Modifier
                 .width(50.dp)
-                .background(textColor.copy(alpha = 0.2f), RoundedCornerShape(2.dp))
+                .background(textColor.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
                 .padding(horizontal = 4.dp, vertical = 1.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -2497,7 +2501,7 @@ private fun LogEntryItem(entry: LogEntry) {
         Box(
             modifier = Modifier
                 .width(60.dp)
-                .background(categoryStyle.container, RoundedCornerShape(2.dp))
+                .background(categoryStyle.container.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
                 .padding(horizontal = 4.dp, vertical = 1.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -2536,7 +2540,7 @@ private fun DataDetailsPanel(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
                 .clickable(onClick = onToggleDataDetails)
                 .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -2580,7 +2584,7 @@ private fun DataDetailsPanel(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(16.dp))
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -2590,8 +2594,8 @@ private fun DataDetailsPanel(
                     val totalQuestions = papers.sumOf { it.sections.sumOf { s -> s.questions.size } }
                     val answeredQuestions = papers.sumOf { it.sections.sumOf { s -> s.questions.count { q -> q.answer.isNotEmpty() } } }
                     
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+                    FeOutlinedCard(
+                        containerColor = MaterialTheme.colorScheme.surface
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(
@@ -2824,7 +2828,7 @@ private fun QuestionDetailItem(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .background(categoryStyle.container, RoundedCornerShape(4.dp))
+                                .background(categoryStyle.container.copy(alpha = 0.76f), RoundedCornerShape(10.dp))
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
@@ -2899,7 +2903,7 @@ private fun QuestionDetailItem(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(16.dp))
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -3019,8 +3023,8 @@ private fun QuestionBlock(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Surface(
-                            color = categoryStyle.container,
-                            shape = RoundedCornerShape(4.dp)
+                            color = categoryStyle.container.copy(alpha = 0.76f),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
                             Text(
                                 sectionTitle,
@@ -3207,8 +3211,8 @@ fun PaperDetailScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
-                                color = categoryStyle.container,
-                                shape = RoundedCornerShape(4.dp)
+                                color = categoryStyle.container.copy(alpha = 0.76f),
+                                shape = RoundedCornerShape(10.dp)
                             ) {
                                 Text(
                                     text = section.category,
@@ -3271,8 +3275,8 @@ private fun MergedQuestionBlock(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
-                                color = categoryStyle.container,
-                                shape = RoundedCornerShape(4.dp)
+                                color = categoryStyle.container.copy(alpha = 0.76f),
+                                shape = RoundedCornerShape(10.dp)
                             ) {
                                 Text(
                                     sectionTitle,
@@ -3351,7 +3355,7 @@ private fun QuestionItemSimple(
         ) {
             Box(
                 modifier = Modifier
-                    .background(categoryStyle.container, RoundedCornerShape(4.dp))
+                    .background(categoryStyle.container.copy(alpha = 0.76f), RoundedCornerShape(10.dp))
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
@@ -3367,8 +3371,8 @@ private fun QuestionItemSimple(
         
         // 题目内容
         Surface(
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            shape = RoundedCornerShape(8.dp)
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = RoundedCornerShape(16.dp)
         ) {
             Text(
                 text = question.question,
@@ -3414,6 +3418,64 @@ private fun QuestionItemSimple(
     }
 }
 
+private fun ETS100AnswerReader.Paper.firstQuestionPreviewText(): String {
+    val firstQuestion = sections
+        .asSequence()
+        .flatMap { it.questions.asSequence() }
+        .firstOrNull { question ->
+            question.category != LOCAL_PAPER_LOADING_CATEGORY &&
+                question.questionText != "未下载"
+        } ?: return ""
+
+    return when {
+        firstQuestion.category == "read_chapter" -> {
+            firstQuestion.formattedOriginalText.firstSentenceOrLine()
+                .ifBlank { firstQuestion.question.firstSentenceOrLine() }
+        }
+        else -> {
+            val choiceOption = (firstQuestion.content as? ETS100AnswerReader.AnswerContent.Choice)
+                ?.items
+                ?.asSequence()
+                ?.flatMap { it.options.asSequence() }
+                ?.firstOrNull { it.isNotBlank() }
+                ?.trim()
+                ?: "${firstQuestion.question}\n${firstQuestion.formattedOriginalText}".firstChoiceOption()
+            choiceOption ?: firstQuestion.question.ifBlank { firstQuestion.formattedOriginalText }.firstSentenceOrLine()
+        }
+    }.normalizePreviewText()
+}
+
+private fun String.firstChoiceOption(): String? {
+    val match = Regex(
+        pattern = """(?is)(?:^|[\s\n])(?:A|①|1)[.．、)]?\s*(.+?)(?=[\s\n](?:B|②|2)[.．、)]?\s*)"""
+    ).find(this)
+
+    return match
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.normalizePreviewText()
+        ?.takeIf { it.isNotBlank() }
+}
+
+private fun String.firstSentenceOrLine(): String {
+    val normalized = normalizePreviewText()
+    if (normalized.isBlank()) return ""
+
+    val sentenceEnd = listOf("。", "！", "？", ".", "!", "?")
+        .map { normalized.indexOf(it) }
+        .filter { it >= 0 }
+        .minOrNull()
+
+    return if (sentenceEnd != null) {
+        normalized.take(sentenceEnd + 1)
+    } else {
+        normalized.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+    }
+}
+
+private fun String.normalizePreviewText(): String =
+    replace(Regex("\\s+"), " ").trim()
+
 /**
  * 试卷列表项组件
  * 宝贝这是一个简单的试卷项目，点击后进入二级页面喵~
@@ -3428,32 +3490,11 @@ private fun PaperListItem(
     isFailed: Boolean = false,
     isDownloaded: Boolean = false,  // 宝贝标记是否已下载喵~
     isClickEnabled: Boolean = true,
-    downloadProgress: CloudHomeworkState.DownloadProgress? = null
+    downloadProgress: CloudHomeworkState.DownloadProgress? = null,
+    isCloudMode: Boolean = false
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
-    
-    // 宝贝提取分区类型，只显示前3个喵~
-    val sectionTypesList = paper.sections.map { it.typeName }.distinct()
-    val displayedTypes = sectionTypesList.take(3)
-    val remainingCount = sectionTypesList.size - 3
-    val sectionTypes = if (remainingCount > 0) {
-        displayedTypes.joinToString(" · ") + " +$remainingCount"
-    } else {
-        displayedTypes.joinToString(" · ")
-    }
-    
-    // 宝贝获取分区类型的颜色列表喵~
-    val sectionColors = paper.sections.map { section ->
-        categoryColors[section.category] ?: primaryColor
-    }.distinct().take(3)
-    
-    // 宝贝格式化下载时间喵~
-    val downloadTimeStr = if (paper.downloadTime > 0) {
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
-        sdf.format(java.util.Date(paper.downloadTime))
-    } else {
-        "未知时间"
-    }
+    val localPreviewText = remember(paper) { paper.firstQuestionPreviewText() }
     
     FeOutlinedCard(
         modifier = Modifier
@@ -3537,7 +3578,7 @@ private fun PaperListItem(
                             }
                             Surface(
                                 color = regionContainerColor,
-                                shape = RoundedCornerShape(4.dp)
+                                shape = RoundedCornerShape(10.dp)
                             ) {
                                 Text(
                                     text = paper.regionLabel,
@@ -3563,8 +3604,8 @@ private fun PaperListItem(
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 modifier = Modifier.widthIn(min = 48.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                shape = RoundedCornerShape(4.dp)
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                                shape = RoundedCornerShape(10.dp)
                             ) {
                                 Text(
                                     text = "已下载",
@@ -3577,33 +3618,15 @@ private fun PaperListItem(
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    // 宝贝显示分区类型，用对应颜色喵~
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        sectionColors.forEachIndexed { index, color ->
-                            if (index > 0) {
-                                Text(
-                                    text = " · ",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Text(
-                                text = displayedTypes.getOrElse(index) { "" },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = color
-                            )
-                        }
-                        if (remainingCount > 0) {
-                            Text(
-                                text = " +$remainingCount",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                    if (!isCloudMode && localPreviewText.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = localPreviewText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                     Spacer(modifier = Modifier.height(2.dp))
                     // 宝贝根据状态显示不同的信息喵~
@@ -3653,12 +3676,19 @@ private fun PaperListItem(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            // 宝贝显示下载时间喵~
-                            Text(
-                                text = if (isDownloaded) "已下载" else "未加载",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            if (isCloudMode) {
+                                Text(
+                                    text = if (isDownloaded) "已下载" else "未下载",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                Text(
+                                    text = "已加载",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -3696,11 +3726,12 @@ private fun CloudModeInfoCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                Icons.Default.Cloud,
-                contentDescription = null,
+            FeIconContainer(
+                icon = Icons.Default.Cloud,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(32.dp)
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.54f),
+                size = 44.dp,
+                iconSize = 24.dp
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column {

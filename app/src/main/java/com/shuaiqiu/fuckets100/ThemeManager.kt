@@ -28,11 +28,6 @@ enum class AppTheme(
     val isDark: Boolean
 ) {
     // ============ 莫奈系列（彩色版） ============
-    MONET_PURPLE("梦幻紫",
-        Color(0xFF6750A4), Color(0xFF4E3D76),
-        Color(0xFF1E1E1E), Color(0xFF2A2640), Color(0xFF1E1E2E), Color(0xFF252540), Color(0xFF303055), 
-        Color.White, Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551),
-        Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
     MONET_SKY("天空蓝",
         Color(0xFF0B65D8), Color(0xFF3D5A80),
         Color(0xFF1E1E1E), Color(0xFF1E2530), Color(0xFF1E2A3F), Color(0xFF253650), Color(0xFF2D4560), 
@@ -61,11 +56,6 @@ enum class AppTheme(
     MONET_LAVENDER("薰衣草",
         Color(0xFF6F55C7), Color(0xFF5A4D80),
         Color(0xFF1E1E1E), Color(0xFF252230), Color(0xFF2D2840), Color(0xFF353050), Color(0xFF404060), 
-        Color.White, Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551),
-        Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
-    MONET_TEAL("青碧色",
-        Color(0xFF006B66), Color(0xFF3D6360),
-        Color(0xFF1E1E1E), Color(0xFF1E2826), Color(0xFF253330), Color(0xFF2A3E3C), Color(0xFF334B49), 
         Color.White, Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551),
         Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
     MONET_AMBER("琥珀金",

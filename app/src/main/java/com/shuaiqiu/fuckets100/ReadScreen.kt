@@ -1704,21 +1704,25 @@ private fun LocalAnswerParsingCard(
     }
     val statsText = "已解析 $sectionCount 个分区 · $questionCount 道题"
     val iconColor = when {
-        isFinished -> MaterialTheme.colorScheme.tertiary
+        isFinished -> MaterialTheme.colorScheme.primary
         isFailed -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.primary
     }
-    val containerColor = when {
-        isFinished -> MaterialTheme.colorScheme.tertiaryContainer
-        isFailed -> MaterialTheme.colorScheme.errorContainer
-        else -> MaterialTheme.colorScheme.primaryContainer
+    val containerColor = if (isFailed) {
+        MaterialTheme.colorScheme.errorContainer
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    val textColor = if (isFailed) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = containerColor
-        )
+        containerColor = containerColor,
+        borderColor = if (isFailed) MaterialTheme.colorScheme.error else Color.Transparent
     ) {
         Column(
             modifier = Modifier
@@ -1762,14 +1766,14 @@ private fun LocalAnswerParsingCard(
                     Text(
                         text = description,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = textColor
                     )
                     if (sectionCount > 0 || questionCount > 0) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = statsText,
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = textColor
                         )
                     }
                 }
@@ -1791,11 +1795,9 @@ private fun LocalAnswerParsingCard(
 
 @Composable
 private fun EmptyCloudHomeworkCard(label: String) {
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier
@@ -2035,11 +2037,9 @@ private fun PaperCard(
     searchQuery: String,
     showOnlyAnswered: Boolean
 ) {
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -2081,7 +2081,7 @@ private fun PaperCard(
             
             if (isExpanded) {
                 Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider()
+                FeThinDivider()
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 paper.sections.forEachIndexed { sectionIndex, section ->
@@ -2128,11 +2128,9 @@ private fun SectionItem(
         expanded = isExpanded
     }
     
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -2218,9 +2216,9 @@ private fun QuestionItem(
             .padding(vertical = 4.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) {
-                categoryStyle.container
+                MaterialTheme.colorScheme.surfaceContainerHigh
             } else {
-                MaterialTheme.colorScheme.surfaceContainerLow
+                MaterialTheme.colorScheme.surface
             }
         ),
         onClick = onClick
@@ -2236,7 +2234,7 @@ private fun QuestionItem(
                 Text(
                     "Q${question.displayOrder ?: questionIndex + 1}",
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (isSelected) categoryStyle.onContainer else categoryStyle.accent,
+                    color = categoryStyle.accent,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -2253,14 +2251,14 @@ private fun QuestionItem(
                 Icon(
                     Icons.Default.CheckCircle,
                     contentDescription = "有答案",
-                    tint = MaterialTheme.colorScheme.tertiary,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
             } else {
                 Icon(
                     Icons.AutoMirrored.Filled.HelpOutline,
                     contentDescription = "无答案",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    tint = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -2657,9 +2655,7 @@ private fun PaperDetailCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
     
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
-    ) {
+    FeOutlinedCard(containerColor = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.padding(12.dp)) {
             // 试卷标题行
             Row(
@@ -2708,7 +2704,7 @@ private fun PaperDetailCard(
             // 展开的分区详情
             if (expanded) {
                 Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                FeThinDivider()
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 paper.sections.forEachIndexed { sectionIndex, section ->
@@ -2734,9 +2730,7 @@ private fun SectionDetailItem(
     
     val categoryStyle = answerCategoryStyle(section.category, MaterialTheme.colorScheme.secondary)
     
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
-    ) {
+    FeOutlinedCard(containerColor = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.padding(10.dp)) {
             Row(
                 modifier = Modifier
@@ -2786,7 +2780,7 @@ private fun SectionDetailItem(
             // 展开的题目列表
             if (expanded) {
                 Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                FeThinDivider()
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 section.questions.forEachIndexed { qIndex, question ->
@@ -2816,15 +2810,9 @@ private fun QuestionDetailItem(
     var expanded by remember { mutableStateOf(false) }
     val hasAnswer = question.answer.isNotEmpty()
     
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (hasAnswer) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerHigh
-            }
-        ),
-        modifier = Modifier.clickable { expanded = !expanded }
+    FeOutlinedCard(
+        modifier = Modifier.clickable { expanded = !expanded },
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(8.dp)) {
             Row(
@@ -2850,7 +2838,7 @@ private fun QuestionDetailItem(
                         Icon(
                             if (hasAnswer) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                             contentDescription = null,
-                            tint = if (hasAnswer) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = if (hasAnswer) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -2874,7 +2862,7 @@ private fun QuestionDetailItem(
             // 展开时显示完整信息
             if (expanded) {
                 Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                FeThinDivider()
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 // 选项列表
@@ -2911,21 +2899,21 @@ private fun QuestionDetailItem(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "✓ 答案:",
+                            text = "答案:",
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = question.formattedAnswer,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -2947,13 +2935,11 @@ private fun CollapsibleItem(
 ) {
     var expanded by remember { mutableStateOf(defaultExpanded) }
     
-    Card(
+    FeOutlinedCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -3007,11 +2993,9 @@ private fun QuestionBlock(
 ) {
     val categoryStyle = fallbackAnswerCategoryStyle(categoryColor)
 
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // 题目头部
@@ -3052,7 +3036,7 @@ private fun QuestionBlock(
                     Icon(
                         Icons.Default.CheckCircle,
                         contentDescription = "有答案",
-                        tint = MaterialTheme.colorScheme.tertiary,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -3078,7 +3062,7 @@ private fun QuestionBlock(
             // 原文折叠项
             if (question.formattedOriginalText.isNotEmpty()) {
                 CollapsibleItem(
-                    title = "📖 原文",
+                    title = "原文",
                     content = question.formattedOriginalText,
                     defaultExpanded = defaultOriginalExpanded
                 )
@@ -3087,7 +3071,7 @@ private fun QuestionBlock(
             // 答案折叠项
             if (question.answerList.isNotEmpty()) {
                 CollapsibleItem(
-                    title = "✅ 答案",
+                    title = "答案",
                     content = question.formattedAnswer,
                     defaultExpanded = defaultAnswerExpanded
                 )
@@ -3187,7 +3171,7 @@ fun PaperDetailScreen(
             }
         }
 
-        HorizontalDivider()
+        FeThinDivider()
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -3259,11 +3243,9 @@ private fun MergedQuestionBlock(
     questions: List<ETS100AnswerReader.Question>,
     categoryStyle: AnswerCategoryColor
 ) {
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // 块头部 - 显示原文和题目数量
@@ -3307,7 +3289,7 @@ private fun MergedQuestionBlock(
                         Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = "全部有答案",
-                            tint = MaterialTheme.colorScheme.tertiary,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -3329,7 +3311,7 @@ private fun MergedQuestionBlock(
                 }
                 
                 Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                FeThinDivider()
                 Spacer(modifier = Modifier.height(12.dp))
             }
             
@@ -3337,7 +3319,7 @@ private fun MergedQuestionBlock(
             questions.forEachIndexed { index, question ->
                 if (index > 0) {
                     Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    FeThinDivider()
                     Spacer(modifier = Modifier.height(12.dp))
                 }
                 
@@ -3473,16 +3455,15 @@ private fun PaperListItem(
         "未知时间"
     }
     
-    Card(
+    FeOutlinedCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(
                 enabled = isClickEnabled,
                 onClick = onClick
             ),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
+        containerColor = MaterialTheme.colorScheme.surface,
+        borderColor = if (isFailed) MaterialTheme.colorScheme.error else Color.Transparent
     ) {
         Row(
             modifier = Modifier
@@ -3503,7 +3484,7 @@ private fun PaperListItem(
                             when {
                                 isLoading -> MaterialTheme.colorScheme.primaryContainer
                                 isFailed -> MaterialTheme.colorScheme.errorContainer
-                                else -> MaterialTheme.colorScheme.primaryContainer
+                                else -> MaterialTheme.colorScheme.surfaceContainer
                             },
                             RoundedCornerShape(12.dp)
                         ),
@@ -3546,13 +3527,13 @@ private fun PaperListItem(
                         if (paper.regionLabel != "未知") {
                             val regionContainerColor = when (paper.regionLabel) {
                                 "初中" -> MaterialTheme.colorScheme.secondaryContainer
-                                "高中" -> MaterialTheme.colorScheme.tertiaryContainer
-                                else -> MaterialTheme.colorScheme.primaryContainer
+                                "高中" -> MaterialTheme.colorScheme.secondaryContainer
+                                else -> MaterialTheme.colorScheme.surfaceContainer
                             }
                             val regionContentColor = when (paper.regionLabel) {
                                 "初中" -> MaterialTheme.colorScheme.onSecondaryContainer
-                                "高中" -> MaterialTheme.colorScheme.onTertiaryContainer
-                                else -> MaterialTheme.colorScheme.onPrimaryContainer
+                                "高中" -> MaterialTheme.colorScheme.onSecondaryContainer
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
                             Surface(
                                 color = regionContainerColor,
@@ -3582,13 +3563,13 @@ private fun PaperListItem(
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 modifier = Modifier.widthIn(min = 48.dp),
-                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                                color = MaterialTheme.colorScheme.primaryContainer,
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
                                     text = "已下载",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                                     maxLines = 1,
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -3676,7 +3657,7 @@ private fun PaperListItem(
                             Text(
                                 text = if (isDownloaded) "已下载" else "未加载",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -3705,11 +3686,9 @@ private fun CloudModeInfoCard(
     onStatusChange: (String) -> Unit
 ) {
     val isHistory = selectedStatus == CloudHomeworkState.STATUS_HISTORY
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        )
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier

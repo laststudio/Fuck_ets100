@@ -335,8 +335,6 @@ fun ThemeCard(
     }
 }
 
-
-
 @Composable
 private fun themeModeSegmentedButtonColors(): SegmentedButtonColors {
     return SegmentedButtonDefaults.colors(

@@ -45,7 +45,6 @@ import androidx.compose.animation.core.tween
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
-import kotlin.math.pow
 
 // ============================================================================
 // 瀛椾綋瀹氫箟 - 鐢ㄤ簬搴旂敤鏍囬鐨勯啋鐩睍绀烘晥鏋?// ============================================================================
@@ -396,7 +395,7 @@ fun FeAppMain() {
                                     navController.navigateRootTab(screen.route)
                                 },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
                                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
                                     indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -538,96 +537,100 @@ fun FeThemeWrapper(
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    val colorScheme = if (useDynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        if (isDarkMode) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-    } else if (isDarkMode) {
-        val primary = monetBlend(theme.primary, Color.White, 0.08f)
-        val primaryContainer = monetBlend(theme.primary, Color.Black, 0.55f)
-        val secondary = monetBlend(theme.primary, Color.White, 0.02f)
-        val secondaryContainer = monetBlend(theme.primary, Color.Black, 0.66f)
-        val tertiary = monetBlend(theme.primary, Color(0xFFFFD8E4), 0.32f)
-        val tertiaryContainer = monetBlend(tertiary, Color.Black, 0.66f)
-        val background = monetBlend(Color(0xFF111318), theme.primary, 0.035f)
-        val surface = monetBlend(Color(0xFF14151A), theme.primary, 0.035f)
-        val surfaceContainerLow = monetBlend(Color(0xFF1C1D22), theme.primary, 0.045f)
-        val surfaceContainer = monetBlend(Color(0xFF202127), theme.primary, 0.055f)
-        val surfaceContainerHigh = monetBlend(Color(0xFF2A2B31), theme.primary, 0.065f)
-        val surfaceContainerHighest = monetBlend(Color(0xFF35363D), theme.primary, 0.075f)
+    val dynamicSeed = if (useDynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        dynamicLightColorScheme(context).primary
+    } else {
+        null
+    }
+    val colorScheme = buildFeColorScheme(
+        theme = theme,
+        isDarkMode = isDarkMode,
+        dynamicSeed = dynamicSeed
+    )
+    MaterialTheme(colorScheme = colorScheme, content = content)
+}
+
+private fun buildFeColorScheme(
+    theme: AppTheme,
+    isDarkMode: Boolean,
+    dynamicSeed: Color?
+): ColorScheme {
+    val seed = dynamicSeed ?: theme.primary
+    val seedContainer = monetBlend(seed, Color.White, 0.86f)
+    val seedContainerDark = monetBlend(seed, Color(0xFF232934), 0.62f)
+    val accentAmount = if (dynamicSeed != null) 0.10f else 0f
+
+    return if (isDarkMode) {
+        val primary = monetBlend(seed, Color(0xFF232934), 0.08f)
+        val secondary = monetBlend(seed, Color(0xFFC8D5E8), 0.58f)
+        val tertiary = monetBlend(seed, Color(0xFFE0C7DF), 0.62f)
 
         darkColorScheme(
             primary = primary,
-            onPrimary = readableContentFor(primary),
-            primaryContainer = primaryContainer,
-            onPrimaryContainer = readableContentFor(primaryContainer),
-            background = background,
-            onBackground = Color(0xFFE3E2E8),
-            surface = surface,
-            onSurface = Color(0xFFE3E2E8),
-            surfaceContainerLow = surfaceContainerLow,
-            surfaceContainer = surfaceContainer,
-            surfaceContainerHigh = surfaceContainerHigh,
-            surfaceContainerHighest = surfaceContainerHighest,
-            onSurfaceVariant = Color(0xFFCAC4D0),
-            outline = Color(0xFF918F98),
-            outlineVariant = Color(0xFF46464F),
+            onPrimary = Color.White,
+            primaryContainer = seedContainerDark,
+            onPrimaryContainer = Color(0xFFEAF1FF),
+            secondary = secondary,
+            onSecondary = Color(0xFF1B2D44),
+            secondaryContainer = Color(0xFF334357),
+            onSecondaryContainer = Color(0xFFDCE8F8),
+            tertiary = tertiary,
+            onTertiary = Color(0xFF34253C),
+            tertiaryContainer = Color(0xFF493D55),
+            onTertiaryContainer = Color(0xFFF1DFF8),
+            background = Color(0xFF232934),
+            onBackground = Color(0xFFF2F5FA),
+            surface = Color(0xFF272E3A),
+            onSurface = Color(0xFFF2F5FA),
+            surfaceVariant = Color(0xFF3A4350),
+            onSurfaceVariant = Color(0xFFCBD2DD),
+            surfaceContainerLow = Color(0xFF2B333F),
+            surfaceContainer = Color(0xFF313A47),
+            surfaceContainerHigh = Color(0xFF394351),
+            surfaceContainerHighest = Color(0xFF424D5C),
+            outline = Color(0xFF8D96A5),
+            outlineVariant = Color(0xFF566273),
             error = Color(0xFFFFB4AB),
             onError = Color(0xFF690005),
-            errorContainer = Color(0xFF93000A),
-            onErrorContainer = Color(0xFFFFDAD6),
-            secondary = secondary,
-            onSecondary = readableContentFor(secondary),
-            secondaryContainer = secondaryContainer,
-            onSecondaryContainer = readableContentFor(secondaryContainer),
-            tertiary = tertiary,
-            onTertiary = readableContentFor(tertiary),
-            tertiaryContainer = tertiaryContainer,
-            onTertiaryContainer = readableContentFor(tertiaryContainer)
+            errorContainer = Color(0xFF5C1A1A),
+            onErrorContainer = Color(0xFFFFDAD6)
         )
     } else {
-        val primary = monetBlend(theme.primary, Color.Black, 0.50f)
-        val primaryContainer = monetBlend(theme.primary, Color.White, 0.76f)
-        val secondary = monetBlend(theme.primary, Color.Black, 0.62f)
-        val secondaryContainer = monetBlend(theme.primary, Color.White, 0.86f)
-        val tertiary = monetBlend(theme.primary, Color(0xFF7D5260), 0.40f)
-        val tertiaryContainer = monetBlend(tertiary, Color.White, 0.84f)
-        val background = monetBlend(Color(0xFFFFFBFF), theme.primary, 0.025f)
-        val surface = monetBlend(Color(0xFFFFFBFF), theme.primary, 0.018f)
-        val surfaceContainerLow = monetBlend(Color(0xFFF7F2FA), theme.primary, 0.018f)
-        val surfaceContainer = monetBlend(Color(0xFFF3EDF7), theme.primary, 0.026f)
-        val surfaceContainerHigh = monetBlend(Color(0xFFECE6F0), theme.primary, 0.032f)
-        val surfaceContainerHighest = monetBlend(Color(0xFFE6E0E9), theme.primary, 0.040f)
+        val primary = monetBlend(seed, Color(0xFF1D1F24), accentAmount)
+        val secondary = monetBlend(seed, Color(0xFF56606F), 0.58f)
+        val tertiary = monetBlend(seed, Color(0xFF765D75), 0.62f)
 
         lightColorScheme(
             primary = primary,
-            onPrimary = readableContentFor(primary),
-            primaryContainer = primaryContainer,
-            onPrimaryContainer = readableContentFor(primaryContainer),
-            background = background,
-            onBackground = Color(0xFF1D1B20),
-            surface = surface,
-            onSurface = Color(0xFF1D1B20),
-            surfaceContainerLow = surfaceContainerLow,
-            surfaceContainer = surfaceContainer,
-            surfaceContainerHigh = surfaceContainerHigh,
-            surfaceContainerHighest = surfaceContainerHighest,
-            onSurfaceVariant = Color(0xFF49454F),
-            outline = Color(0xFF79747E),
-            outlineVariant = Color(0xFFCAC4D0),
-            error = Color(0xFFBA1A1A),
-            onError = Color.White,
-            errorContainer = Color(0xFFFFDAD6),
-            onErrorContainer = Color(0xFF410002),
+            onPrimary = Color.White,
+            primaryContainer = seedContainer,
+            onPrimaryContainer = monetBlend(seed, Color.Black, 0.38f),
             secondary = secondary,
-            onSecondary = readableContentFor(secondary),
-            secondaryContainer = secondaryContainer,
-            onSecondaryContainer = readableContentFor(secondaryContainer),
+            onSecondary = Color.White,
+            secondaryContainer = Color(0xFFE8EEF8),
+            onSecondaryContainer = Color(0xFF1A2D45),
             tertiary = tertiary,
-            onTertiary = readableContentFor(tertiary),
-            tertiaryContainer = tertiaryContainer,
-            onTertiaryContainer = readableContentFor(tertiaryContainer)
+            onTertiary = Color.White,
+            tertiaryContainer = Color(0xFFF0E7F5),
+            onTertiaryContainer = Color(0xFF2D2434),
+            background = Color(0xFFF8F8FF),
+            onBackground = Color(0xFF1D1F24),
+            surface = Color(0xFFFFFFFF),
+            onSurface = Color(0xFF1D1F24),
+            surfaceVariant = Color(0xFFE8EDF7),
+            onSurfaceVariant = Color(0xFF535B67),
+            surfaceContainerLow = Color(0xFFFFFFFF),
+            surfaceContainer = Color(0xFFEFF2FB),
+            surfaceContainerHigh = Color(0xFFE8EDF7),
+            surfaceContainerHighest = Color(0xFFE1E7F2),
+            outline = Color(0xFF7C8492),
+            outlineVariant = Color(0xFFD6DAE4),
+            error = Color(0xFFB3261E),
+            onError = Color.White,
+            errorContainer = Color(0xFFFFEDEA),
+            onErrorContainer = Color(0xFF601410)
         )
     }
-    MaterialTheme(colorScheme = colorScheme, content = content)
 }
 
 private fun monetBlend(from: Color, to: Color, amount: Float): Color {
@@ -638,33 +641,6 @@ private fun monetBlend(from: Color, to: Color, amount: Float): Color {
         blue = from.blue + (to.blue - from.blue) * t,
         alpha = from.alpha + (to.alpha - from.alpha) * t
     )
-}
-
-private fun readableContentFor(background: Color): Color {
-    val dark = Color(0xFF1D1B20)
-    val light = Color.White
-    return if (contrastRatio(light, background) >= contrastRatio(dark, background)) light else dark
-}
-
-private fun contrastRatio(first: Color, second: Color): Float {
-    val firstLuminance = relativeLuminance(first)
-    val secondLuminance = relativeLuminance(second)
-    val lighter = maxOf(firstLuminance, secondLuminance)
-    val darker = minOf(firstLuminance, secondLuminance)
-    return (lighter + 0.05f) / (darker + 0.05f)
-}
-
-private fun relativeLuminance(color: Color): Float {
-    fun channel(value: Float): Float {
-        return if (value <= 0.03928f) {
-            value / 12.92f
-        } else {
-            ((value + 0.055f) / 1.055f).toDouble().pow(2.4).toFloat()
-        }
-    }
-    return 0.2126f * channel(color.red) +
-        0.7152f * channel(color.green) +
-        0.0722f * channel(color.blue)
 }
 
 // ============================================================================

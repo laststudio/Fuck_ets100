@@ -6,7 +6,6 @@ import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,8 +21,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -126,7 +123,7 @@ fun ActivationSettingsScreen(
             item {
                 Text("系统基础权限", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(8.dp))
-                ElevatedCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                FeOutlinedCard(modifier = Modifier.fillMaxWidth()) {
                     Column {
                         // 权限 1：全文件访问
                         SettingsListItem(
@@ -138,7 +135,7 @@ fun ActivationSettingsScreen(
                             if (!hasFilesPerm) PermissionsHelper.requestAllFilesAccess(context)
                             else Toast.makeText(context, "已经拥有全文件访问权限啦！", Toast.LENGTH_SHORT).show()
                         }
-                        HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                        FeThinDivider(Modifier.padding(horizontal = 16.dp))
 
                         // 权限 2：悬浮窗
                         SettingsListItem(
@@ -150,7 +147,7 @@ fun ActivationSettingsScreen(
                             if (!hasOverlayPerm) PermissionsHelper.requestOverlayPermission(context)
                             else Toast.makeText(context, "悬浮窗已经开启啦！", Toast.LENGTH_SHORT).show()
                         }
-                        HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                        FeThinDivider(Modifier.padding(horizontal = 16.dp))
 
                         // 权限 3：应用列表
                         SettingsListItem(
@@ -174,11 +171,16 @@ fun ActivationSettingsScreen(
                 val mode = ActivationMode.values().filter { it != ActivationMode.DEFAULT }[index]
                 val isSelected = currentMode == mode
 
-                OutlinedCard(
+                FeOutlinedCard(
                     onClick = { onModeSelected(mode) },
                     modifier = Modifier.fillMaxWidth(),
-                    border = BorderStroke(if(isSelected) 1.dp else (-1).dp, if(isSelected) MaterialTheme.colorScheme.primary.copy(alpha=0.5f) else Color.Transparent),
-                    colors = CardDefaults.outlinedCardColors(containerColor = if(isSelected) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerLow)
+                    shape = RoundedCornerShape(20.dp),
+                    containerColor = if (isSelected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    },
+                    borderColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.Top) {
@@ -188,10 +190,15 @@ fun ActivationSettingsScreen(
                                     Text(mode.name, fontWeight = FontWeight.Bold, color = if(isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                                     val badgeContainerColor = when (mode) {
                                         ActivationMode.ROOT -> MaterialTheme.colorScheme.errorContainer
-                                        ActivationMode.CLOUD -> if (cloudLoggedIn) successColor.copy(alpha = 0.18f) else MaterialTheme.colorScheme.errorContainer
+                                        ActivationMode.CLOUD -> if (cloudLoggedIn) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
                                         else -> MaterialTheme.colorScheme.primaryContainer
                                     }
-                                    Surface(color = badgeContainerColor, shape = RoundedCornerShape(50)) {
+                                    val badgeContentColor = when (mode) {
+                                        ActivationMode.ROOT -> MaterialTheme.colorScheme.onErrorContainer
+                                        ActivationMode.CLOUD -> if (cloudLoggedIn) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
+                                        else -> MaterialTheme.colorScheme.onPrimaryContainer
+                                    }
+                                    Surface(color = badgeContainerColor, contentColor = badgeContentColor, shape = RoundedCornerShape(50)) {
                                         val displayBadge = when {
                                             mode == ActivationMode.SHIZUKU && shizukuState.isRunning && shizukuState.permissionGranted -> "UID: ${shizukuState.uid}"
                                             mode == ActivationMode.CLOUD && cloudLoggedIn -> "已激活"
@@ -213,7 +220,7 @@ fun ActivationSettingsScreen(
                             exit = shrinkVertically() + fadeOut()
                         ) {
                             Column {
-                                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                                FeThinDivider(modifier = Modifier.padding(vertical = 12.dp))
 
                                 when (mode) {
                                     ActivationMode.SHIZUKU -> {
@@ -293,12 +300,10 @@ private fun ActivationDeviceCard(etsAppInfo: Pair<Boolean, String>?) {
     val successColor = MaterialTheme.colorScheme.primary
     val errorColor = MaterialTheme.colorScheme.error
 
-    ElevatedCard(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier.padding(24.dp),
@@ -339,7 +344,7 @@ private fun ActivationDeviceCard(etsAppInfo: Pair<Boolean, String>?) {
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+            FeThinDivider()
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -420,6 +425,11 @@ fun FeModeStatusCard(
     
     val isActive = statusColor == MaterialTheme.colorScheme.primary
     val animatedColor by animateColorAsState(statusColor, tween(800))
+    val statusContainerColor = if (isActive) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.errorContainer
+    }
     
     val (statusTitle, statusDesc, statusDetail) = when (currentMode) {
         ActivationMode.DEFAULT -> Triple("未激活", "尚未配置核心终端行为", null)
@@ -461,24 +471,14 @@ fun FeModeStatusCard(
         }
     }
     
-    ElevatedCard(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
-            Canvas(modifier = Modifier.matchParentSize()) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(animatedColor.copy(alpha = 0.2f), Color.Transparent),
-                        center = Offset(size.width, size.height / 2f),
-                        radius = size.width * 0.5f
-                    )
-                )
-            }
-
             Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceContainer, CircleShape), Alignment.Center) {
+                Box(Modifier.size(48.dp).background(statusContainerColor, CircleShape), Alignment.Center) {
                     Icon(
                         imageVector = if (isActive) Icons.Default.CheckCircle else Icons.Default.Warning,
                         contentDescription = null,
@@ -568,7 +568,7 @@ fun FeDirectReadActivationPanel(hasAllBasicPermissions: Boolean) {
                     OutlinedButton(
                         onClick = { },
                         enabled = false,
-                        border = BorderStroke(1.dp, successColor.copy(alpha = 0.5f)),
+                        border = BorderStroke(1.dp, successColor),
                         colors = ButtonDefaults.outlinedButtonColors(disabledContentColor = successColor),
                         modifier = Modifier.weight(1f).height(40.dp)
                     ) {
@@ -618,7 +618,7 @@ fun FeDirectReadActivationPanel(hasAllBasicPermissions: Boolean) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
-                            if (isZWCAvailable) successColor.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surfaceContainerHighest,
+                            if (isZWCAvailable) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
                             RoundedCornerShape(8.dp)
                         )
                         .padding(8.dp),
@@ -627,14 +627,14 @@ fun FeDirectReadActivationPanel(hasAllBasicPermissions: Boolean) {
                     Icon(
                         imageVector = if (isZWCAvailable) Icons.Default.CheckCircle else Icons.Default.Warning,
                         contentDescription = null,
-                        tint = if (isZWCAvailable) successColor else errorRedColor,
+                        tint = if (isZWCAvailable) MaterialTheme.colorScheme.onPrimaryContainer else errorRedColor,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = if (isZWCAvailable) "零宽字符漏洞可用" else "零宽字符漏洞不可用",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (isZWCAvailable) successColor else errorRedColor
+                        color = if (isZWCAvailable) MaterialTheme.colorScheme.onPrimaryContainer else errorRedColor
                     )
                 }
             }
@@ -651,7 +651,7 @@ fun FeDirectReadActivationPanel(hasAllBasicPermissions: Boolean) {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    directReadYellow.copy(alpha = 0.1f),
+                    MaterialTheme.colorScheme.surfaceContainer,
                     RoundedCornerShape(8.dp)
                 )
                 .padding(8.dp)
@@ -660,21 +660,21 @@ fun FeDirectReadActivationPanel(hasAllBasicPermissions: Boolean) {
                 Icon(
                     imageVector = Icons.Default.Info,
                     contentDescription = null,
-                    tint = directReadYellow,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = "漏洞直读说明",
                     style = MaterialTheme.typography.labelSmall,
-                    color = directReadYellow
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
             Spacer(Modifier.height(4.dp))
             Text(
                 text = "利用零宽字符绕过 Android 限制，直接读取 Android/data 目录。点击上方按钮测试漏洞可用性。",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -685,24 +685,19 @@ fun FeShizukuStatusCard(shizukuState: ShizukuState, context: android.content.Con
     val isRunning = shizukuState.isRunning
     val animatedColor by animateColorAsState(if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, tween(800))
 
-    ElevatedCard(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
-            Canvas(modifier = Modifier.matchParentSize()) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(animatedColor.copy(alpha = 0.15f), Color.Transparent),
-                        center = Offset(size.width, size.height / 2f),
-                        radius = size.width * 0.5f
-                    )
-                )
-            }
-
             Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceContainer, CircleShape), Alignment.Center) {
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .background(if (isRunning) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer, CircleShape),
+                    Alignment.Center
+                ) {
                     Icon(
                         imageVector = if (isRunning) Icons.Default.CheckCircle else Icons.Default.Warning,
                         contentDescription = null,
@@ -778,7 +773,7 @@ fun FeShizukuActivationPanel(
                     OutlinedButton(
                         onClick = { },
                         enabled = false,
-                        border = BorderStroke(1.dp, successColor.copy(alpha = 0.5f)),
+                        border = BorderStroke(1.dp, successColor),
                         colors = ButtonDefaults.outlinedButtonColors(disabledContentColor = successColor),
                         modifier = Modifier.weight(1f).height(40.dp)
                     ) {
@@ -844,7 +839,7 @@ fun FeRootActivationPanel(context: android.content.Context) {
                 OutlinedButton(
                     onClick = { },
                     enabled = false,
-                    border = BorderStroke(1.dp, successColor.copy(alpha = 0.5f)),
+                    border = BorderStroke(1.dp, successColor),
                     colors = ButtonDefaults.outlinedButtonColors(disabledContentColor = successColor),
                     modifier = Modifier.weight(1f).height(40.dp)
                 ) {
@@ -952,7 +947,7 @@ fun FeCloudActivationPanel(
                         onCloudAuthChanged()
                         Toast.makeText(context, "已退出登录", Toast.LENGTH_SHORT).show()
                     },
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.weight(1f).height(40.dp)
                 ) {
@@ -996,7 +991,7 @@ fun FeCloudActivationPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        cloudColor.copy(alpha = 0.1f),
+                        MaterialTheme.colorScheme.surfaceContainer,
                         RoundedCornerShape(8.dp)
                     )
                     .padding(8.dp)
@@ -1005,21 +1000,21 @@ fun FeCloudActivationPanel(
                     Icon(
                         imageVector = Icons.Default.Cloud,
                         contentDescription = null,
-                        tint = cloudColor,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = "云端模式说明",
                         style = MaterialTheme.typography.labelSmall,
-                        color = cloudColor
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = "通过 ETS100 云端 API 在线获取作业列表和答案，无需本地文件",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

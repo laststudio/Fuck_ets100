@@ -638,7 +638,7 @@ object ETS100AnswerReader {
         val template = detectResourceGroupTemplate(reader, folders)
         val firstFolder = folders.firstOrNull()
         return Paper(
-            paperId = (firstFolder?.name ?: "paper_$groupIndex").hashCode().toLong(),
+            paperId = buildLocalPaperId(folders, groupIndex),
             title = "${template.titlePrefix} #${groupIndex + 1}",
             dataFileName = firstFolder?.name.orEmpty(),
             fileSize = folders.sumOf { it.size },
@@ -663,7 +663,7 @@ object ETS100AnswerReader {
     ): Paper {
         val firstFolder = folders.firstOrNull()
         return Paper(
-            paperId = (firstFolder?.name ?: "paper_$groupIndex").hashCode().toLong(),
+            paperId = buildLocalPaperId(folders, groupIndex),
             title = "试卷 #${groupIndex + 1}",
             dataFileName = firstFolder?.name.orEmpty(),
             fileSize = folders.sumOf { it.size },
@@ -680,6 +680,18 @@ object ETS100AnswerReader {
             regionLabel = "解析中",
             paperName = null
         )
+    }
+
+    private fun buildLocalPaperId(
+        folders: List<ETS100FileReader.FileItem>,
+        groupIndex: Int
+    ): Long {
+        val identity = folders
+            .map { it.name }
+            .sorted()
+            .joinToString(separator = "|")
+            .ifEmpty { "paper_$groupIndex" }
+        return identity.hashCode().toLong()
     }
 
     private fun parseResourceGroup(
@@ -1146,7 +1158,7 @@ object ETS100AnswerReader {
         if (parsedSections.isEmpty()) return emptyList()
 
         val orderedSections = mergeAndOrderLocalSections(parsedSections, kind.sectionOrder)
-        val paperId = folders.first().name.hashCode().toLong()
+        val paperId = buildLocalPaperId(folders, groupIndex)
         return listOf(
             Paper(
                 paperId = paperId,

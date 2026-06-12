@@ -1,6 +1,5 @@
 package com.shuaiqiu.fuckets100
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -49,19 +48,19 @@ fun SettingsScreen(navController: NavHostController) {
             Spacer(Modifier.height(24.dp))
 
             // 运行授权设置
-            ElevatedCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            FeOutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     SettingsListItem(Icons.Default.Build, "运行授权", "配置 Shizuku、Root 或其他模式") {
                         context.startActivity(ActivationActivity.createIntent(context))
                     }
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                    FeThinDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
                     SettingsListItem(Icons.Default.Tune, "通用设置", "语言、时区等常规选项") {
                         context.startActivity(GeneralSettingsActivity.createIntent(context))
                     }
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                    FeThinDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
-                    SettingsListItem(Icons.Default.Palette, "主题", "莫奈系列与黑白系列主题切换") {
+                    SettingsListItem(Icons.Default.Palette, "主题", "彩色主题与明暗模式") {
                         context.startActivity(ThemeSettingsActivity.createIntent(context))
                     }
                 }
@@ -70,16 +69,16 @@ fun SettingsScreen(navController: NavHostController) {
             Spacer(Modifier.height(24.dp))
 
             // 其他选项
-            ElevatedCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            FeOutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     SettingsListItem(Icons.Default.Info, "关于 Fe", "应用信息与致谢", hideChevron = true) {
                         showAboutDialog = true
                     }
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                    FeThinDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     SettingsListItem(Icons.Default.Gavel, "法律信息与使用守则", "使用前请阅读并遵守", hideChevron = false) {
                         context.startActivity(LegalActivity.createIntent(context))
                     }
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                    FeThinDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     SettingsListItem(Icons.AutoMirrored.Filled.Help, "访问官网", "lastudio.cc", hideChevron = true) {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://lastudio.cc"))
                         context.startActivity(intent)
@@ -102,10 +101,10 @@ fun AboutDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
 
     Dialog(onDismissRequest = onDismiss) {
-        ElevatedCard(
+        FeOutlinedCard(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
@@ -144,11 +143,9 @@ fun AboutDialog(onDismiss: () -> Unit) {
                 
                 // 宝贝分为两个卡片喵~
                 // 软件信息卡片
-                ElevatedCard(
+                FeOutlinedCard(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    )
+                    containerColor = MaterialTheme.colorScheme.surface
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -184,20 +181,16 @@ fun AboutDialog(onDismiss: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.height(12.dp))
-                        Row(
+                        FeInfoSurface(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
                                 .clickable {
                                 val intent = Intent(
                                     Intent.ACTION_VIEW,
                                     Uri.parse("https://github.com/qiuqiqiuqid/Fuck_ets100")
                                 )
                                 context.startActivity(intent)
-                                }
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                },
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
                         ) {
                             Icon(
                                 Icons.Default.Code,
@@ -232,11 +225,9 @@ fun AboutDialog(onDismiss: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
                 
                 // 关于作者卡片
-                ElevatedCard(
+                FeOutlinedCard(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    )
+                    containerColor = MaterialTheme.colorScheme.surface
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -254,18 +245,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Spacer(Modifier.width(8.dp))
-                            // 闪烁的在线指示灯喵~
-                            val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-                            val pulseAlpha by infiniteTransition.animateFloat(
-                                initialValue = 0.2f,
-                                targetValue = 1f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(1200, easing = FastOutLinearInEasing),
-                                    repeatMode = RepeatMode.Reverse
-                                ),
-                                label = "alpha"
-                            )
-                            Box(modifier = Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = pulseAlpha), CircleShape))
+                            Box(modifier = Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
                         }
                         Spacer(Modifier.height(12.dp))
                         Row(
@@ -286,16 +266,12 @@ fun AboutDialog(onDismiss: () -> Unit) {
                             )
                         }
                         Spacer(Modifier.height(12.dp))
-                        Row(
+                        FeInfoSurface(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
                                 .clickable {
                                     context.startActivity(DonateActivity.createIntent(context))
-                                }
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                },
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
                         ) {
                             Icon(
                                 Icons.Default.Favorite,

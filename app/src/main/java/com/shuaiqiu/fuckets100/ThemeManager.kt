@@ -28,55 +28,45 @@ enum class AppTheme(
     val isDark: Boolean
 ) {
     // ============ 莫奈系列（彩色版） ============
-    MONET_PURPLE("梦幻紫", 
-        Color(0xFFD0BCFF), Color(0xFF4E3D76), 
-        Color(0xFF1E1E1E), Color(0xFF2A2640), Color(0xFF1E1E2E), Color(0xFF252540), Color(0xFF303055), 
-        Color(0xFF37265E), Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551), 
-        Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
-    MONET_SKY("天空蓝", 
-        Color(0xFFA8C8FF), Color(0xFF3D5A80), 
+    MONET_SKY("天空蓝",
+        Color(0xFF0B65D8), Color(0xFF3D5A80),
         Color(0xFF1E1E1E), Color(0xFF1E2530), Color(0xFF1E2A3F), Color(0xFF253650), Color(0xFF2D4560), 
-        Color(0xFF2A3F55), Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551), 
+        Color.White, Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551),
         Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
-    MONET_MINT("薄荷绿", 
-        Color(0xFFA8E6CF), Color(0xFF3D6B5A), 
+    MONET_MINT("薄荷绿",
+        Color(0xFF007A5A), Color(0xFF3D6B5A),
         Color(0xFF1E1E1E), Color(0xFF1E2A25), Color(0xFF1E3530), Color(0xFF254040), Color(0xFF2D4D4D), 
-        Color(0xFF2A4D3D), Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551), 
+        Color.White, Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551),
         Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
-    MONET_CORAL("珊瑚橙", 
-        Color(0xFFFFB4A2), Color(0xFF805040), 
+    MONET_CORAL("珊瑚橙",
+        Color(0xFFB85335), Color(0xFF805040),
         Color(0xFF1E1E1E), Color(0xFF2A2520), Color(0xFF352F28), Color(0xFF403530), Color(0xFF4D3D35), 
-        Color(0xFF553320), Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551), 
+        Color.White, Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551),
         Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
-    MONET_SAKURA("樱花粉", 
-        Color(0xFFFFB7C5), Color(0xFF804A58), 
+    MONET_SAKURA("樱花粉",
+        Color(0xFFB23A5C), Color(0xFF804A58),
         Color(0xFF1E1E1E), Color(0xFF2A2528), Color(0xFF352530), Color(0xFF402D38), Color(0xFF4D3542), 
-        Color(0xFF553040), Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551), 
+        Color.White, Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551),
         Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
-    MONET_SUNFLOWER("向日葵", 
-        Color(0xFFFFD93D), Color(0xFF807030), 
+    MONET_SUNFLOWER("向日葵",
+        Color(0xFF7A6100), Color(0xFF807030),
         Color(0xFF1E1E1E), Color(0xFF2A2820), Color(0xFF353025), Color(0xFF403828), Color(0xFF4D4530), 
-        Color(0xFF554D20), Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551), 
+        Color.White, Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551),
         Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
-    MONET_LAVENDER("薰衣草", 
-        Color(0xFFC9B1FF), Color(0xFF5A4D80), 
+    MONET_LAVENDER("薰衣草",
+        Color(0xFF6F55C7), Color(0xFF5A4D80),
         Color(0xFF1E1E1E), Color(0xFF252230), Color(0xFF2D2840), Color(0xFF353050), Color(0xFF404060), 
-        Color(0xFF3D3555), Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551), 
+        Color.White, Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551),
         Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
-    MONET_TEAL("青碧色", 
-        Color(0xFF80CBC4), Color(0xFF3D6360), 
-        Color(0xFF1E1E1E), Color(0xFF1E2826), Color(0xFF253330), Color(0xFF2A3E3C), Color(0xFF334B49), 
-        Color(0xFF2A4442), Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551), 
-        Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
-    MONET_AMBER("琥珀金", 
-        Color(0xFFFFCC80), Color(0xFF806040), 
+    MONET_AMBER("琥珀金",
+        Color(0xFF8A5D00), Color(0xFF806040),
         Color(0xFF1E1E1E), Color(0xFF2A2520), Color(0xFF352D28), Color(0xFF403530), Color(0xFF4D3D38), 
-        Color(0xFF55402A), Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551), 
+        Color.White, Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551),
         Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
-    MONET_ROSE("玫瑰红", 
-        Color(0xFFE57373), Color(0xFF803D3D), 
+    MONET_ROSE("玫瑰红",
+        Color(0xFFB3261E), Color(0xFF803D3D),
         Color(0xFF1E1E1E), Color(0xFF282020), Color(0xFF302528), Color(0xFF382D30), Color(0xFF423538), 
-        Color(0xFF552A2A), Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551), 
+        Color.White, Color(0xFFE5E1E7), Color(0xFFCBC4D2), Color(0xFF494551),
         Color(0xFFFFB4AB), Color(0xFF93000A), Color(0xFFFFB4AB), Color(0xFF6F3A34), true),
 
     // ============ 黑白系列（灰度版本） ============
@@ -124,13 +114,13 @@ object ThemeManager {
     }
     
     fun getSavedTheme(): AppTheme {
-        val themeName = prefs?.getString(KEY_THEME, AppTheme.MONET_PURPLE.name) ?: AppTheme.MONET_PURPLE.name
+        val themeName = prefs?.getString(KEY_THEME, AppTheme.MONET_SKY.name) ?: AppTheme.MONET_SKY.name
         val savedTheme = try {
             AppTheme.valueOf(themeName)
         } catch (e: IllegalArgumentException) {
-            AppTheme.MONET_PURPLE
+            AppTheme.MONET_SKY
         }
-        return if (savedTheme.name.startsWith("MONET_")) savedTheme else AppTheme.MONET_PURPLE
+        return if (savedTheme.name.startsWith("MONET_")) savedTheme else AppTheme.MONET_SKY
     }
     
     fun saveTheme(theme: AppTheme) {

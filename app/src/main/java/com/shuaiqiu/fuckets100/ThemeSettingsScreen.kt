@@ -78,7 +78,7 @@ fun ThemeSettingsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
             Text(
-                "选择应用主色调",
+                "选择白天和夜间模式共用的主色调",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -140,7 +140,7 @@ fun ThemeSettingsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
             Text(
-                "在当前颜色主题上切换日间或夜间",
+                "在当前彩色主题上切换白天或夜间",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -291,7 +291,7 @@ fun ThemeCard(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) {
-                theme.primaryContainer.copy(alpha = 0.3f)
+                MaterialTheme.colorScheme.primaryContainer
             } else {
                 MaterialTheme.colorScheme.surfaceContainerLow
             }
@@ -325,13 +325,15 @@ fun ThemeCard(
             Text(
                 theme.displayName,
                 style = MaterialTheme.typography.labelMedium,
-                color = if (isSelected) theme.primary else MaterialTheme.colorScheme.onSurface
+                color = if (isSelected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
             )
         }
     }
 }
-
-
 
 @Composable
 private fun themeModeSegmentedButtonColors(): SegmentedButtonColors {

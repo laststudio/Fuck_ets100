@@ -23,14 +23,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -387,8 +384,8 @@ fun FeAppMain() {
                 Screen.Settings.route
             )) {
                     NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                        tonalElevation = 8.dp
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        tonalElevation = 0.dp
                     ) {
                         listOf(Screen.Home, Screen.Read, Screen.Settings).forEach { screen ->
                             NavigationBarItem(
@@ -398,9 +395,9 @@ fun FeAppMain() {
                                     navController.navigateRootTab(screen.route)
                                 },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
                                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                                    indicatorColor = MaterialTheme.colorScheme.primary,
+                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -540,70 +537,100 @@ fun FeThemeWrapper(
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    val colorScheme = if (useDynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        if (isDarkMode) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-    } else if (isDarkMode) {
-        val background = monetBlend(Color(0xFF111014), theme.primary, 0.055f)
-        val surface = monetBlend(Color(0xFF141218), theme.primary, 0.05f)
-        val surfaceContainerLow = monetBlend(Color(0xFF1D1B20), theme.primary, 0.06f)
-        val surfaceContainer = monetBlend(Color(0xFF211F26), theme.primary, 0.08f)
-        val surfaceContainerHigh = monetBlend(Color(0xFF2B2930), theme.primary, 0.09f)
-        val surfaceContainerHighest = monetBlend(Color(0xFF36343B), theme.primary, 0.10f)
+    val dynamicSeed = if (useDynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        dynamicLightColorScheme(context).primary
+    } else {
+        null
+    }
+    val colorScheme = buildFeColorScheme(
+        theme = theme,
+        isDarkMode = isDarkMode,
+        dynamicSeed = dynamicSeed
+    )
+    MaterialTheme(colorScheme = colorScheme, content = content)
+}
+
+private fun buildFeColorScheme(
+    theme: AppTheme,
+    isDarkMode: Boolean,
+    dynamicSeed: Color?
+): ColorScheme {
+    val seed = dynamicSeed ?: theme.primary
+    val seedContainer = monetBlend(seed, Color.White, 0.86f)
+    val seedContainerDark = monetBlend(seed, Color(0xFF232934), 0.62f)
+    val accentAmount = if (dynamicSeed != null) 0.10f else 0f
+
+    return if (isDarkMode) {
+        val primary = monetBlend(seed, Color(0xFF232934), 0.08f)
+        val secondary = monetBlend(seed, Color(0xFFC8D5E8), 0.58f)
+        val tertiary = monetBlend(seed, Color(0xFFE0C7DF), 0.62f)
 
         darkColorScheme(
-            primary = theme.primary,
-            primaryContainer = theme.primaryContainer,
-            onPrimary = theme.onPrimary,
-            onPrimaryContainer = Color(0xFFEADDFF),
-            background = background,
-            surface = surface,
-            surfaceContainerLow = surfaceContainerLow,
-            surfaceContainer = surfaceContainer,
-            surfaceContainerHigh = surfaceContainerHigh,
-            surfaceContainerHighest = surfaceContainerHighest,
-            onSurface = Color(0xFFE6E0E9),
-            onSurfaceVariant = Color(0xFFCAC4D0),
-            outlineVariant = theme.outlineVariant,
-            error = theme.error,
-            errorContainer = theme.errorContainer,
-            onErrorContainer = theme.error,
-            secondary = theme.secondary,
-            secondaryContainer = theme.secondaryContainer
+            primary = primary,
+            onPrimary = Color.White,
+            primaryContainer = seedContainerDark,
+            onPrimaryContainer = Color(0xFFEAF1FF),
+            secondary = secondary,
+            onSecondary = Color(0xFF1B2D44),
+            secondaryContainer = Color(0xFF334357),
+            onSecondaryContainer = Color(0xFFDCE8F8),
+            tertiary = tertiary,
+            onTertiary = Color(0xFF34253C),
+            tertiaryContainer = Color(0xFF493D55),
+            onTertiaryContainer = Color(0xFFF1DFF8),
+            background = Color(0xFF232934),
+            onBackground = Color(0xFFF2F5FA),
+            surface = Color(0xFF272E3A),
+            onSurface = Color(0xFFF2F5FA),
+            surfaceVariant = Color(0xFF3A4350),
+            onSurfaceVariant = Color(0xFFCBD2DD),
+            surfaceContainerLow = Color(0xFF2B333F),
+            surfaceContainer = Color(0xFF313A47),
+            surfaceContainerHigh = Color(0xFF394351),
+            surfaceContainerHighest = Color(0xFF424D5C),
+            outline = Color(0xFF8D96A5),
+            outlineVariant = Color(0xFF566273),
+            error = Color(0xFFFFB4AB),
+            onError = Color(0xFF690005),
+            errorContainer = Color(0xFF5C1A1A),
+            onErrorContainer = Color(0xFFFFDAD6)
         )
     } else {
-        val primary = monetBlend(theme.primary, Color.Black, 0.38f)
-        val primaryContainer = monetBlend(theme.primary, Color.White, 0.78f)
-        val secondary = monetBlend(theme.primary, Color.Black, 0.50f)
-        val secondaryContainer = monetBlend(theme.primary, Color.White, 0.84f)
-        val background = monetBlend(Color(0xFFFFFBFE), theme.primary, 0.045f)
-        val surface = monetBlend(Color(0xFFFFFBFE), theme.primary, 0.03f)
-        val surfaceContainerLow = monetBlend(Color(0xFFF7F2FA), theme.primary, 0.035f)
-        val surfaceContainer = monetBlend(Color(0xFFF3EDF7), theme.primary, 0.045f)
-        val surfaceContainerHigh = monetBlend(Color(0xFFECE6F0), theme.primary, 0.055f)
-        val surfaceContainerHighest = monetBlend(Color(0xFFE6E0E9), theme.primary, 0.065f)
+        val primary = monetBlend(seed, Color(0xFF1D1F24), accentAmount)
+        val secondary = monetBlend(seed, Color(0xFF56606F), 0.58f)
+        val tertiary = monetBlend(seed, Color(0xFF765D75), 0.62f)
 
         lightColorScheme(
             primary = primary,
-            primaryContainer = primaryContainer,
             onPrimary = Color.White,
-            onPrimaryContainer = monetBlend(primary, Color.Black, 0.35f),
-            background = background,
-            surface = surface,
-            surfaceContainerLow = surfaceContainerLow,
-            surfaceContainer = surfaceContainer,
-            surfaceContainerHigh = surfaceContainerHigh,
-            surfaceContainerHighest = surfaceContainerHighest,
-            onSurface = Color(0xFF1C1B1F),
-            onSurfaceVariant = Color(0xFF49454F),
-            outlineVariant = Color(0xFFCAC4D0),
-            error = Color(0xFFBA1A1A),
-            errorContainer = Color(0xFFFFDAD6),
-            onErrorContainer = Color(0xFF410002),
+            primaryContainer = seedContainer,
+            onPrimaryContainer = monetBlend(seed, Color.Black, 0.38f),
             secondary = secondary,
-            secondaryContainer = secondaryContainer
+            onSecondary = Color.White,
+            secondaryContainer = Color(0xFFE8EEF8),
+            onSecondaryContainer = Color(0xFF1A2D45),
+            tertiary = tertiary,
+            onTertiary = Color.White,
+            tertiaryContainer = Color(0xFFF0E7F5),
+            onTertiaryContainer = Color(0xFF2D2434),
+            background = Color(0xFFF8F8FF),
+            onBackground = Color(0xFF1D1F24),
+            surface = Color(0xFFFFFFFF),
+            onSurface = Color(0xFF1D1F24),
+            surfaceVariant = Color(0xFFE8EDF7),
+            onSurfaceVariant = Color(0xFF535B67),
+            surfaceContainerLow = Color(0xFFFFFFFF),
+            surfaceContainer = Color(0xFFEFF2FB),
+            surfaceContainerHigh = Color(0xFFE8EDF7),
+            surfaceContainerHighest = Color(0xFFE1E7F2),
+            outline = Color(0xFF7C8492),
+            outlineVariant = Color(0xFFD6DAE4),
+            error = Color(0xFFB3261E),
+            onError = Color.White,
+            errorContainer = Color(0xFFFFEDEA),
+            onErrorContainer = Color(0xFF601410)
         )
     }
-    MaterialTheme(colorScheme = colorScheme, content = content)
 }
 
 private fun monetBlend(from: Color, to: Color, amount: Float): Color {
@@ -626,21 +653,13 @@ private fun monetBlend(from: Color, to: Color, amount: Float): Color {
 fun FeTopAppBar(title: String) {
     CenterAlignedTopAppBar(
         title = {
-            val glowColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-            val feGlowShadow = Shadow(
-                color = glowColor,
-                offset = Offset(0f, 0f),
-                blurRadius = 24f
-            )
-
             Text(
                 text = title,
-                fontSize = 44.sp,
-                letterSpacing = 0.15.em,
+                fontSize = 36.sp,
+                letterSpacing = 0.em,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.primary,
                 fontFamily = RighteousFont,
-                style = TextStyle(shadow = feGlowShadow),
                 modifier = Modifier.padding(bottom = 4.dp)
             )
         },

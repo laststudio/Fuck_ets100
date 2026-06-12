@@ -3,7 +3,6 @@ package com.shuaiqiu.fuckets100
 import android.os.SystemClock
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,8 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -139,10 +136,9 @@ fun HomeScreen(
         else -> false
     }
 
-    // 系统状态标签和颜色
     val sysLabel = if (isTrulyActivated) "SYS_READY" else "SYS_OFFLINE"
-    val activeColor = if (isTrulyActivated) mode.hexColor else Color(0xFFDC2626) // 未激活时显示红色警告
-    
+    val activeColor = if (isTrulyActivated) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+
     Scaffold(
         topBar = { FeTopAppBar(title = "Fe") }
     ) { paddingValues ->
@@ -153,19 +149,17 @@ fun HomeScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-
-            // 系统状态指示器 + 模式标签
             val dotColor by animateColorAsState(targetValue = activeColor, animationSpec = tween(500))
             Row(
-                Modifier.fillMaxWidth(), 
-                horizontalArrangement = Arrangement.End, 
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(Modifier.size(6.dp).background(dotColor, CircleShape))
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    sysLabel, 
-                    style = MaterialTheme.typography.labelSmall, 
+                    sysLabel,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -175,7 +169,6 @@ fun HomeScreen(
                 mode = mode, 
                 shizukuState = shizukuState, 
                 isTrulyActivated = isTrulyActivated, 
-                activeColor = activeColor, 
                 cloudLoggedIn = runtimeStatus.cloudLoggedIn,
                 hasFilesPerm = runtimeStatus.hasFilesPerm,
                 hasOverlayPerm = runtimeStatus.hasOverlayPerm,
@@ -218,7 +211,6 @@ fun StatusCard(
     mode: ActivationMode,
     shizukuState: ShizukuState,
     isTrulyActivated: Boolean,
-    activeColor: Color,
     cloudLoggedIn: Boolean,
     hasFilesPerm: Boolean,
     hasOverlayPerm: Boolean,
@@ -227,7 +219,21 @@ fun StatusCard(
     hasRootAvailable: Boolean,
     onNavigateToActivation: () -> Unit
 ) {
-    val animatedColor by animateColorAsState(targetValue = activeColor, animationSpec = tween(600))
+    val statusContentColor = if (isTrulyActivated) {
+        Color.White
+    } else {
+        MaterialTheme.colorScheme.onErrorContainer
+    }
+    val statusIconContainerColor = if (isTrulyActivated) {
+        Color.White
+    } else {
+        MaterialTheme.colorScheme.error
+    }
+    val statusIconColor = if (isTrulyActivated) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onError
+    }
 
     // 根据当前状态显示不同的标题
     val displayTitle = when {
@@ -244,60 +250,43 @@ fun StatusCard(
     // 选择图标 - 激活时使用模式图标，未激活时使用警告图标
     val displayIcon = if (isTrulyActivated) mode.icon else Icons.Default.Warning
 
-    ElevatedCard(
+    FeStatusCard(
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onNavigateToActivation),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+            .fillMaxWidth(),
+        onClick = onNavigateToActivation,
+        active = isTrulyActivated
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
-            // 背景渐变效果
-            Canvas(modifier = Modifier.matchParentSize()) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(animatedColor.copy(alpha = 0.2f), Color.Transparent),
-                        center = Offset(0f, size.height),
-                        radius = size.height * 0.8f
-                    )
-                )
-            }
-            
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(26.dp)
+                    .padding(horizontal = 28.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 // 顶部行 - 图标和设置按钮
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Box(
                         Modifier
                             .size(48.dp)
-                            .background(animatedColor.copy(alpha = 0.12f), CircleShape),
+                            .background(statusIconContainerColor, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(displayIcon, null, tint = animatedColor)
+                        Icon(displayIcon, null, tint = statusIconColor, modifier = Modifier.size(28.dp))
                     }
                     Icon(
                         Icons.Default.Settings, 
                         null, 
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        tint = statusContentColor.copy(alpha = 0.88f)
                     )
                 }
 
                 // 底部区域 - 状态信息
-                Column(horizontalAlignment = Alignment.End, modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        "STATUS", 
-                        style = MaterialTheme.typography.labelSmall, 
-                        color = animatedColor.copy(alpha = 0.8f)
-                    )
+                Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
                     Text(
                         displayTitle, 
                         style = MaterialTheme.typography.headlineMedium, 
                         fontWeight = FontWeight.Bold, 
-                        color = animatedColor
+                        color = statusContentColor
                     )
 
                     // 详细说明文字
@@ -313,7 +302,7 @@ fun StatusCard(
                         Text(
                             text = subText, 
                             style = MaterialTheme.typography.labelSmall, 
-                            color = animatedColor.copy(alpha = 0.6f)
+                            color = statusContentColor.copy(alpha = 0.88f)
                         )
                     } else if (mode == ActivationMode.SHIZUKU) {
                         val subText = when {
@@ -331,7 +320,7 @@ fun StatusCard(
                         Text(
                             text = subText, 
                             style = MaterialTheme.typography.labelSmall, 
-                            color = animatedColor.copy(alpha = 0.6f)
+                            color = statusContentColor.copy(alpha = 0.88f)
                         )
                     } else if (mode == ActivationMode.ROOT) {
                         val subText = when {
@@ -341,19 +330,19 @@ fun StatusCard(
                         Text(
                             text = subText, 
                             style = MaterialTheme.typography.labelSmall, 
-                            color = animatedColor.copy(alpha = 0.6f)
+                            color = statusContentColor.copy(alpha = 0.88f)
                         )
                     } else if (mode == ActivationMode.DIRECT_READ) {
                         Text(
                             text = "Direct Read 模式已就绪", 
                             style = MaterialTheme.typography.labelSmall, 
-                            color = animatedColor.copy(alpha = 0.6f)
+                            color = statusContentColor.copy(alpha = 0.88f)
                         )
                     } else if (mode == ActivationMode.DEFAULT) {
                         Text(
                             text = "请授权基础权限后选择激活模式", 
                             style = MaterialTheme.typography.labelSmall, 
-                            color = animatedColor.copy(alpha = 0.6f)
+                            color = statusContentColor.copy(alpha = 0.88f)
                         )
                     }
                 }
@@ -414,12 +403,12 @@ private fun RemoteOverviewCard(
     meta: String? = null,
     onClick: () -> Unit
 ) {
-    ElevatedCard(
+    FeOutlinedCard(
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .fillMaxWidth(),
+        onClick = onClick,
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier.padding(18.dp),
@@ -457,7 +446,7 @@ private fun RemoteOverviewCard(
                 Icon(
                     Icons.Default.ChevronRight,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -465,7 +454,7 @@ private fun RemoteOverviewCard(
                 title = announcementTitle,
                 body = announcementMessage
             )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+            FeThinDivider()
             RemotePreviewLine(
                 title = changelogTitle,
                 body = changelogSummary
@@ -504,12 +493,12 @@ private fun CompactDonateCard(
     title: String,
     onClick: () -> Unit
 ) {
-    ElevatedCard(
+    FeOutlinedCard(
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .fillMaxWidth(),
+        onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -538,7 +527,7 @@ private fun CompactDonateCard(
             Icon(
                 Icons.Default.ChevronRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

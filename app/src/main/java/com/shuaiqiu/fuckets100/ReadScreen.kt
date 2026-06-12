@@ -304,6 +304,23 @@ private fun normalizeCloudParsedSections(
     return normalizedSections
 }
 
+@Composable
+private fun answerCategoryStyle(
+    category: String,
+    fallbackAccent: Color = MaterialTheme.colorScheme.primary
+): AnswerCategoryColor {
+    return answerCategoryPalette()[category] ?: fallbackAnswerCategoryStyle(fallbackAccent)
+}
+
+@Composable
+private fun fallbackAnswerCategoryStyle(accent: Color): AnswerCategoryColor {
+    return AnswerCategoryColor(
+        accent = accent,
+        container = MaterialTheme.colorScheme.secondaryContainer,
+        onContainer = MaterialTheme.colorScheme.onSecondaryContainer
+    )
+}
+
 /**
  * 阅读界面 - 显示ETS 100答案的阅读界面
  * 支持多种激活模式（Shizuku、Root、SAF等）
@@ -439,14 +456,7 @@ fun ReadScreen(
         }
     }
     
-    // 分区颜色映射 - 宝贝这个和试卷详情页面的颜色一致喵~
-    val categoryColors = mapOf(
-        "read_chapter" to Color(0xFF6366F1),        // 紫色 - 模仿朗读
-        "simple_expression_ufi" to Color(0xFF22C55E), // 绿色 - 听说信息
-        "simple_expression_ufk" to Color(0xFFF59E0B), // 橙色 - 问答信息
-        "topic" to Color(0xFF3B82F6),              // 蓝色 - 信息转述
-        "simple_expression_ufj" to Color(0xFFEC4899)  // 粉色 - 询问信息
-    )
+    val categoryColors = answerCategoryColors()
     
     // 时间戳格式化器
     val timeFormatter = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.getDefault())
@@ -1634,9 +1644,8 @@ private fun DeletingOverlay() {
     Dialog(onDismissRequest = {}) {
         Card(
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            )
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
@@ -1695,21 +1704,25 @@ private fun LocalAnswerParsingCard(
     }
     val statsText = "已解析 $sectionCount 个分区 · $questionCount 道题"
     val iconColor = when {
-        isFinished -> Color(0xFF22C55E)
+        isFinished -> MaterialTheme.colorScheme.primary
         isFailed -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.primary
     }
-    val containerColor = when {
-        isFinished -> Color(0xFF22C55E).copy(alpha = 0.12f)
-        isFailed -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
-        else -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+    val containerColor = if (isFailed) {
+        MaterialTheme.colorScheme.errorContainer
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    val textColor = if (isFailed) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = containerColor
-        )
+        containerColor = containerColor,
+        borderColor = if (isFailed) MaterialTheme.colorScheme.error else Color.Transparent
     ) {
         Column(
             modifier = Modifier
@@ -1753,14 +1766,14 @@ private fun LocalAnswerParsingCard(
                     Text(
                         text = description,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = textColor
                     )
                     if (sectionCount > 0 || questionCount > 0) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = statsText,
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = textColor
                         )
                     }
                 }
@@ -1782,11 +1795,9 @@ private fun LocalAnswerParsingCard(
 
 @Composable
 private fun EmptyCloudHomeworkCard(label: String) {
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        )
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier
@@ -1976,9 +1987,8 @@ internal fun SubFabItem(
     ) {
         // 文字标签
         Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
-            shape = RoundedCornerShape(4.dp),
-            shadowElevation = 0.dp
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(4.dp)
         ) {
             Text(
                 text = label,
@@ -2027,12 +2037,9 @@ private fun PaperCard(
     searchQuery: String,
     showOnlyAnswered: Boolean
 ) {
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -2074,7 +2081,7 @@ private fun PaperCard(
             
             if (isExpanded) {
                 Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider()
+                FeThinDivider()
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 paper.sections.forEachIndexed { sectionIndex, section ->
@@ -2115,16 +2122,15 @@ private fun SectionItem(
     showOnlyAnswered: Boolean
 ) {
     var expanded by remember { mutableStateOf(isExpanded) }
+    val categoryStyle = answerCategoryStyle(section.category, categoryColor)
     
     LaunchedEffect(isExpanded) {
         expanded = isExpanded
     }
     
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = categoryColor.copy(alpha = 0.1f)
-        )
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -2138,7 +2144,7 @@ private fun SectionItem(
                     Box(
                         modifier = Modifier
                             .size(4.dp, 24.dp)
-                            .background(categoryColor, RoundedCornerShape(2.dp))
+                            .background(categoryStyle.accent, RoundedCornerShape(2.dp))
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
@@ -2160,7 +2166,7 @@ private fun SectionItem(
                     Text(
                         section.category,
                         style = MaterialTheme.typography.labelSmall,
-                        color = categoryColor
+                        color = categoryStyle.accent
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(
@@ -2187,7 +2193,7 @@ private fun SectionItem(
                             questionIndex = questionIndex,
                             isSelected = selectedQuestionIndex == questionIndex,
                             onClick = { onQuestionSelect(questionIndex) },
-                            categoryColor = categoryColor
+                            categoryStyle = categoryStyle
                         )
                     }
                 }
@@ -2202,7 +2208,7 @@ private fun QuestionItem(
     questionIndex: Int,
     isSelected: Boolean,
     onClick: () -> Unit,
-    categoryColor: Color
+    categoryStyle: AnswerCategoryColor
 ) {
     Card(
         modifier = Modifier
@@ -2210,9 +2216,9 @@ private fun QuestionItem(
             .padding(vertical = 4.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) {
-                categoryColor.copy(alpha = 0.2f)
+                MaterialTheme.colorScheme.surfaceContainerHigh
             } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                MaterialTheme.colorScheme.surface
             }
         ),
         onClick = onClick
@@ -2228,7 +2234,7 @@ private fun QuestionItem(
                 Text(
                     "Q${question.displayOrder ?: questionIndex + 1}",
                     style = MaterialTheme.typography.labelMedium,
-                    color = categoryColor,
+                    color = categoryStyle.accent,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -2245,14 +2251,14 @@ private fun QuestionItem(
                 Icon(
                     Icons.Default.CheckCircle,
                     contentDescription = "有答案",
-                    tint = Color(0xFF22C55E),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
             } else {
                 Icon(
                     Icons.AutoMirrored.Filled.HelpOutline,
                     contentDescription = "无答案",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    tint = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -2274,7 +2280,7 @@ private fun DebugPanel(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.95f))
+            .background(MaterialTheme.colorScheme.background)
             .padding(16.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -2287,15 +2293,15 @@ private fun DebugPanel(
                 Text(
                     "🐛 调试面板",
                     style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold
                 )
                 Row {
                     TextButton(onClick = onClear) {
-                        Text("清空", color = Color.Gray)
+                        Text("清空", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = onClose) {
-                        Text("关闭", color = Color.White)
+                        Text("关闭", color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -2321,7 +2327,7 @@ private fun RowScope.TabButton(
         modifier = Modifier
             .weight(1f)
             .background(
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else Color.Transparent,
+                if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                 RoundedCornerShape(6.dp)
             )
             .clickable(onClick = onClick)
@@ -2331,7 +2337,7 @@ private fun RowScope.TabButton(
         Text(
             text = text,
             style = MaterialTheme.typography.bodyMedium,
-            color = if (selected) Color.White else Color.Gray
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -2356,13 +2362,13 @@ private fun LogViewerPanel(debugLog: List<LogEntry>) {
                 Text(
                     "📝 暂无操作日志",
                     style = MaterialTheme.typography.titleMedium,
-                    color = Color.Gray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     "文件操作日志将显示在这里喵~",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.DarkGray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -2372,7 +2378,7 @@ private fun LogViewerPanel(debugLog: List<LogEntry>) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF1E1E1E), RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
@@ -2395,7 +2401,7 @@ private fun LogViewerPanel(debugLog: List<LogEntry>) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFF1E1E1E), RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
@@ -2416,13 +2422,13 @@ private fun LogStatBadge(label: String, count: Int, level: LogLevel) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .background(Color(0xFF3D3D3D), RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(4.dp))
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Text(
             text = "$label:",
             style = MaterialTheme.typography.labelSmall,
-            color = Color.Gray
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.width(4.dp))
         Text(
@@ -2439,13 +2445,21 @@ private fun LogStatBadge(label: String, count: Int, level: LogLevel) {
 @Composable
 private fun LogEntryItem(entry: LogEntry) {
     val textColor = Color(entry.level.colorHex)
-    val categoryColor = when (entry.category) {
-        LogCategory.SYSTEM -> Color(0xFFE879F9)   // 紫色
-        LogCategory.FILE -> Color(0xFF60A5FA)    // 蓝色
-        LogCategory.PAPER -> Color(0xFF6366F1)   // 靛蓝
-        LogCategory.SECTION -> Color(0xFF22C55E) // 绿色
-        LogCategory.QUESTION -> Color(0xFFFFB74D) // 橙色
-        LogCategory.ANSWER -> Color(0xFF2DD4BF)  // 青色
+    val categoryStyle = when (entry.category) {
+        LogCategory.SYSTEM -> AnswerCategoryColor(
+            MaterialTheme.colorScheme.primary,
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        LogCategory.FILE -> AnswerCategoryColor(
+            MaterialTheme.colorScheme.secondary,
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer
+        )
+        LogCategory.PAPER -> answerCategoryStyle("topic", MaterialTheme.colorScheme.tertiary)
+        LogCategory.SECTION -> answerCategoryStyle("simple_expression_ufi", MaterialTheme.colorScheme.tertiary)
+        LogCategory.QUESTION -> answerCategoryStyle("simple_expression_ufk", MaterialTheme.colorScheme.tertiary)
+        LogCategory.ANSWER -> answerCategoryStyle("simple_expression_ufj", MaterialTheme.colorScheme.tertiary)
     }
     
     Row(
@@ -2483,14 +2497,14 @@ private fun LogEntryItem(entry: LogEntry) {
         Box(
             modifier = Modifier
                 .width(60.dp)
-                .background(categoryColor.copy(alpha = 0.2f), RoundedCornerShape(2.dp))
+                .background(categoryStyle.container, RoundedCornerShape(2.dp))
                 .padding(horizontal = 4.dp, vertical = 1.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = entry.category.label,
                 style = MaterialTheme.typography.labelSmall,
-                color = categoryColor
+                color = categoryStyle.onContainer
             )
         }
         
@@ -2500,7 +2514,7 @@ private fun LogEntryItem(entry: LogEntry) {
         Text(
             text = entry.message,
             style = MaterialTheme.typography.bodySmall,
-            color = if (entry.level == LogLevel.ERROR) Color(0xFFFF6B6B) else Color.White,
+            color = if (entry.level == LogLevel.ERROR) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
             modifier = Modifier.weight(1f)
         )
@@ -2522,7 +2536,7 @@ private fun DataDetailsPanel(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF2D2D2D), RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(8.dp))
                 .clickable(onClick = onToggleDataDetails)
                 .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -2532,14 +2546,14 @@ private fun DataDetailsPanel(
                 Icon(
                     if (showDataDetails) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     "📂 显示完整数据结构",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
             Switch(
@@ -2559,14 +2573,14 @@ private fun DataDetailsPanel(
                 Text(
                     "暂无试卷数据",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFF1E1E1E), RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -2577,13 +2591,13 @@ private fun DataDetailsPanel(
                     val answeredQuestions = papers.sumOf { it.sections.sumOf { s -> s.questions.count { q -> q.answer.isNotEmpty() } } }
                     
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF3D3D3D))
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(
                                 "📊 数据统计总览",
                                 style = MaterialTheme.typography.titleSmall,
-                                color = Color(0xFFE879F9),
+                                color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(8.dp))
@@ -2591,10 +2605,10 @@ private fun DataDetailsPanel(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
-                                StatItem("试卷", papers.size, Color(0xFF6366F1))
-                                StatItem("分区", totalSections, Color(0xFF22C55E))
-                                StatItem("题目", totalQuestions, Color(0xFFFFB74D))
-                                StatItem("已答", answeredQuestions, Color(0xFF2DD4BF))
+                                StatItem("试卷", papers.size, MaterialTheme.colorScheme.primary)
+                                StatItem("分区", totalSections, MaterialTheme.colorScheme.secondary)
+                                StatItem("题目", totalQuestions, MaterialTheme.colorScheme.tertiary)
+                                StatItem("已答", answeredQuestions, MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
@@ -2626,7 +2640,7 @@ private fun StatItem(label: String, value: Int, color: Color) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = Color.Gray
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -2641,9 +2655,7 @@ private fun PaperDetailCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
     
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF2D2D2D))
-    ) {
+    FeOutlinedCard(containerColor = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.padding(12.dp)) {
             // 试卷标题行
             Row(
@@ -2663,20 +2675,20 @@ private fun PaperDetailCard(
                         Text(
                             text = paper.title,
                             style = MaterialTheme.typography.titleSmall,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             text = "ID: ${paper.paperId}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.Gray
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Badge(
-                        containerColor = Color(0xFF6366F1),
-                        contentColor = Color.White
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                     ) {
                         Text("${paper.sections.size} 分区")
                     }
@@ -2684,7 +2696,7 @@ private fun PaperDetailCard(
                     Icon(
                         if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = null,
-                        tint = Color.Gray
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -2692,7 +2704,7 @@ private fun PaperDetailCard(
             // 展开的分区详情
             if (expanded) {
                 Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = Color(0xFF4D4D4D))
+                FeThinDivider()
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 paper.sections.forEachIndexed { sectionIndex, section ->
@@ -2716,18 +2728,9 @@ private fun SectionDetailItem(
 ) {
     var expanded by remember { mutableStateOf(false) }
     
-    val categoryColor = when (section.category) {
-        "read_chapter" -> Color(0xFF6366F1)
-        "simple_expression_ufi" -> Color(0xFF22C55E)
-        "simple_expression_ufk" -> Color(0xFFF59E0B)
-        "topic" -> Color(0xFF3B82F6)
-        "simple_expression_ufj" -> Color(0xFFEC4899)
-        else -> Color(0xFF60A5FA)
-    }
+    val categoryStyle = answerCategoryStyle(section.category, MaterialTheme.colorScheme.secondary)
     
-    Card(
-        colors = CardDefaults.cardColors(containerColor = categoryColor.copy(alpha = 0.1f))
-    ) {
+    FeOutlinedCard(containerColor = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.padding(10.dp)) {
             Row(
                 modifier = Modifier
@@ -2741,7 +2744,7 @@ private fun SectionDetailItem(
                         modifier = Modifier
                             .width(3.dp)
                             .height(24.dp)
-                            .background(categoryColor, RoundedCornerShape(2.dp))
+                            .background(categoryStyle.accent, RoundedCornerShape(2.dp))
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
@@ -2754,7 +2757,7 @@ private fun SectionDetailItem(
                         Text(
                             text = section.category,
                             style = MaterialTheme.typography.labelSmall,
-                            color = categoryColor
+                            color = categoryStyle.accent
                         )
                     }
                 }
@@ -2777,14 +2780,14 @@ private fun SectionDetailItem(
             // 展开的题目列表
             if (expanded) {
                 Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                FeThinDivider()
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 section.questions.forEachIndexed { qIndex, question ->
                     QuestionDetailItem(
                         question = question,
                         questionIndex = qIndex,
-                        categoryColor = categoryColor
+                        categoryStyle = categoryStyle
                     )
                     if (qIndex < section.questions.size - 1) {
                         Spacer(modifier = Modifier.height(6.dp))
@@ -2802,20 +2805,14 @@ private fun SectionDetailItem(
 private fun QuestionDetailItem(
     question: ETS100AnswerReader.Question,
     questionIndex: Int,
-    categoryColor: Color
+    categoryStyle: AnswerCategoryColor
 ) {
     var expanded by remember { mutableStateOf(false) }
     val hasAnswer = question.answer.isNotEmpty()
     
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (hasAnswer) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.30f)
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerHigh
-            }
-        ),
-        modifier = Modifier.clickable { expanded = !expanded }
+    FeOutlinedCard(
+        modifier = Modifier.clickable { expanded = !expanded },
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(8.dp)) {
             Row(
@@ -2827,13 +2824,13 @@ private fun QuestionDetailItem(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .background(categoryColor.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                                .background(categoryStyle.container, RoundedCornerShape(4.dp))
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
                                 text = "Q${question.displayOrder ?: questionIndex + 1}",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = categoryColor,
+                                color = categoryStyle.onContainer,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -2841,7 +2838,7 @@ private fun QuestionDetailItem(
                         Icon(
                             if (hasAnswer) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                             contentDescription = null,
-                            tint = if (hasAnswer) Color(0xFF2DD4BF) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = if (hasAnswer) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -2865,7 +2862,7 @@ private fun QuestionDetailItem(
             // 展开时显示完整信息
             if (expanded) {
                 Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                FeThinDivider()
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 // 选项列表
@@ -2884,7 +2881,7 @@ private fun QuestionDetailItem(
                             Text(
                                 text = "${index + 1}.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF2DD4BF),
+                                color = MaterialTheme.colorScheme.tertiary,
                                 modifier = Modifier.width(20.dp)
                             )
                             Text(
@@ -2902,14 +2899,14 @@ private fun QuestionDetailItem(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF2DD4BF).copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "✓ 答案:",
+                            text = "答案:",
                             style = MaterialTheme.typography.labelMedium,
-                            color = Color(0xFF2DD4BF),
+                            color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -2938,13 +2935,11 @@ private fun CollapsibleItem(
 ) {
     var expanded by remember { mutableStateOf(defaultExpanded) }
     
-    Card(
+    FeOutlinedCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -2996,12 +2991,11 @@ private fun QuestionBlock(
     defaultOriginalExpanded: Boolean = false,
     defaultAnswerExpanded: Boolean = false  // 宝贝答案默认折叠喵~
 ) {
-    Card(
+    val categoryStyle = fallbackAnswerCategoryStyle(categoryColor)
+
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // 题目头部
@@ -3012,7 +3006,7 @@ private fun QuestionBlock(
                 Box(
                     modifier = Modifier
                         .size(4.dp, 32.dp)
-                        .background(categoryColor, RoundedCornerShape(2.dp))
+                        .background(categoryStyle.accent, RoundedCornerShape(2.dp))
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -3021,17 +3015,17 @@ private fun QuestionBlock(
                             "Q${question.displayOrder ?: questionIndex + 1}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = categoryColor
+                            color = categoryStyle.accent
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Surface(
-                            color = categoryColor.copy(alpha = 0.1f),
+                            color = categoryStyle.container,
                             shape = RoundedCornerShape(4.dp)
                         ) {
                             Text(
                                 sectionTitle,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = categoryColor,
+                                color = categoryStyle.onContainer,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
@@ -3042,7 +3036,7 @@ private fun QuestionBlock(
                     Icon(
                         Icons.Default.CheckCircle,
                         contentDescription = "有答案",
-                        tint = Color(0xFF22C55E),
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -3052,7 +3046,7 @@ private fun QuestionBlock(
             
             // 题目内容
             Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                color = MaterialTheme.colorScheme.surfaceContainer,
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(
@@ -3068,7 +3062,7 @@ private fun QuestionBlock(
             // 原文折叠项
             if (question.formattedOriginalText.isNotEmpty()) {
                 CollapsibleItem(
-                    title = "📖 原文",
+                    title = "原文",
                     content = question.formattedOriginalText,
                     defaultExpanded = defaultOriginalExpanded
                 )
@@ -3077,7 +3071,7 @@ private fun QuestionBlock(
             // 答案折叠项
             if (question.answerList.isNotEmpty()) {
                 CollapsibleItem(
-                    title = "✅ 答案",
+                    title = "答案",
                     content = question.formattedAnswer,
                     defaultExpanded = defaultAnswerExpanded
                 )
@@ -3101,6 +3095,8 @@ fun PaperDetailScreen(
     var showMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val defaultPrimaryColor = MaterialTheme.colorScheme.primary
+    val categoryPalette = answerCategoryPalette()
+    val fallbackCategoryStyle = fallbackAnswerCategoryStyle(defaultPrimaryColor)
 
     Column(
         modifier = Modifier
@@ -3113,8 +3109,7 @@ fun PaperDetailScreen(
             )
     ) {
         Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shadowElevation = 4.dp
+            color = MaterialTheme.colorScheme.surfaceContainer
         ) {
             Row(
                 modifier = Modifier
@@ -3176,7 +3171,7 @@ fun PaperDetailScreen(
             }
         }
 
-        HorizontalDivider()
+        FeThinDivider()
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -3189,7 +3184,8 @@ fun PaperDetailScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             paper.sections.forEachIndexed { _, section ->
-                val categoryColor = categoryColors[section.category] ?: defaultPrimaryColor
+                val categoryStyle = categoryPalette[section.category]
+                    ?: fallbackCategoryStyle.copy(accent = categoryColors[section.category] ?: defaultPrimaryColor)
 
                 if (section.questions.isNotEmpty()) {
                     item {
@@ -3200,24 +3196,24 @@ fun PaperDetailScreen(
                             Box(
                                 modifier = Modifier
                                     .size(4.dp, 20.dp)
-                                    .background(categoryColor, RoundedCornerShape(2.dp))
+                                    .background(categoryStyle.accent, RoundedCornerShape(2.dp))
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = section.title,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = categoryColor
+                                color = categoryStyle.accent
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
-                                color = categoryColor.copy(alpha = 0.1f),
+                                color = categoryStyle.container,
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
                                     text = section.category,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = categoryColor,
+                                    color = categoryStyle.onContainer,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -3231,7 +3227,7 @@ fun PaperDetailScreen(
                             MergedQuestionBlock(
                                 sectionTitle = section.title,
                                 questions = questionsInGroup,
-                                categoryColor = categoryColor
+                                categoryStyle = categoryStyle
                             )
                         }
                     }
@@ -3245,14 +3241,11 @@ fun PaperDetailScreen(
 private fun MergedQuestionBlock(
     sectionTitle: String,
     questions: List<ETS100AnswerReader.Question>,
-    categoryColor: Color
+    categoryStyle: AnswerCategoryColor
 ) {
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // 块头部 - 显示原文和题目数量
@@ -3265,7 +3258,7 @@ private fun MergedQuestionBlock(
                     Box(
                         modifier = Modifier
                             .size(4.dp, 32.dp)
-                            .background(categoryColor, RoundedCornerShape(2.dp))
+                            .background(categoryStyle.accent, RoundedCornerShape(2.dp))
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -3274,17 +3267,17 @@ private fun MergedQuestionBlock(
                                 "📖 原文 (${questions.size} 题)",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = categoryColor
+                                color = categoryStyle.accent
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
-                                color = categoryColor.copy(alpha = 0.1f),
+                                color = categoryStyle.container,
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
                                     sectionTitle,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = categoryColor,
+                                    color = categoryStyle.onContainer,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -3296,7 +3289,7 @@ private fun MergedQuestionBlock(
                         Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = "全部有答案",
-                            tint = Color(0xFF22C55E),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -3306,7 +3299,7 @@ private fun MergedQuestionBlock(
                 
                 // 原文内容
                 Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
@@ -3318,7 +3311,7 @@ private fun MergedQuestionBlock(
                 }
                 
                 Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = categoryColor.copy(alpha = 0.2f))
+                FeThinDivider()
                 Spacer(modifier = Modifier.height(12.dp))
             }
             
@@ -3326,7 +3319,7 @@ private fun MergedQuestionBlock(
             questions.forEachIndexed { index, question ->
                 if (index > 0) {
                     Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    FeThinDivider()
                     Spacer(modifier = Modifier.height(12.dp))
                 }
                 
@@ -3334,7 +3327,7 @@ private fun MergedQuestionBlock(
                 QuestionItemSimple(
                     questionIndex = index,
                     question = question,
-                    categoryColor = categoryColor
+                    categoryStyle = categoryStyle
                 )
             }
         }
@@ -3349,7 +3342,7 @@ private fun MergedQuestionBlock(
 private fun QuestionItemSimple(
     questionIndex: Int,
     question: ETS100AnswerReader.Question,
-    categoryColor: Color
+    categoryStyle: AnswerCategoryColor
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         // 题目编号和题目内容
@@ -3358,14 +3351,14 @@ private fun QuestionItemSimple(
         ) {
             Box(
                 modifier = Modifier
-                    .background(categoryColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                    .background(categoryStyle.container, RoundedCornerShape(4.dp))
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
                     "Q${question.displayOrder ?: questionIndex + 1}",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = categoryColor
+                    color = categoryStyle.onContainer
                 )
             }
         }
@@ -3374,7 +3367,7 @@ private fun QuestionItemSimple(
         
         // 题目内容
         Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            color = MaterialTheme.colorScheme.surfaceContainer,
             shape = RoundedCornerShape(8.dp)
         ) {
             Text(
@@ -3400,21 +3393,21 @@ private fun QuestionItemSimple(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(8.dp))
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.HelpOutline,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     noAnswerText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.onErrorContainer
                 )
             }
         }
@@ -3462,17 +3455,15 @@ private fun PaperListItem(
         "未知时间"
     }
     
-    Card(
+    FeOutlinedCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(
                 enabled = isClickEnabled,
                 onClick = onClick
             ),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        containerColor = MaterialTheme.colorScheme.surface,
+        borderColor = if (isFailed) MaterialTheme.colorScheme.error else Color.Transparent
     ) {
         Row(
             modifier = Modifier
@@ -3491,9 +3482,9 @@ private fun PaperListItem(
                         .size(48.dp)
                         .background(
                             when {
-                                isLoading -> MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                isFailed -> MaterialTheme.colorScheme.error.copy(alpha = 0.1f)
-                                else -> primaryColor.copy(alpha = 0.1f)
+                                isLoading -> MaterialTheme.colorScheme.primaryContainer
+                                isFailed -> MaterialTheme.colorScheme.errorContainer
+                                else -> MaterialTheme.colorScheme.surfaceContainer
                             },
                             RoundedCornerShape(12.dp)
                         ),
@@ -3534,18 +3525,24 @@ private fun PaperListItem(
                     ) {
                         // 宝贝添加地区标签 Badge 喵~
                         if (paper.regionLabel != "未知") {
+                            val regionContainerColor = when (paper.regionLabel) {
+                                "初中" -> MaterialTheme.colorScheme.secondaryContainer
+                                "高中" -> MaterialTheme.colorScheme.secondaryContainer
+                                else -> MaterialTheme.colorScheme.surfaceContainer
+                            }
+                            val regionContentColor = when (paper.regionLabel) {
+                                "初中" -> MaterialTheme.colorScheme.onSecondaryContainer
+                                "高中" -> MaterialTheme.colorScheme.onSecondaryContainer
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            }
                             Surface(
-                                color = when (paper.regionLabel) {
-                                    "初中" -> Color(0xFF6366F1)
-                                    "高中" -> Color(0xFF22C55E)
-                                    else -> MaterialTheme.colorScheme.primary
-                                },
+                                color = regionContainerColor,
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
                                     text = paper.regionLabel,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White,
+                                    color = regionContentColor,
                                     maxLines = 1,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
@@ -3566,13 +3563,13 @@ private fun PaperListItem(
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 modifier = Modifier.widthIn(min = 48.dp),
-                                color = Color(0xFF22C55E),
+                                color = MaterialTheme.colorScheme.primaryContainer,
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
                                     text = "已下载",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                                     maxLines = 1,
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -3660,7 +3657,7 @@ private fun PaperListItem(
                             Text(
                                 text = if (isDownloaded) "已下载" else "未加载",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -3689,11 +3686,9 @@ private fun CloudModeInfoCard(
     onStatusChange: (String) -> Unit
 ) {
     val isHistory = selectedStatus == CloudHomeworkState.STATUS_HISTORY
-    Card(
+    FeOutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-        )
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier
@@ -3950,7 +3945,3 @@ private fun formatFileSize(size: Long): String {
         else -> "${size / (1024 * 1024)} MB"
     }
 }
-
-
-
-

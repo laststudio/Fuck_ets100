@@ -8,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.ui.graphics.Color
 
 open class AnswerActivity : ComponentActivity() {
     private var paperKey: String? = null
@@ -78,14 +77,4 @@ open class AnswerActivity : ComponentActivity() {
             ).putExtra(EXTRA_PAPER_KEY, paperKey)
         }
     }
-}
-
-private fun answerCategoryColors(): Map<String, Color> {
-    return mapOf(
-        "read_chapter" to Color(0xFF6366F1),
-        "simple_expression_ufi" to Color(0xFF22C55E),
-        "simple_expression_ufk" to Color(0xFFF59E0B),
-        "topic" to Color(0xFF3B82F6),
-        "simple_expression_ufj" to Color(0xFFEC4899)
-    )
 }

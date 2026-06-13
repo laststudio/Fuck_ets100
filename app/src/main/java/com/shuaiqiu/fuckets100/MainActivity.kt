@@ -663,14 +663,6 @@ fun FeTopAppBar(title: String) {
                 modifier = Modifier.padding(bottom = 4.dp)
             )
         },
-        navigationIcon = {
-            Icon(
-                Icons.Default.Terminal,
-                contentDescription = null,
-                Modifier.padding(start = 16.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-        },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
     )
 }

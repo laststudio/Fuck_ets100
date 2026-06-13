@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -3089,6 +3090,7 @@ private fun QuestionBlock(
  * 宝贝这个页面显示一个试卷的所有题目喵~
  * 已移除搜索功能，显示所有题目喵~
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PaperDetailScreen(
     paper: ETS100AnswerReader.Paper,
@@ -3101,44 +3103,46 @@ fun PaperDetailScreen(
     val defaultPrimaryColor = MaterialTheme.colorScheme.primary
     val categoryPalette = answerCategoryPalette()
     val fallbackCategoryStyle = fallbackAnswerCategoryStyle(defaultPrimaryColor)
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .nestedScroll(scrollBehavior.nestedScrollConnection)
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(
-                    WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+                    WindowInsetsSides.Horizontal
                 )
             )
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceContainer
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+        LargeTopAppBar(
+            title = {
+                Column {
+                    Text(
+                        text = paper.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = paper.sections.sumOf { it.questions.size }.toString() + " \u9053\u9898\u76ee",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
+            },
+            navigationIcon = {
                 IconButton(onClick = onBack) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "\u8fd4\u56de"
                     )
                 }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = paper.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = paper.sections.sumOf { it.questions.size }.toString() + " \u9053\u9898\u76ee",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            },
+            actions = {
                 Box {
                     IconButton(onClick = { showMenu = true }) {
                         Icon(
@@ -3172,8 +3176,13 @@ fun PaperDetailScreen(
                         )
                     }
                 }
-            }
-        }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.background,
+                scrolledContainerColor = MaterialTheme.colorScheme.surface
+            ),
+            scrollBehavior = scrollBehavior
+        )
 
         FeThinDivider()
 

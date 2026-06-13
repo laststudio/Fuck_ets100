@@ -38,6 +38,14 @@ object ETS100AnswerReader {
     )
     private var lastResourceScanCache: ResourceScanCache? = null
 
+    internal fun localPaperDisplayNumber(groupIndex: Int, totalGroups: Int): Int {
+        return if (totalGroups > 0) {
+            totalGroups - groupIndex
+        } else {
+            groupIndex + 1
+        }.coerceAtLeast(1)
+    }
+
     private data class ResourceScanCache(
         val mode: ActivationMode,
         val createdAtMs: Long,
@@ -433,7 +441,7 @@ object ETS100AnswerReader {
         // Step 3 & 4: 根据文件夹数量路由，遍历每组的 content.json
         for ((groupIndex, folderGroup) in groupedFolders.withIndex()) {
             val orderedFolderGroup = orderResourceFoldersByPaperStructure(folderGroup, resourceOrderMap)
-            exerciseGroupPapers.addAll(parseResourceGroup(reader, orderedFolderGroup, groupIndex))
+            exerciseGroupPapers.addAll(parseResourceGroup(reader, orderedFolderGroup, groupIndex, groupedFolders.size))
         }
 
         Log.i(TAG, "readPapers: 完成，共 ${exerciseGroupPapers.size} 份试卷")
@@ -466,9 +474,9 @@ object ETS100AnswerReader {
         return groupedFolders.mapIndexed { groupIndex, folderGroup ->
             val orderedFolderGroup = orderResourceFoldersByPaperStructure(folderGroup, resourceOrderMap)
             if (isPrivilegedMode) {
-                createFastPaperSummary(orderedFolderGroup, groupIndex)
+                createFastPaperSummary(orderedFolderGroup, groupIndex, groupedFolders.size)
             } else {
-                createPaperSummary(reader, orderedFolderGroup, groupIndex)
+                createPaperSummary(reader, orderedFolderGroup, groupIndex, groupedFolders.size)
             }
         }
     }
@@ -515,7 +523,7 @@ object ETS100AnswerReader {
                             "folders=${orderedFolderGroup.size}, mode=$mode, thread=${Thread.currentThread().name}"
                     )
                     val localReader = ETS100FileReader.getReader(mode, context)
-                    val papers = parseResourceGroup(localReader, orderedFolderGroup, groupIndex)
+                    val papers = parseResourceGroup(localReader, orderedFolderGroup, groupIndex, groupedFolders.size)
                     onGroupParsed?.invoke(groupIndex, papers)
                     Log.i(
                         TAG,
@@ -633,13 +641,15 @@ object ETS100AnswerReader {
     private fun createPaperSummary(
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
-        groupIndex: Int
+        groupIndex: Int,
+        totalGroups: Int
     ): Paper {
         val template = detectResourceGroupTemplate(reader, folders)
         val firstFolder = folders.firstOrNull()
+        val displayNumber = localPaperDisplayNumber(groupIndex, totalGroups)
         return Paper(
             paperId = buildLocalPaperId(folders, groupIndex),
-            title = "${template.titlePrefix} #${groupIndex + 1}",
+            title = "${template.titlePrefix} #$displayNumber",
             dataFileName = firstFolder?.name.orEmpty(),
             fileSize = folders.sumOf { it.size },
             sections = listOf(
@@ -659,12 +669,14 @@ object ETS100AnswerReader {
 
     private fun createFastPaperSummary(
         folders: List<ETS100FileReader.FileItem>,
-        groupIndex: Int
+        groupIndex: Int,
+        totalGroups: Int
     ): Paper {
         val firstFolder = folders.firstOrNull()
+        val displayNumber = localPaperDisplayNumber(groupIndex, totalGroups)
         return Paper(
             paperId = buildLocalPaperId(folders, groupIndex),
-            title = "试卷 #${groupIndex + 1}",
+            title = "试卷 #$displayNumber",
             dataFileName = firstFolder?.name.orEmpty(),
             fileSize = folders.sumOf { it.size },
             sections = listOf(
@@ -697,7 +709,8 @@ object ETS100AnswerReader {
     private fun parseResourceGroup(
         reader: ETS100FileReader.Reader,
         orderedFolderGroup: List<ETS100FileReader.FileItem>,
-        groupIndex: Int
+        groupIndex: Int,
+        totalGroups: Int
     ): List<Paper> {
         val processedContentPaths = mutableSetOf<String>()
         val folderCount = orderedFolderGroup.size
@@ -715,23 +728,23 @@ object ETS100AnswerReader {
         val papers = when (template) {
             ResourceGroupTemplate.GUANGDONG_HIGH -> {
                 logVerbose("║ 路由: 广东高中解析器 (${folderCount}个文件夹)")
-                parseGuangdongHighPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+                parseGuangdongHighPapers(reader, orderedFolderGroup, groupIndex, totalGroups, processedContentPaths)
             }
             ResourceGroupTemplate.GUANGDONG_JUNIOR -> {
                 logVerbose("║ 路由: 广东初中解析器 (${folderCount}个文件夹)")
-                parseGuangdongJuniorPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+                parseGuangdongJuniorPapers(reader, orderedFolderGroup, groupIndex, totalGroups, processedContentPaths)
             }
             ResourceGroupTemplate.BEIJING_JUNIOR -> {
                 logVerbose("║ 路由: 北京初中解析器 (${folderCount}个文件夹)")
-                parseBeijingJuniorPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+                parseBeijingJuniorPapers(reader, orderedFolderGroup, groupIndex, totalGroups, processedContentPaths)
             }
             ResourceGroupTemplate.BEIJING_HIGH -> {
                 logVerbose("║ 路由: 北京高中解析器 (${folderCount}个文件夹)")
-                parseBeijingHighPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+                parseBeijingHighPapers(reader, orderedFolderGroup, groupIndex, totalGroups, processedContentPaths)
             }
             ResourceGroupTemplate.GENERIC -> {
                 logVerbose("║ 路由: 通用解析器 (${folderCount}个文件夹，不匹配预设)")
-                parseGenericPapers(reader, orderedFolderGroup, groupIndex, processedContentPaths)
+                parseGenericPapers(reader, orderedFolderGroup, groupIndex, totalGroups, processedContentPaths)
             }
         }
         logVerbose("║ 解析得到 ${papers.size} 份试卷")
@@ -1038,11 +1051,13 @@ object ETS100AnswerReader {
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         groupIndex: Int,
+        totalGroups: Int,
         processedPaths: MutableSet<String>
     ): List<Paper> = parseLocalResourcePapers(
         reader,
         folders,
         groupIndex,
+        totalGroups,
         processedPaths,
         LocalPaperKind.GUANGDONG_HIGH
     )
@@ -1051,11 +1066,13 @@ object ETS100AnswerReader {
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         groupIndex: Int,
+        totalGroups: Int,
         processedPaths: MutableSet<String>
     ): List<Paper> = parseLocalResourcePapers(
         reader,
         folders,
         groupIndex,
+        totalGroups,
         processedPaths,
         LocalPaperKind.GUANGDONG_JUNIOR
     )
@@ -1064,11 +1081,13 @@ object ETS100AnswerReader {
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         groupIndex: Int,
+        totalGroups: Int,
         processedPaths: MutableSet<String>
     ): List<Paper> = parseLocalResourcePapers(
         reader,
         folders,
         groupIndex,
+        totalGroups,
         processedPaths,
         LocalPaperKind.BEIJING_JUNIOR
     )
@@ -1077,11 +1096,13 @@ object ETS100AnswerReader {
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         groupIndex: Int,
+        totalGroups: Int,
         processedPaths: MutableSet<String>
     ): List<Paper> = parseLocalResourcePapers(
         reader,
         folders,
         groupIndex,
+        totalGroups,
         processedPaths,
         LocalPaperKind.BEIJING_HIGH
     )
@@ -1090,11 +1111,13 @@ object ETS100AnswerReader {
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         groupIndex: Int,
+        totalGroups: Int,
         processedPaths: MutableSet<String>
     ): List<Paper> = parseLocalResourcePapers(
         reader,
         folders,
         groupIndex,
+        totalGroups,
         processedPaths,
         LocalPaperKind.GENERIC
     )
@@ -1103,6 +1126,7 @@ object ETS100AnswerReader {
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         groupIndex: Int,
+        totalGroups: Int,
         processedPaths: MutableSet<String>,
         kind: LocalPaperKind
     ): List<Paper> {
@@ -1159,10 +1183,11 @@ object ETS100AnswerReader {
 
         val orderedSections = mergeAndOrderLocalSections(parsedSections, kind.sectionOrder)
         val paperId = buildLocalPaperId(folders, groupIndex)
+        val displayNumber = localPaperDisplayNumber(groupIndex, totalGroups)
         return listOf(
             Paper(
                 paperId = paperId,
-                title = "${kind.titlePrefix} #${groupIndex + 1}",
+                title = "${kind.titlePrefix} #$displayNumber",
                 dataFileName = folders.first().name,
                 fileSize = folders.sumOf { it.size },
                 sections = orderedSections,

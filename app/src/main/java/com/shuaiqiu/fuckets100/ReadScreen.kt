@@ -3476,6 +3476,9 @@ private fun String.firstSentenceOrLine(): String {
 private fun String.normalizePreviewText(): String =
     replace(Regex("\\s+"), " ").trim()
 
+private fun ETS100AnswerReader.Paper.localDisplayNumberFromTitle(): Int? =
+    Regex("""#(\d+)\s*$""").find(title)?.groupValues?.getOrNull(1)?.toIntOrNull()
+
 /**
  * 试卷列表项组件
  * 宝贝这是一个简单的试卷项目，点击后进入二级页面喵~
@@ -3495,6 +3498,11 @@ private fun PaperListItem(
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val localPreviewText = remember(paper) { paper.firstQuestionPreviewText() }
+    val listNumber = if (isCloudMode) {
+        paperIndex + 1
+    } else {
+        paper.localDisplayNumberFromTitle() ?: (paperIndex + 1)
+    }
     
     FeOutlinedCard(
         modifier = Modifier
@@ -3549,7 +3557,7 @@ private fun PaperListItem(
                         }
                         else -> {
                             Text(
-                                text = "${paperIndex + 1}",
+                                text = "$listNumber",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = primaryColor

@@ -45,6 +45,9 @@ class FeApplication : Application() {
         // 应用全局上下文
         lateinit var appCtx: Context
             private set
+
+        @Volatile
+        private var appInstance: FeApplication? = null
         
         // 更新状态，用于在 MainActivity 中显示弹窗
         // 使用 @Volatile 确保多线程可见性喵~
@@ -60,6 +63,10 @@ class FeApplication : Application() {
 
         private val _remoteStatusFlow = MutableStateFlow<UpdateStatus?>(null)
         val remoteStatusFlow: StateFlow<UpdateStatus?> = _remoteStatusFlow.asStateFlow()
+
+        fun refreshRemoteStatusAfterVerification() {
+            appInstance?.checkRemoteConfig(ignoreVerification = true)
+        }
     }
     
     override fun onCreate() {
@@ -70,6 +77,7 @@ class FeApplication : Application() {
 
         // 设置应用全局上下文
         appCtx = this.applicationContext
+        appInstance = this
         
         // 初始化设置管理器
         SettingsManager.init(this)
@@ -115,10 +123,14 @@ class FeApplication : Application() {
      * 包含KillSwitch检查和提示消息显示,控制应用是否显示"程序异常"提示
      * 宝贝如果网络失败或超时会闪退喵~
      */
-    private fun checkRemoteConfig() {
+    private fun checkRemoteConfig(ignoreVerification: Boolean = false) {
         applicationScope.launch {
             try {
-                val status = RemoteConfigManager.checkStatus()
+                val status = if (ignoreVerification) {
+                    RemoteConfigManager.checkStatusIgnoringVerification()
+                } else {
+                    RemoteConfigManager.checkStatus()
+                }
                 remoteStatus = status
                 _remoteStatusFlow.value = status
                 
@@ -140,6 +152,9 @@ class FeApplication : Application() {
                         updateStatus = status
                         _updateStatusFlow.value = status
                         Log.i(TAG, "保存更新状态: showDialog=${status.showDialog}, message='${status.message}', isForce=${status.isForce}")
+                    }
+                    status.requiresVerification -> {
+                        Log.w(TAG, "启动验证未通过，等待用户输入验证码")
                     }
                     status.noticeMessage.isNotEmpty() -> {
                         // 有公告，只显示 Toast

@@ -300,6 +300,7 @@ fun FeAppMain() {
     // 鏇存柊寮圭獥鐘舵€?- 浣跨敤 snapshotFlow 鐩戝惉 FeApplication.updateStatus 鐨勫彉鍖栧柕~
     var showUpdateDialog by remember { mutableStateOf(false) }
     var updateDialogStatus by remember { mutableStateOf<com.shuaiqiu.fuckets100.UpdateStatus?>(null) }
+    var verificationDialogStatus by remember { mutableStateOf<com.shuaiqiu.fuckets100.UpdateStatus?>(null) }
     var showLegalDialog by remember { mutableStateOf(!SettingsManager.hasAcceptedLegal()) }
     
     // 鐩戝惉鏇存柊鐘舵€?Flow锛岀‘淇濇瘡娆￠兘鑳芥敹鍒伴€氱煡鍠祣
@@ -309,6 +310,14 @@ fun FeAppMain() {
             if (status != null && status.showDialog) {
                 updateDialogStatus = status
                 showUpdateDialog = true
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        FeApplication.remoteStatusFlow.collect { status ->
+            if (status != null && status.requiresVerification) {
+                verificationDialogStatus = status
             }
         }
     }
@@ -516,7 +525,17 @@ fun FeAppMain() {
             )
         }
 
-        if (showLegalDialog) {
+        if (verificationDialogStatus != null) {
+            val status = verificationDialogStatus!!
+            VerificationDialog(
+                status = status,
+                onVerified = {
+                    verificationDialogStatus = null
+                    FeApplication.remoteStatus = status.copy(requiresVerification = false)
+                    FeApplication.refreshRemoteStatusAfterVerification()
+                }
+            )
+        } else if (showLegalDialog) {
             LegalAcceptanceDialog(
                 onAccepted = {
                     SettingsManager.saveLegalAccepted(true)

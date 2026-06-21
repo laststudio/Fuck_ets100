@@ -1,10 +1,13 @@
 {
-    "isForce": false,
+    "isForce": true,
     "isKillSwitchOn": false,
     "noticeMessage": "Fe守护你的答案喵💗",
     "announcementTitle": "公告",
-    "announcementMessage": "欢迎用我的软件哦, \n有什么问题可以来加我们q群:1102410958反馈;\n访问我们的官网:lastudio.cc;\n觉得我的程序好用的可以点个赞或者star吗,或者给我捐点钱(小小声).",
+    "announcementMessage": "本软件完全免费开源,花钱买的那么你被骗了\n 欢迎用我的软件哦, \n有什么问题可以来加我们q群:1102410958反馈;\n访问我们的官网:lastudio.cc;\n觉得我的程序好用的可以点个赞或者star吗,或者给我捐点钱(小小声).",
     "announcementUrl": "",
     "changelogTitle": "更新日志",
+    "verificationCode": "fe666",
+    "verificationTitle": "防倒卖验证",
+    "verificationMessage": "本软件完全免费,为防止倒卖,请加入群聊1102410958获取验证码",
     "donateEnabled": true
 }

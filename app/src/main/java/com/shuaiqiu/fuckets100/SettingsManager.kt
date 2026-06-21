@@ -18,6 +18,7 @@ object SettingsManager {
     private const val KEY_LEGAL_ACCEPTED = "legal_accepted"
     private const val KEY_AOSP_PREDICTIVE_BACK = "aosp_predictive_back"
     private const val KEY_PREDICTIVE_BACK_MODE = "predictive_back_mode"
+    private const val KEY_LOCAL_VERIFICATION_CODE = "local_verification_code"
     
     private lateinit var prefs: SharedPreferences
     
@@ -122,6 +123,16 @@ object SettingsManager {
 
     fun hasAcceptedLegal(): Boolean {
         return prefs.getBoolean(KEY_LEGAL_ACCEPTED, false)
+    }
+
+    fun saveLocalVerificationCode(code: String) {
+        prefs.edit {
+            putString(KEY_LOCAL_VERIFICATION_CODE, code.trim())
+        }
+    }
+
+    fun getLocalVerificationCode(): String {
+        return prefs.getString(KEY_LOCAL_VERIFICATION_CODE, "").orEmpty()
     }
 
     fun savePredictiveBackMode(mode: PredictiveBackMode) {

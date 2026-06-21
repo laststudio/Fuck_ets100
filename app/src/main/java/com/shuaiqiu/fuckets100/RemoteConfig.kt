@@ -16,6 +16,9 @@ package com.shuaiqiu.fuckets100
  * @param changelogUrl 更新日志远程地址
  * @param changelogTitle 首页更新日志标题
  * @param changelogSummary 首页更新日志摘要
+ * @param verificationCode 启动验证验证码，留空表示不启用
+ * @param verificationTitle 验证弹窗标题
+ * @param verificationMessage 验证弹窗提示
  * @param donateEnabled 是否展示捐赠入口
  */
 data class RemoteConfig(
@@ -32,6 +35,9 @@ data class RemoteConfig(
     val changelogUrl: String = "",
     val changelogTitle: String = "",
     val changelogSummary: String = "",
+    val verificationCode: String = "",
+    val verificationTitle: String = "",
+    val verificationMessage: String = "",
     val donateEnabled: Boolean = true
 )
 
@@ -53,5 +59,9 @@ data class UpdateStatus(
     val changelogUrl: String = "",
     val changelogTitle: String = "",
     val changelogSummary: String = "",
+    val requiresVerification: Boolean = false,
+    val verificationCode: String = "",
+    val verificationTitle: String = "",
+    val verificationMessage: String = "",
     val donateEnabled: Boolean = true
 )

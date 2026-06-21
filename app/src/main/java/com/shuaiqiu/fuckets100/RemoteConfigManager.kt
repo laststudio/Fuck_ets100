@@ -49,8 +49,76 @@ object RemoteConfigManager {
             changelogUrl = changelogUrl,
             changelogTitle = changelogTitle,
             changelogSummary = changelogSummary,
+            verificationCode = verificationCode,
+            verificationTitle = verificationTitle,
+            verificationMessage = verificationMessage,
             donateEnabled = donateEnabled
         )
+    }
+
+    private fun RemoteConfig.toRuntimeStatus(ignoreVerification: Boolean = false): UpdateStatus {
+        return when {
+            isKillSwitchOn -> {
+                Log.w(TAG, "🚨 KillSwitch 开启! 应用即将退出")
+                toUpdateStatus(
+                    isKillSwitch = true,
+                    showDialog = false,
+                    message = "",
+                    isForce = false,
+                    updateUrl = "",
+                    noticeMessage = "程序异常"
+                )
+            }
+            !ignoreVerification &&
+                verificationCode.isNotBlank() &&
+                SettingsManager.getLocalVerificationCode() != verificationCode -> {
+                Log.w(TAG, "🔐 启动验证未通过，等待用户输入验证码")
+                toUpdateStatus(
+                    isKillSwitch = false,
+                    showDialog = false,
+                    message = "",
+                    isForce = false,
+                    updateUrl = "",
+                    noticeMessage = ""
+                ).copy(
+                    requiresVerification = true
+                )
+            }
+            latestVersionCode > BuildConfig.VERSION_CODE -> {
+                Log.i(TAG, "📢 发现新版本: $latestVersionCode (当前: ${BuildConfig.VERSION_CODE})")
+                Log.d(TAG, "📢 updateMessage: '$updateMessage', updateUrl: '$updateUrl'")
+                toUpdateStatus(
+                    isKillSwitch = false,
+                    showDialog = true,
+                    message = updateMessage.ifEmpty { "发现新版本: $latestVersionCode" },
+                    isForce = isForce,
+                    updateUrl = updateUrl,
+                    noticeMessage = ""
+                )
+            }
+            noticeMessage.isNotEmpty() -> {
+                Log.i(TAG, "📢 收到公告: $noticeMessage")
+                toUpdateStatus(
+                    isKillSwitch = false,
+                    showDialog = false,
+                    message = "",
+                    isForce = false,
+                    updateUrl = "",
+                    noticeMessage = noticeMessage
+                )
+            }
+            else -> {
+                Log.d(TAG, "✅ 已是最新版本，无需更新")
+                toUpdateStatus(
+                    isKillSwitch = false,
+                    showDialog = false,
+                    message = "",
+                    isForce = false,
+                    updateUrl = "",
+                    noticeMessage = ""
+                )
+            }
+        }
     }
     
     private suspend fun fetchFirstAvailableConfig(): Triple<String, String, Long> {
@@ -110,6 +178,9 @@ object RemoteConfigManager {
                 val announcementMessage = json.optString("announcementMessage", noticeMessage)
                 val changelogSummary = json.optString("changelogSummary", "")
                 val changelogUrl = json.optString("changelogUrl", DEFAULT_CHANGELOG_URL)
+                val verificationCode = json.optString("verificationCode", "")
+                val verificationTitle = json.optString("verificationTitle", "")
+                val verificationMessage = json.optString("verificationMessage", "")
 
                 val config = RemoteConfig(
                     latestVersionCode = json.optInt("latestVersionCode", BuildConfig.VERSION_CODE),
@@ -129,6 +200,9 @@ object RemoteConfigManager {
                         if (changelogSummary.isNotBlank() || changelogUrl.isNotBlank()) "更新日志" else ""
                     },
                     changelogSummary = changelogSummary,
+                    verificationCode = verificationCode,
+                    verificationTitle = verificationTitle,
+                    verificationMessage = verificationMessage,
                     donateEnabled = json.optBoolean("donateEnabled", true)
                 )
                 
@@ -146,6 +220,9 @@ object RemoteConfigManager {
                 Log.d(TAG, "   - changelogUrl: ${config.changelogUrl}")
                 Log.d(TAG, "   - changelogTitle: ${config.changelogTitle}")
                 Log.d(TAG, "   - changelogSummary: ${config.changelogSummary.take(120)}")
+                Log.d(TAG, "   - verificationCode: ${if (config.verificationCode.isBlank()) "<empty>" else "***"}")
+                Log.d(TAG, "   - verificationTitle: ${config.verificationTitle}")
+                Log.d(TAG, "   - verificationMessage: ${config.verificationMessage.take(120)}")
                 Log.d(TAG, "   - donateEnabled: ${config.donateEnabled}")
                 Log.d(TAG, "   - 当前版本: ${BuildConfig.VERSION_CODE}")
                 Log.d(TAG, "═══════════════════════════════════════════")
@@ -177,59 +254,10 @@ object RemoteConfigManager {
      * @throws NetworkException 网络失败或超时时抛出
      */
     suspend fun checkStatus(): UpdateStatus {
-        val config = fetchConfig()
-        
-        return when {
-            config.isKillSwitchOn -> {
-                Log.w(TAG, "🚨 KillSwitch 开启! 应用即将退出")
-                // KillSwitch 开启，显示"程序异常"并退出
-                config.toUpdateStatus(
-                    isKillSwitch = true,
-                    showDialog = false,
-                    message = "",
-                    isForce = false,
-                    updateUrl = "",
-                    noticeMessage = "程序异常"
-                )
-            }
-            config.latestVersionCode > BuildConfig.VERSION_CODE -> {
-                Log.i(TAG, "📢 发现新版本: ${config.latestVersionCode} (当前: ${BuildConfig.VERSION_CODE})")
-                Log.d(TAG, "📢 updateMessage: '${config.updateMessage}', updateUrl: '${config.updateUrl}'")
-                // 有新版本，显示更新弹窗，消息使用云端返回的 updateMessage
-                config.toUpdateStatus(
-                    isKillSwitch = false,
-                    showDialog = true,
-                    message = config.updateMessage.ifEmpty { "发现新版本: ${config.latestVersionCode}" },
-                    isForce = config.isForce,
-                    updateUrl = config.updateUrl,
-                    noticeMessage = ""
-                )
-            }
-            config.noticeMessage.isNotEmpty() -> {
-                Log.i(TAG, "📢 收到公告: ${config.noticeMessage}")
-                // 有公告，只显示 Toast，不弹窗
-                config.toUpdateStatus(
-                    isKillSwitch = false,
-                    showDialog = false,
-                    message = "",
-                    isForce = false,
-                    updateUrl = "",
-                    noticeMessage = config.noticeMessage
-                )
-            }
-            else -> {
-                Log.d(TAG, "✅ 已是最新版本，无需更新")
-                config.toUpdateStatus(
-                    isKillSwitch = false,
-                    showDialog = false,
-                    message = "",
-                    isForce = false,
-                    updateUrl = "",
-                    noticeMessage = ""
-                )
-            }
-        }
+        return fetchConfig().toRuntimeStatus()
+    }
+
+    suspend fun checkStatusIgnoringVerification(): UpdateStatus {
+        return fetchConfig().toRuntimeStatus(ignoreVerification = true)
     }
 }
-
-

@@ -209,6 +209,7 @@ Fuck ets100 的诞生离不开这些"小伙伴"的帮助 💕
 
 **人类贡献者：**
 - [leitianshuo1337](https://github.com/code-leitianshuo) - 提供了全新api读取逻辑
+- [Ken-gugugaga](https://github.com/Ken-gugugaga) - 提供了一键完成的方法和代码
 - [Shizuku](https://shizuku.rikka.app/) - 让你不用 Root 也能管理文件
 - [Jetpack Compose](https://developer.android.com/compose) - 让界面开发更简单
 - [hicccc77](https://github.com/hicccc77) - 提供了全新的读取逻辑([WeFlow](https://github.com/hicccc77/WeFlow)作者)

@@ -1,6 +1,9 @@
 # Fuck ets100 - e听说答案提取器 📱
 
 > 本仓库现作为面向用户的公开文档、教程、问题反馈与 Release 下载入口维护。项目源码已转为私有维护，后续版本仍会在本仓库的 Releases 页面发布。
+> 
+> 🌐 **官方发布平台与主站**：[https://lastudio.cc](https://lastudio.cc)  
+> ⚡ **Fe (Fuck_ets100) 官方极速直链下载**：[https://lastudio.cc/download?app=fe](https://lastudio.cc/download?app=fe)（免登录、不限速）
 
 [![Kotlin](https://img.shields.io/badge/kotlin-2.3.21-7F52FF)](https://kotlinlang.org/)
 [![Compose Multiplatform](https://img.shields.io/badge/compose-1.10.3-4285F4)](https://www.jetbrains.com/compose-multiplatform)
@@ -51,8 +54,8 @@ Fuck ets100 是一款专门为 e听说（ETS 100）用户打造的答案提取�
 
 ### 第一步：先装上
 
-1. 打开 [Releases 页面](https://github.com/laststudio/Fuck_ets100/releases) 或 [云盘](https://oplist.lastudio.cc/Fe_release)
-2. 下载最新版本的 APK
+1. 打开 [官方极速直链下载](https://lastudio.cc/download?app=fe) 或 [Releases 页面](https://github.com/laststudio/Fuck_ets100/releases) / [网盘分流](https://oplist.lastudio.cc/Fe_release)
+2. 下载最新版本的 APK（推荐使用官方高速直链，免登录不限速）
 3. 安装到你的手机上
 4. 打开 Fuck ets100 App
 
@@ -237,9 +240,11 @@ Fuck ets100 的诞生离不开这些"小伙伴"的帮助 💕
 ---
 
 **有问题？找作者：**
+- 官方发布平台: [LastStudio (lastudio.cc)](https://lastudio.cc)
+- 极速直链下载: [Fe 官方极速下载通道](https://lastudio.cc/download?app=fe)
 - GitHub: [Issues 页面](https://github.com/laststudio/Fuck_ets100/issues)
-- 抖音:[抖音主页](https://v.douyin.com/P0GrWYTqi4s/)
-- b站:[b站主页](https://space.bilibili.com/2116040615h)
+- 抖音: [抖音主页](https://v.douyin.com/P0GrWYTqi4s/)
+- B站: [B站主页](https://space.bilibili.com/2116040615h)
 
 
 

@@ -54,7 +54,6 @@ private data class RootDestination(
 )
 
 private val rootDestinations = listOf(
-    RootDestination(Screen.Home, Icons.Filled.Home, Icons.Outlined.Home),
     RootDestination(Screen.Read, Icons.AutoMirrored.Filled.MenuBook, Icons.AutoMirrored.Outlined.MenuBook),
     RootDestination(Screen.Settings, Icons.Filled.Settings, Icons.Outlined.Settings),
 )

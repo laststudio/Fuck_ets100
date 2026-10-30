@@ -4,37 +4,29 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Help
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
-import android.content.Intent
-import android.net.Uri
 import com.shuaiqiu.fuckets100.core.designsystem.ExpressiveScaffold
 import com.shuaiqiu.fuckets100.core.designsystem.ExpressiveSegmentedListItem
 import com.shuaiqiu.fuckets100.core.designsystem.SegmentedColumn
 import com.shuaiqiu.fuckets100.core.designsystem.expressiveTopAppBarColors
 
-import com.shuaiqiu.fuckets100.FeAccountSession
+/**
+ * 设置页：只保留与本地读取有关的配置（运行授权 / 通用 / 主题）。
+ * 账号、官网、关于、捐赠、公告等入口已全部移除。
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SettingsScreen(
     onNavigateActivation: () -> Unit,
     onNavigateGeneralSettings: () -> Unit,
     onNavigateThemeSettings: () -> Unit,
-    onNavigateAbout: () -> Unit,
-    onNavigateAccount: () -> Unit,
-    accountSession: FeAccountSession?,
-    avatar: @Composable () -> Unit = {},
 ) {
-    val context = LocalContext.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     ExpressiveScaffold(
@@ -64,43 +56,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(16.dp))
 
             SegmentedColumn(
-                title = "账号",
-                items = listOf(
-                    {
-                        ExpressiveSegmentedListItem(
-                            index = 0,
-                            count = 1,
-                            onClick = onNavigateAccount,
-                            leadingContent = { avatar() },
-                            headlineContent = {
-                                Text(
-                                    accountSession?.user?.username ?: "Fe 账号",
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
-                            supportingContent = {
-                                Text(
-                                    accountSession?.user?.let { "${it.tierDisplayName} · LastStudio" }
-                                        ?: "查看账号信息",
-                                )
-                            },
-                            trailingContent = {
-                                Icon(
-                                    Icons.Default.ChevronRight,
-                                    contentDescription = "进入个人中心",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            },
-                        )
-                    },
-                ),
-            )
-
-            Spacer(Modifier.height(24.dp))
-
-            SegmentedColumn(
-                title = "应用设置",
+                title = "本地读取",
                 items = listOf(
                     {
                         SettingsSegmentedItem(
@@ -108,10 +64,8 @@ fun SettingsScreen(
                             count = 3,
                             icon = Icons.Default.Build,
                             title = "运行授权",
-                            supportingText = "配置 Shizuku、Root 或其他模式",
-                            onClick = {
-                                onNavigateActivation()
-                            },
+                            supportingText = "Shizuku / Root / 漏洞直读",
+                            onClick = onNavigateActivation,
                         )
                     },
                     {
@@ -121,9 +75,7 @@ fun SettingsScreen(
                             icon = Icons.Default.Tune,
                             title = "通用设置",
                             supportingText = "配置答案显示方式",
-                            onClick = {
-                                onNavigateGeneralSettings()
-                            },
+                            onClick = onNavigateGeneralSettings,
                         )
                     },
                     {
@@ -133,42 +85,7 @@ fun SettingsScreen(
                             icon = Icons.Default.Palette,
                             title = "主题",
                             supportingText = "彩色主题与明暗模式",
-                            onClick = {
-                                onNavigateThemeSettings()
-                            },
-                        )
-                    },
-                ),
-            )
-
-            Spacer(Modifier.height(24.dp))
-
-            SegmentedColumn(
-                title = "其他",
-                items = listOf(
-                    {
-                        SettingsSegmentedItem(
-                            index = 0,
-                            count = 2,
-                            icon = Icons.Default.Info,
-                            title = "关于 Fe",
-                            supportingText = "应用信息与致谢",
-                            onClick = onNavigateAbout,
-                        )
-                    },
-                    {
-                        SettingsSegmentedItem(
-                            index = 1,
-                            count = 2,
-                            icon = Icons.AutoMirrored.Filled.Help,
-                            title = "访问官网",
-                            supportingText = "lastudio.cc",
-                            trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
-                            trailingContentDescription = "访问官网",
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://lastudio.cc"))
-                                context.startActivity(intent)
-                            },
+                            onClick = onNavigateThemeSettings,
                         )
                     },
                 ),
@@ -177,7 +94,6 @@ fun SettingsScreen(
             Spacer(Modifier.height(88.dp))
         }
     }
-
 }
 
 @Composable
@@ -188,8 +104,6 @@ private fun SettingsSegmentedItem(
     title: String,
     supportingText: String,
     onClick: () -> Unit,
-    trailingIcon: ImageVector = Icons.Default.ChevronRight,
-    trailingContentDescription: String? = null,
 ) {
     ExpressiveSegmentedListItem(
         index = index,
@@ -206,8 +120,8 @@ private fun SettingsSegmentedItem(
         },
         trailingContent = {
             Icon(
-                imageVector = trailingIcon,
-                contentDescription = trailingContentDescription,
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },

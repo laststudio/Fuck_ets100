@@ -74,19 +74,16 @@ object ResolverAuthorizer : AuthCacheInvalidator {
      * @throws ResolverAuthorizationDeniedException 未登录/功能关闭/网络失败等
      */
     suspend fun requireAuthorized(context: Context) {
-        val reason = ensureAuthorized(context)
-        if (reason != null) throw ResolverAuthorizationDeniedException(reason)
+        // 离线改版：本地解析不再需要 LastStudio 授权，直接放行。
     }
 
     /** 配置 SO 共用的后端、签名公钥和 access token，不提前指定实际功能权限。 */
     suspend fun requireConfigured(context: Context) {
-        val reason = configureCloud(context)
-        if (reason != null) throw ResolverAuthorizationDeniedException(reason)
+        // 离线改版：不再向解析器下发任何授权配置。
     }
 
     suspend fun requireCloudAuthorized(context: Context) {
-        val reason = ensureCloudAuthorized(context)
-        if (reason != null) throw ResolverAuthorizationDeniedException(reason)
+        // 离线改版：云端模式已移除。
     }
 
     private suspend fun ensureCloudAuthorized(context: Context): String? = withContext(Dispatchers.IO) {
@@ -139,7 +136,12 @@ object ResolverAuthorizer : AuthCacheInvalidator {
     /**
      * @return null 表示授权通过; 否则返回阻断原因
      */
-    suspend fun ensureAuthorized(context: Context): String? = withContext(Dispatchers.IO) {
+    suspend fun ensureAuthorized(context: Context): String? {
+        return null
+    }
+
+    @Suppress("unused")
+    private suspend fun legacyEnsureAuthorized(context: Context): String? = withContext(Dispatchers.IO) {
         val manager = account()
         val (available, unavailableReason) = manager.isFeatureAvailable(FEATURE_KEY)
         if (!available) {

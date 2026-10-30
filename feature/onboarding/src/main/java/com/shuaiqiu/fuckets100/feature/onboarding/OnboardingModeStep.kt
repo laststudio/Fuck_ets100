@@ -50,7 +50,13 @@ internal fun ModeAndPermissionStep(
 ) {
     val context = LocalContext.current
     var selectedMode by rememberSaveable {
-        mutableStateOf(if (initialMode == ActivationMode.DEFAULT) ActivationMode.CLOUD else initialMode)
+        mutableStateOf(
+            if (initialMode == ActivationMode.DEFAULT || initialMode == ActivationMode.CLOUD) {
+                ActivationMode.DIRECT_READ
+            } else {
+                initialMode
+            }
+        )
     }
 
     // 动态权限状态
@@ -76,7 +82,6 @@ internal fun ModeAndPermissionStep(
 
     fun selectLocalMode(mode: ActivationMode) {
         selectedMode = mode
-        if (etsEightSeriesVersion != null) showEtsCompatibilityDialog = true
     }
 
     fun getMissingPermissions(): List<String> {
@@ -142,7 +147,7 @@ internal fun ModeAndPermissionStep(
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    "不知道怎么选？大多数用户选「云端模式」即可；只有想读取手机本地缓存，或已经在使用 Shizuku / Root 时，才选择本地模式。",
+                    "本应用只做本地读取：请根据设备情况选择 Shizuku、Root 或漏洞直读模式，三选一即可。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -150,18 +155,6 @@ internal fun ModeAndPermissionStep(
         }
 
         Spacer(Modifier.height(16.dp))
-
-        // 模式 1: 云端模式
-        ModeSelectionCard(
-            title = "云端模式",
-            subtitle = "推荐：免 Root，在线读取作业与答案",
-            badge = "适合大多数人",
-            icon = Icons.Default.Cloud,
-            selected = selectedMode == ActivationMode.CLOUD,
-            onClick = { selectedMode = ActivationMode.CLOUD },
-        )
-
-        Spacer(Modifier.height(10.dp))
 
         // 模式 2: 极客提权模式 (Shizuku 与 Root 可选)
         ModeSelectionCard(

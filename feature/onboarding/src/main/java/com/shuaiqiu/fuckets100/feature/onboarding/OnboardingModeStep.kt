@@ -51,7 +51,7 @@ internal fun ModeAndPermissionStep(
     val context = LocalContext.current
     var selectedMode by rememberSaveable {
         mutableStateOf(
-            if (initialMode == ActivationMode.DEFAULT || initialMode == ActivationMode.CLOUD) {
+            if (initialMode == ActivationMode.DEFAULT) {
                 ActivationMode.DIRECT_READ
             } else {
                 initialMode
@@ -147,7 +147,7 @@ internal fun ModeAndPermissionStep(
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    "本应用只做本地读取：请根据设备情况选择 Shizuku、Root 或漏洞直读模式，三选一即可。",
+                    "本地模式（Shizuku / Root / 漏洞直读）无需任何登录；云端模式只需登录 ETS100 账号，登录信息仅保存在本机。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -155,6 +155,18 @@ internal fun ModeAndPermissionStep(
         }
 
         Spacer(Modifier.height(16.dp))
+
+        // 模式 1: 云端模式（仅需登录 ETS100 账号，登录信息保存在本机）
+        ModeSelectionCard(
+            title = "云端模式",
+            subtitle = "登录 ETS100 账号，在线获取作业与答案",
+            badge = "需联网",
+            icon = Icons.Default.Cloud,
+            selected = selectedMode == ActivationMode.CLOUD,
+            onClick = { selectedMode = ActivationMode.CLOUD },
+        )
+
+        Spacer(Modifier.height(10.dp))
 
         // 模式 2: 极客提权模式 (Shizuku 与 Root 可选)
         ModeSelectionCard(

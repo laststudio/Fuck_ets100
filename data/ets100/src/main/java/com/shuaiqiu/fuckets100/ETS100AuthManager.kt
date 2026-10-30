@@ -273,9 +273,15 @@ object ETS100AuthManager {
         val token = getToken(context)
         val parentId = prefs.getString(Keys.PARENT_ACCOUNT_ID, null)
         val method = prefs.getString(Keys.LOGIN_METHOD, null)
+        // 账号密码登录（LOGIN_METHOD_PASSWORD）同样是有效登录；历史版本可能没写登录方式，
+        // 只要本机存在 Token + parentId 也视为已登录。
         return !token.isNullOrEmpty() &&
             !parentId.isNullOrEmpty() &&
-            method in setOf(LOGIN_METHOD_BACKEND_BOUND, LOGIN_METHOD_CHANGYAN_WEB)
+            (method == null || method in setOf(
+                LOGIN_METHOD_PASSWORD,
+                LOGIN_METHOD_BACKEND_BOUND,
+                LOGIN_METHOD_CHANGYAN_WEB,
+            ))
     }
 
     /**

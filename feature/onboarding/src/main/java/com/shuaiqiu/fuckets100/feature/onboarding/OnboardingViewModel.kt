@@ -17,7 +17,8 @@ data class OnboardingUiState(
 
 /**
  * 三段式引导：欢迎 -> 运行模式与权限 -> 完成。
- * 不再包含账号登录、云端绑定等步骤。
+ * 本地模式无需登录；云端模式只需登录 ETS100 账号（登录信息保存在本机），
+ * 不包含 LastStudio 账号/绑定等步骤。
  */
 @HiltViewModel
 class OnboardingViewModel @Inject constructor() : ViewModel() {
@@ -36,7 +37,7 @@ class OnboardingViewModel @Inject constructor() : ViewModel() {
     }
 
     fun selectModeAndContinue(mode: ActivationMode) {
-        val fixed = if (mode == ActivationMode.CLOUD || mode == ActivationMode.DEFAULT) {
+        val fixed = if (mode == ActivationMode.DEFAULT) {
             ActivationMode.DIRECT_READ
         } else {
             mode

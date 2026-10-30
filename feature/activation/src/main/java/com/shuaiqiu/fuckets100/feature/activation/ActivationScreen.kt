@@ -110,7 +110,7 @@ fun ActivationSettingsScreen(
     val hasLocalBasicPermissions = hasFilesPerm
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val activationModes = ActivationMode.values().filter {
-        it == ActivationMode.SHIZUKU || it == ActivationMode.ROOT || it == ActivationMode.DIRECT_READ
+        it == ActivationMode.SHIZUKU || it == ActivationMode.ROOT || it == ActivationMode.DIRECT_READ || it == ActivationMode.CLOUD
     }
 
     ExpressiveScaffold(
@@ -289,7 +289,10 @@ fun ActivationSettingsScreen(
                 versionName = version.versionName,
                 mode = currentMode,
                 onDismiss = { showEtsCompatibilityDialog = false },
-                onUseCloudMode = { showEtsCompatibilityDialog = false },
+                onUseCloudMode = {
+                    showEtsCompatibilityDialog = false
+                    selectMode(ActivationMode.CLOUD)
+                },
                 onContinueLocalMode = { showEtsCompatibilityDialog = false },
             )
         }

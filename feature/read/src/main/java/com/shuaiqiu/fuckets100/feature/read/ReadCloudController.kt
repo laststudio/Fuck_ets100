@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import com.shuaiqiu.fuckets100.CloudHomeworkState
 import com.shuaiqiu.fuckets100.ETS100ApiClient
-import com.shuaiqiu.fuckets100.FeAccountManager
 import com.shuaiqiu.fuckets100.PaperSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -24,7 +23,6 @@ import kotlinx.coroutines.CoroutineScope
  */
 internal class ReadCloudController(
     private val context: Context,
-    private val accountManager: FeAccountManager,
     private val uiStateFlow: MutableStateFlow<ReadUiState>,
     private val effectsFlow: Channel<ReadEffect>,
     private val scope: CoroutineScope,
@@ -144,7 +142,6 @@ internal class ReadCloudController(
             context = context,
             status = status,
             accountOnline = accountOnline,
-            accountManager = accountManager,
         )
 
         when (result) {

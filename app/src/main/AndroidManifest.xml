@@ -9,6 +9,10 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- 网络权限：仅云端模式（ETS100 官方 API 与讯飞网页登录）需要 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- 仅声明需要读取版本信息的 ETS100 客户端，避免申请 QUERY_ALL_PACKAGES -->
     <queries>
         <package android:name="com.ets100.secondary" />
@@ -39,6 +43,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ChangyanWebLoginActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Fe.Transparent" />
+
+        <activity
+            android:name=".ChangyanWebLoginOpaqueActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:enableOnBackInvokedCallback="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Fe" />
 
         <!-- Shizuku Provider - 必须添加 -->
         <provider

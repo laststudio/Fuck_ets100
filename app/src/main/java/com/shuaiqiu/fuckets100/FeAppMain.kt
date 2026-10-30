@@ -25,7 +25,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * 应用主界面：只保留"读取"与"设置"两个入口。
- * 不再包含账号门禁、强制更新、公告、启动验证码、云端模式等任何在线功能。
+ * 本地三种模式（Shizuku / Root / 漏洞直读）无需任何登录；
+ * 云端模式仅需登录 ETS100 账号，登录信息全部保存在本机。
  */
 @Composable
 fun FeAppMain() {
@@ -76,7 +77,9 @@ fun FeAppMain() {
     suspend fun computeReadAccessIssue(): String? = withContext(Dispatchers.IO) {
         when {
             currentMode == ActivationMode.DEFAULT -> "尚未选择运行模式，请先完成激活配置"
-            !PermissionsHelper.hasAllFilesAccess() ->
+            currentMode == ActivationMode.CLOUD && !ETS100AuthManager.isLoggedIn(context) ->
+                "云端模式尚未登录，请先在运行授权页登录 ETS100 账号"
+            currentMode != ActivationMode.CLOUD && !PermissionsHelper.hasAllFilesAccess() ->
                 "缺少文件访问权限，无法读取本地答题数据"
             currentMode == ActivationMode.SHIZUKU && !shizukuState.isRunning ->
                 "Shizuku 服务未运行，暂时无法读取本地答题数据"
@@ -103,14 +106,6 @@ fun FeAppMain() {
         }
         readAccessIssue = computeReadAccessIssue()
         readAccessChecking = false
-    }
-
-    // 老版本可能保存过 CLOUD，这里统一回退到漏洞直读。
-    LaunchedEffect(Unit) {
-        if (currentMode == ActivationMode.CLOUD) {
-            currentMode = ActivationMode.DIRECT_READ
-            SettingsManager.saveActivationMode(ActivationMode.DIRECT_READ)
-        }
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -206,7 +201,9 @@ fun FeAppMain() {
                                 onOpenPaperDetail = { paper ->
                                     navigator.push(FeRoute.Answer(PaperStore.put(paper)))
                                 },
-                                onOpenChangyanLogin = {},
+                                onOpenChangyanLogin = {
+                                    context.startActivity(ChangyanWebLoginActivity.createIntent(context))
+                                },
                                 compactAnswerDisplay = compactAnswerDisplay,
                             )
 

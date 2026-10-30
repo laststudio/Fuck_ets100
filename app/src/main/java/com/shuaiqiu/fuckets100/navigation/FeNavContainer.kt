@@ -165,10 +165,22 @@ fun FeNavContainer(
                             navigator.pop()
                             onHomeRefreshRequested()
                         },
-                        onNavigateToCloudActivation = { },
+                        onNavigateToCloudActivation = { navigator.push(FeRoute.CloudActivation) },
                         onNavigateToRead = {
                             navigator.popUntil { it is FeRoute.Main }
                             onSelectRootPage(0)
+                        },
+                    )
+                }
+                entry<FeRoute.CloudActivation> {
+                    CloudActivationScreen(
+                        onBack = navigator::pop,
+                        createChangyanLoginIntent = { ctx -> ChangyanWebLoginActivity.createIntent(ctx) },
+                        onLoginSuccess = {
+                            SettingsManager.saveActivationMode(ActivationMode.CLOUD)
+                            onActivationModeChanged(ActivationMode.CLOUD)
+                            cloudAuthRevision++
+                            navigator.pop()
                         },
                     )
                 }

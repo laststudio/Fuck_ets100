@@ -165,7 +165,7 @@ fun FeNavContainer(
                             navigator.pop()
                             onHomeRefreshRequested()
                         },
-                        onNavigateToCloudActivation = { navigator.push(FeRoute.CloudActivation) },
+                        onNavigateToCloudActivation = { },
                         onNavigateToRead = {
                             navigator.popUntil { it is FeRoute.Main }
                             onSelectRootPage(0)

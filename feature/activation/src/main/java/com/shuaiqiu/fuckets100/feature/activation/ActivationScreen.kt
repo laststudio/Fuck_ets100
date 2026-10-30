@@ -289,10 +289,7 @@ fun ActivationSettingsScreen(
                 versionName = version.versionName,
                 mode = currentMode,
                 onDismiss = { showEtsCompatibilityDialog = false },
-                onUseCloudMode = {
-                    showEtsCompatibilityDialog = false
-                    selectMode(ActivationMode.CLOUD)
-                },
+                onUseCloudMode = { showEtsCompatibilityDialog = false },
                 onContinueLocalMode = { showEtsCompatibilityDialog = false },
             )
         }

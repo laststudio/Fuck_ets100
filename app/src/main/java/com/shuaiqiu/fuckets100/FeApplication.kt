@@ -29,6 +29,9 @@ class FeApplication : Application() {
 
         SettingsManager.init(this)
 
+        // 解析器本地授权初始化：离线启用解析能力（不发网络请求）
+        runCatching { ResolverAuthorizer.ensureLocalNativeConfigured(this) }
+
         ShizukuRuntimeState.isSui = Sui.init(BuildConfig.APPLICATION_ID)
         Log.d(TAG, "Sui initialized: " + ShizukuRuntimeState.isSui)
 

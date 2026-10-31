@@ -186,6 +186,7 @@ internal class ReadCloudController(
                         cloudHomeworkError = result.message,
                     )
                 }
+                effectsFlow.trySend(ReadEffect.ShowError("获取作业列表失败", result.message))
             }
         }
     }
@@ -326,7 +327,7 @@ internal class ReadCloudController(
                         )
                     }
                     ReadCloudLog.error("✗ ${result.message}")
-                    effectsFlow.trySend(ReadEffect.ShowToast(result.message, long = result.longToast))
+                    effectsFlow.trySend(ReadEffect.ShowError("答案解析不可用", result.message))
                 }
 
                 is CloudPaperResult.Failure -> {
@@ -349,7 +350,7 @@ internal class ReadCloudController(
                         )
                     }
                     saveCloudReadState()
-                    effectsFlow.trySend(ReadEffect.ShowToast("下载或解析失败: ${result.message}", long = true))
+                    effectsFlow.trySend(ReadEffect.ShowError("下载或解析失败", result.message))
                 }
             }
         } finally {

@@ -33,6 +33,9 @@ data class ReadUiState(
 /** 一次性界面副作用，由界面层消费。 */
 sealed interface ReadEffect {
     data class ShowToast(val message: String, val long: Boolean = false) : ReadEffect
+
+    /** 详细错误：弹窗展示完整信息（可滚动/复制），避免长错误被 Toast 截断。 */
+    data class ShowError(val title: String, val message: String) : ReadEffect
     data class OpenPaperDetail(val paper: ETS100AnswerReader.Paper) : ReadEffect
     data object ClearPaperSelection : ReadEffect
 }

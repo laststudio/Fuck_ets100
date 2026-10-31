@@ -70,7 +70,9 @@ fun ActivationSettingsScreen(
 
     // 首次打开异步读取；已有短时缓存时直接沿用，不重复触发页面闪变。
     LaunchedEffect(cloudAuthRevision) {
-        viewModel.refresh(force = false)
+        // 登录成功后 cloudAuthRevision 会变化：必须强制刷新，
+        // 否则会命中 15s 缓存导致界面仍显示“未激活”，要再点一次登录才更新。
+        viewModel.refresh(force = true)
     }
 
     var hasPaused by remember { mutableStateOf(false) }

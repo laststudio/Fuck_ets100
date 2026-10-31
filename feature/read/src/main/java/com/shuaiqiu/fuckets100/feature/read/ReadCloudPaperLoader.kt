@@ -90,11 +90,13 @@ internal suspend fun downloadAndParseCloudPaper(
         val allSections = mutableListOf<ETS100AnswerReader.Section>()
         // 每包的解析器原始题目 + 官方挂载键（整卷合并用；见下方 officialMerge）
         val nativePackages = mutableListOf<ETS100CloudTemplate.PackageQuestions>()
+        // 逐包失败原因：全部为空时拼进错误信息，方便定位（下载/解压/解析/授权各阶段）
+        val parseIssues = mutableListOf<String>()
         var questionIndex = 0
 
         val isPkOrVocab = homeworkInfo.contents.isEmpty() || homeworkInfo.pk == 1 || homeworkInfo.setType == 6
         if (isPkOrVocab) {
-            parseOnlineHomework(context, homeworkInfo, cacheDir, allSections) { added ->
+            parseOnlineHomework(context, homeworkInfo, cacheDir, allSections, parseIssues) { added ->
                 questionIndex += added
             }
         }
@@ -112,12 +114,27 @@ internal suspend fun downloadAndParseCloudPaper(
                     onProgress = onProgress,
                     allSections = allSections,
                     nativePackages = nativePackages,
+                    issues = parseIssues,
                 )
             }
         }
 
         if (allSections.isEmpty()) {
-            throw Exception("未能解析到任何题目")
+            val detail = buildString {
+                append("未能解析到任何题目")
+                append("（作业：").append(homeworkInfo.name).append("；")
+                append("内容包 ").append(homeworkInfo.contents.size).append(" 个，pk=").append(homeworkInfo.pk)
+                append("，setType=").append(homeworkInfo.setType)
+                append("；解析器授权：").append(ResolverAuthorizer.localAuthStatus())
+                append("；Token：").append(if (ETS100AuthManager.getToken(context).isNullOrBlank()) "缺失" else "已保存")
+                append("）")
+                if (parseIssues.isNotEmpty()) {
+                    append("\n失败环节：\n")
+                    parseIssues.take(6).forEach { append("- ").append(it).append("\n") }
+                }
+                append("可先点作业卡片重试；若仍失败，请把 ReadCloud 日志反馈给开发者。")
+            }
+            throw Exception(detail)
         }
 
         // 官方模板口径：从 /m/homework/struct 取模板包 -> res.json -> op: parse_homework_set
@@ -199,6 +216,7 @@ private suspend fun parseOnlineHomework(
     homeworkInfo: ETS100ApiClient.HomeworkInfo,
     cacheDir: File,
     allSections: MutableList<ETS100AnswerReader.Section>,
+    issues: MutableList<String>,
     onQuestionIndexAdvanced: (Int) -> Unit,
 ) {
     ReadCloudLog.info("🌐 检测到 PK/词汇在线作业，正在从云端获取题目数据...")
@@ -299,6 +317,11 @@ private suspend fun parseOnlineHomework(
         }
     }
 
+    if (pkJson == null || pkJson.length() == 0) {
+        issues += "在线作业（" + homeworkInfo.name + "）未从官方接口获取到题目数据" +
+            "（已尝试 pk-info / homework/struct / score-detail；请确认该作业类型或账号权限）"
+    }
+
     if (pkJson != null && pkJson.length() > 0) {
         try {
             val groupName = if (homeworkInfo.setType == 6 || homeworkInfo.pk == 1) "词汇PK" else "在线作业"
@@ -328,9 +351,11 @@ private suspend fun parseOnlineHomework(
                 ReadCloudLog.success("✅ 成功解析 PK/词汇题目 ${questions.size} 道")
             } else {
                 ReadCloudLog.warn("⚠️ PK/词汇作业未解析出题目")
+                issues += "在线作业（" + homeworkInfo.name + "）拿到了题目数据但解析为 0 题"
             }
         } catch (e: Exception) {
             ReadCloudLog.error("✗ 解析 PK/词汇作业失败: ${e.message}")
+            issues += "在线作业（" + homeworkInfo.name + "）解析异常：" + (e.message ?: "未知错误")
         }
     }
 }
@@ -347,6 +372,7 @@ private suspend fun parseZipContent(
     onProgress: suspend (CloudHomeworkState.DownloadProgress?) -> Unit,
     allSections: MutableList<ETS100AnswerReader.Section>,
     nativePackages: MutableList<ETS100CloudTemplate.PackageQuestions>,
+    issues: MutableList<String>,
 ): Int {
     // 1. 构造完整 URL
     val zipUrl = if (content.url.startsWith("http")) {
@@ -362,6 +388,7 @@ private suspend fun parseZipContent(
     val zipFileName = zipUrl.substringAfterLast('/').substringBefore('?')
     if (zipFileName.isEmpty()) {
         ReadCloudLog.warn("⚠️ 无法从 URL 提取文件名: ${content.url}")
+        issues += "内容" + (contentIndex + 1) + "（" + content.groupName + "）无法从下载地址解析文件名：" + content.url
         return 0
     }
     ReadCloudLog.info(
@@ -394,13 +421,16 @@ private suspend fun parseZipContent(
             ReadCloudLog.error("✗ 下载失败 ${content.groupName}: ${e.message}")
         }
         if (downloadResult.isFailure) {
+            val err = downloadResult.exceptionOrNull()?.message ?: "未知网络错误"
             temporaryFile.delete()
             ReadCloudLog.warn("⏭️ 跳过失败的下载: ${content.groupName}")
+            issues += "内容" + (contentIndex + 1) + "（" + content.groupName + "）下载失败：" + err
             return 0
         }
         if (!PaperSourceExporter.isUsableZip(temporaryFile)) {
             temporaryFile.delete()
             ReadCloudLog.error("✗ 下载结果不是完整 ZIP: $zipFileName")
+            issues += "内容" + (contentIndex + 1) + "（" + content.groupName + "）下载结果不是完整 ZIP"
             return 0
         }
         if (!temporaryFile.renameTo(zipFile)) {
@@ -416,6 +446,7 @@ private suspend fun parseZipContent(
     val magicHex = magic.joinToString("") { "%02X".format(it) }
     if (magicHex != "504B0304" && magicHex != "504B0506" && magicHex != "504B0708") {
         ReadCloudLog.error("⚠️ 文件不是有效 ZIP: $magicHex")
+        issues += "内容" + (contentIndex + 1) + "（" + content.groupName + "）文件不是有效 ZIP（magic=" + magicHex + "）"
         return 0
     }
 
@@ -423,6 +454,7 @@ private suspend fun parseZipContent(
     val password = ZipPasswordGenerator.generatePassword(zipFile.absolutePath)
     if (password == null) {
         ReadCloudLog.error("✗ 无法生成解压密码: $zipFileName")
+        issues += "内容" + (contentIndex + 1) + "（" + content.groupName + "）无法生成解压密码"
         return 0
     }
 
@@ -440,6 +472,7 @@ private suspend fun parseZipContent(
         ReadCloudLog.debug("📦 解压完成: $extractDirName")
     } catch (e: Exception) {
         ReadCloudLog.error("✗ 解压失败 ${content.groupName}: ${e.message}")
+        issues += "内容" + (contentIndex + 1) + "（" + content.groupName + "）解压失败：" + (e.message ?: "未知错误")
         return 0
     }
 
@@ -453,6 +486,7 @@ private suspend fun parseZipContent(
     val contentJsonFile = File(extractDir, "content.json")
     if (!contentJsonFile.exists()) {
         ReadCloudLog.warn("⚠️ 解压目录中无 content.json，跳过")
+        issues += "内容" + (contentIndex + 1) + "（" + content.groupName + "）解压目录缺少 content.json"
         return 0
     }
 
@@ -494,6 +528,8 @@ private suspend fun parseZipContent(
 
         if (questions.isEmpty()) {
             ReadCloudLog.warn("   └─ ⚠️ 未解析到任何题目！")
+            issues += "内容" + (contentIndex + 1) + "（" + content.groupName + "）content.json 解析为 0 题" +
+                "（structure_type=" + structureType + ", raw question=" + questionCountInJson + "）"
             return 0
         }
         ReadCloudLog.success(
@@ -527,6 +563,7 @@ private suspend fun parseZipContent(
         return questions.size
     } catch (e: Exception) {
         ReadCloudLog.error("   └─ ✗ 解析 content.json 失败: ${e.message}")
+        issues += "内容" + (contentIndex + 1) + "（" + content.groupName + "）解析异常：" + (e.message ?: "未知错误")
         return 0
     }
 }

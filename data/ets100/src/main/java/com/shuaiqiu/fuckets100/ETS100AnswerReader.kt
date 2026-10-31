@@ -588,7 +588,7 @@ object ETS100AnswerReader {
         //   ① 响应里多了 meta（layer / family / shape / spec_known），便于诊断与上报；
         //   ② 解析器新增能力只加 op，客户端不需要再改 JNI 声明；
         //   ③ 旧接口 parseTaskAuthorized 仍保留，但业务层统一走契约。
-        val contract = ResolverContract.parseTask(
+        var contract = parseTaskWithAuthRetry(
             content = json.toString(),
             info = infoJson,
             content2 = content2Json,
@@ -601,10 +601,7 @@ object ETS100AnswerReader {
                 content2 = content2Json,
                 tag = "ETS100AnswerReader.parseContentNative",
             )
-            throw ResolverAuthorizationDeniedException(
-                contract.errorMessage?.takeIf { it.isNotBlank() }
-                    ?: "答案解析功能当前不可用"
-            )
+            throw ResolverAuthorizationDeniedException(buildParseTaskError(contract))
         }
         return contract.resultArray ?: run {
             ResolverContract.reportUnparsed(

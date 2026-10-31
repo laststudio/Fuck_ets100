@@ -206,6 +206,9 @@ class ReadViewModel @Inject constructor(
                         log("✗ 加载失败: ${summaryResult.message}", isError = true)
                         _uiState.update {
                             it.copy(
+                                papers = it.papers.filterNot { paper ->
+                                    paper.sections.any { section -> section.category == LOCAL_PAPER_LOADING_CATEGORY }
+                                },
                                 errorMessage = "加载失败: ${summaryResult.message}",
                                 isLoading = false,
                                 localProgress = it.localProgress.copy(
@@ -492,8 +495,13 @@ class ReadViewModel @Inject constructor(
 
                     is LocalReadResult.Error -> {
                         log("✗ 后台解析答案失败: ${fullResult.message}", isError = true)
+                        _effects.trySend(ReadEffect.ShowError("答案解析失败", fullResult.message))
                         _uiState.update {
                             it.copy(
+                                // 失败时移除“解析中”占位试卷，否则列表会一直显示“正在加载…”
+                                papers = it.papers.filterNot { paper ->
+                                    paper.sections.any { section -> section.category == LOCAL_PAPER_LOADING_CATEGORY }
+                                },
                                 localProgress = it.localProgress.copy(
                                     phase = LocalParsePhase.FAILED,
                                     message = "后台解析答案失败: ${fullResult.message}",

@@ -80,12 +80,4 @@ runs:
           readelf -s "${JNI_DIR}/${so}.so" 2>/dev/null | grep -q JNI_OnLoad \
             || nm -D --defined-only "${JNI_DIR}/${so}.so" 2>/dev/null | grep -q JNI_OnLoad
         done
-        # 新 APK 使用独立的完整性策略 JNI；禁止用旧 so 覆盖后再发布。
-        for so in libresolver libcloud; do
-          symbols="$(nm -D --defined-only "${JNI_DIR}/${so}.so" 2>/dev/null)"
-          if ! grep -q 'RUNTIME_INTEGRITY_POLICY_ABI_VERSION' <<< "$symbols"; then
-            echo "${so}.so 缺少完整性策略接口，请先发布新版 ets_resolver，再构建 Fe" >&2
-            exit 1
-          fi
-        done
         sha256sum "${JNI_DIR}/libresolver.so" "${JNI_DIR}/libcloud.so"

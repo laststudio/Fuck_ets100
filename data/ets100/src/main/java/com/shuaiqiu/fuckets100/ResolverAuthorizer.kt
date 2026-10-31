@@ -1,6 +1,7 @@
 package com.shuaiqiu.fuckets100
 
 import android.content.Context
+import android.util.Log
 import com.shuaiqiu.fuckets100.core.common.AccountAccess
 import com.shuaiqiu.fuckets100.core.common.AccountAccessException
 import com.shuaiqiu.fuckets100.core.common.AppBuildInfo
@@ -64,6 +65,59 @@ object ResolverAuthorizer : AuthCacheInvalidator {
     @Volatile private var lastResolverAuthorization: FeatureAuthorizationCache? = null
     private const val AUTH_CACHE_TTL_MS = 3 * 60 * 1000L // 3 分钟内存缓存，避免频繁点击重复请求网络
 
+    private const val TAG = "ResolverAuthorizer"
+
+    @Volatile private var localNativeConfigured = false
+
+    /**
+     * 解析器离线本地授权初始化（本项目已移除作者后端）。
+     *
+     * 只做本地配置：写入 base_url / software_key / feature_key / 公钥 / 版本号 +
+     * 本地占位令牌，然后 setAuthEnabled(true)。不会发起任何网络请求；
+     * libresolver.so 已打补丁跳过服务端 grant 校验，因此本地读取与云端解析都可直接使用。
+     *
+     * 幂等、线程安全；重复调用无副作用。
+     */
+    fun ensureLocalNativeConfigured(context: Context) {
+        if (localNativeConfigured) return
+        synchronized(this) {
+            if (localNativeConfigured) return
+            val versionCode = runCatching {
+                val info = context.packageManager.getPackageInfo(context.packageName, 0)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    info.longVersionCode
+                } else {
+                    @Suppress("DEPRECATION")
+                    info.versionCode.toLong()
+                }
+            }.getOrDefault(0L)
+            runCatching {
+                ResolverNative.setIntegrityCheckEnabled(false)
+                val rc = ResolverNative.setAuthConfig(
+                    baseUrl = BASE_URL,
+                    softwareKey = SOFTWARE_KEY,
+                    featureKey = FEATURE_KEY,
+                    publicKeyB64 = PUBLIC_KEY_B64,
+                    appVersionCode = versionCode,
+                )
+                if (rc != 0) {
+                    Log.w(TAG, "setAuthConfig 失败: code=" + rc + "（解析器可能无法工作）")
+                    return@synchronized
+                }
+                // 本地占位令牌：只满足解析器的非空校验，不会上传到任何服务器。
+                ResolverNative.setAccessToken("offline-local-read-only")
+                ResolverNative.setAuthEnabled(true)
+                localNativeConfigured = true
+                Log.i(TAG, "解析器本地授权已初始化（离线模式，versionCode=" + versionCode + "）")
+            }.onFailure { Log.e(TAG, "解析器本地授权初始化异常", it) }
+        }
+    }
+
+    /** 诊断信息（用于错误提示/日志，不包含隐私数据）。 */
+    fun localAuthStatus(): String = runCatching {
+        "authEnabled=" + ResolverNative.isAuthEnabled() + ", configured=" + localNativeConfigured
+    }.getOrDefault("authEnabled=unknown")
+
     override fun invalidateAuthCache() {
         lastCloudAuthorization = null
         lastResolverAuthorization = null
@@ -74,16 +128,19 @@ object ResolverAuthorizer : AuthCacheInvalidator {
      * @throws ResolverAuthorizationDeniedException 未登录/功能关闭/网络失败等
      */
     suspend fun requireAuthorized(context: Context) {
-        // 离线改版：本地解析不再需要 LastStudio 授权，直接放行。
+        // 离线改版：本地解析不再需要 LastStudio 授权；这里只确保解析器已在本地完成配置。
+        ensureLocalNativeConfigured(context)
     }
 
     /** 配置 SO 共用的后端、签名公钥和 access token，不提前指定实际功能权限。 */
     suspend fun requireConfigured(context: Context) {
-        // 离线改版：不再向解析器下发任何授权配置。
+        // 离线改版：不再向作者后端下发任何授权配置，只做本地离线初始化。
+        ensureLocalNativeConfigured(context)
     }
 
     suspend fun requireCloudAuthorized(context: Context) {
-        // 离线改版：云端模式已移除。
+        // 离线改版：云端模式不再需要作者后端授权；解析器本地初始化即可。
+        ensureLocalNativeConfigured(context)
     }
 
     private suspend fun ensureCloudAuthorized(context: Context): String? = withContext(Dispatchers.IO) {

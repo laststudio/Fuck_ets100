@@ -106,7 +106,7 @@ internal suspend fun loadCloudHomeworkListResult(
         val savedPassword = ETS100AuthManager.getPassword(context)
         val deviceCode = ETS100AuthManager.getDeviceCode(context)
         if (phone.isNullOrBlank() || savedPassword.isNullOrBlank()) {
-            return CloudHomeworkListResult.Failure("登录已过期，请重新登录 ETS100 账号")
+            return CloudHomeworkListResult.Failure("登录已过期（本地 Token 失效且未保存密码），请重新登录 ETS100 账号")
         }
         try {
             ReadCloudLog.info("🔁 本地账号密码重新登录：${phone}")
@@ -133,7 +133,7 @@ internal suspend fun loadCloudHomeworkListResult(
             val message = if (isClassError && status == CloudHomeworkState.STATUS_CURRENT) {
                 "当前账号无有效班级，可切换至「历史作业」查看往期归档答案"
             } else {
-                lastError?.message ?: "获取作业列表失败"
+                (lastError?.message ?: "获取作业列表失败") + "；请检查网络后重试，若持续失败请重新登录 ETS100 账号（详细原因见日志 ReadCloud）"
             }
             return CloudHomeworkListResult.Failure(message)
         }

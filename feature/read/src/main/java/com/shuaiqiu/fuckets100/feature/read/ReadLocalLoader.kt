@@ -53,7 +53,10 @@ internal object ReadLocalLoader {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                LocalReadResult.Error(e.message ?: "未知错误")
+                LocalReadResult.Error(
+                    "扫描本地数据失败（模式=" + mode + "）：" + (e.message ?: "未知错误") +
+                        "；请确认文件访问权限，或切换到其它读取模式后重试"
+                )
             }
         }
 
@@ -75,7 +78,10 @@ internal object ReadLocalLoader {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            LocalReadResult.Error(e.message ?: "未知错误")
+            LocalReadResult.Error(
+                "解析本地答案失败（模式=" + mode + "）：" + (e.message ?: "未知错误") +
+                    "；若提示授权/内部错误，请反馈日志中的 ResolverAuthorizer / ReadScreen 行"
+            )
         }
     }
 }

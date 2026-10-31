@@ -6,6 +6,8 @@ import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -19,7 +21,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.shuaiqiu.fuckets100.core.designsystem.ExpressiveScaffold
 import com.shuaiqiu.fuckets100.core.designsystem.expressiveTopAppBarColors
@@ -118,6 +123,8 @@ fun ReadScreen(
     // 可展开 FAB 相关状态
     var showCloudReadConfirmDialog by remember { mutableStateOf(false) }
     var showReadActionsMenu by remember { mutableStateOf(false) }
+    var errorDialog by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val clipboardManager = LocalClipboardManager.current
     val paperListState = key(currentMode) { rememberLazyListState() }
     val readFabExpanded by remember(paperListState) {
         derivedStateOf {
@@ -182,8 +189,37 @@ fun ReadScreen(
                     selectedPaper = null
                     showPaperDetail = false
                 }
+
+                is ReadEffect.ShowError -> errorDialog = effect.title to effect.message
             }
         }
+    }
+
+    // 详细错误弹窗：可滚动查看并一键复制，方便反馈给开发者（日志里也有同样内容）。
+    errorDialog?.let { (title, message) ->
+        AlertDialog(
+            onDismissRequest = { errorDialog = null },
+            title = { Text(title) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 380.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    Text(message, style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    clipboardManager.setText(AnnotatedString(message))
+                    errorDialog = null
+                    Toast.makeText(context, "错误详情已复制", Toast.LENGTH_SHORT).show()
+                }) { Text("复制详情") }
+            },
+            dismissButton = {
+                TextButton(onClick = { errorDialog = null }) { Text("关闭") }
+            },
+        )
     }
 
     LaunchedEffect(currentMode, uiState.reloadTrigger, accountOnline, readAccessChecking, readAccessIssue, viewModel) {

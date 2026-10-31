@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 /* 设备绑定短信验证弹窗（从 CloudActivationScreen 拆出，控制单文件行数）。 */
 
 @Composable
-private fun DeviceVerificationDialog(
+internal fun DeviceVerificationDialog(
     phone: String,
     verificationCode: String,
     errorText: String?,

@@ -109,7 +109,9 @@ fun ActivationSettingsScreen(
     val successColor = MaterialTheme.colorScheme.primary
     val hasLocalBasicPermissions = hasFilesPerm
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val activationModes = ActivationMode.values().filter { it != ActivationMode.DEFAULT }
+    val activationModes = ActivationMode.values().filter {
+        it == ActivationMode.SHIZUKU || it == ActivationMode.ROOT || it == ActivationMode.DIRECT_READ || it == ActivationMode.CLOUD
+    }
 
     ExpressiveScaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

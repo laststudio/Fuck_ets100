@@ -42,7 +42,6 @@ class ReadViewModel @Inject constructor(
     private val cloudController: ReadCloudController by lazy {
         ReadCloudController(
             context = context,
-            accountManager = accountManager,
             uiStateFlow = _uiState,
             effectsFlow = _effects,
             scope = viewModelScope,

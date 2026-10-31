@@ -7,8 +7,6 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
-import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
@@ -34,10 +32,7 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import android.util.Base64
 
-@AndroidEntryPoint
 open class ChangyanWebLoginActivity : ComponentActivity() {
-    @Inject lateinit var accountManager: FeAccountManager
-
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
     @Volatile
@@ -232,35 +227,32 @@ open class ChangyanWebLoginActivity : ComponentActivity() {
     private fun exchangeToken(login: String, userId: String, sucUserToken: String) {
         lifecycleScope.launch {
             try {
-                val savedEcardId = ETS100AuthManager.getSelectedEcardId(this@ChangyanWebLoginActivity).orEmpty()
-                // 讯飞登录凭据交给 LastStudio 后端完成校验和绑定。
-                // 后端返回的短期会话直接用于本地云端读取，避免 Android 端再单独登录一次 ETS100。
-                val session = withContext(Dispatchers.IO) {
-                    accountManager.bindChangyanAccount(
-                        login = login,
-                        userId = userId,
-                        sucUserToken = sucUserToken,
-                        preferredAccountId = savedEcardId,
-                    )
-                }
-                val selectedAccount = parseNativeAccount(session.selectedAccount)
-                val validAccounts = session.validAccounts.map(::parseNativeAccount)
+                val deviceCode = ETS100AuthManager.getDeviceCode(this@ChangyanWebLoginActivity)
+                val loginResponse = ETS100ApiClient.loginZt(login, userId, sucUserToken, deviceCode).getOrThrow()
+                val savedEcardId = ETS100AuthManager.getSelectedEcardId(this@ChangyanWebLoginActivity)
+                val preferredAccountId = savedEcardId ?: loginResponse.recentAccountId
+                val selectionResult = ETS100ApiClient
+                    .getEcardSelection(loginResponse.token, preferredAccountId)
+                    .getOrThrow()
+                val validAccounts = selectionResult.validAccounts
                 if (validAccounts.isEmpty()) {
-                    throw IllegalStateException("当前账号没有可用的班级信息")
-                }
-                val shouldAskUser = validAccounts.size > 1 &&
-                    (savedEcardId.isBlank() || selectedAccount.id != savedEcardId)
-                if (shouldAskUser) {
-                    showAccountSelectionDialog(login, session.token, validAccounts)
+                    isHandlingLogin = false
+                    showFailure("当前账号没有可用的班级信息")
+                } else if (savedEcardId.isNullOrBlank() && validAccounts.size > 1) {
+                    showAccountSelectionDialog(login, loginResponse.token, validAccounts)
                 } else {
-                    completeLogin(login, session.token, selectedAccount)
+                    completeLogin(login, loginResponse.token, selectionResult.selectedAccount)
                 }
-            } catch (e: CancellationException) {
-                throw e
+            } catch (e: ETS100ApiClient.SmsVerificationRequiredException) {
+                isHandlingLogin = false
+                showFailure("账号需要短信验证，请稍后重试")
+            } catch (e: ETS100ApiClient.DeviceBindRequiredException) {
+                isHandlingLogin = false
+                showFailure("设备需要重新绑定，请稍后重试")
             } catch (e: Exception) {
                 isHandlingLogin = false
-                Log.e(TAG, "讯飞登录并绑定流程失败: ${e.message}")
-                showFailure(e.message ?: "讯飞登录并绑定失败")
+                Log.e(TAG, "讯飞登录换取 token 失败: ${e.message}", e)
+                showFailure("讯飞登录异常：${e.message}")
             }
         }
     }
@@ -292,7 +284,7 @@ open class ChangyanWebLoginActivity : ComponentActivity() {
         withContext(Dispatchers.Main) {
             Toast.makeText(
                 this@ChangyanWebLoginActivity,
-                "讯飞登录成功，已绑定 LastStudio：${account.name.ifBlank { account.grade }}",
+                "讯飞登录成功，登录信息仅保存在本机：${account.name.ifBlank { account.grade }}",
                 Toast.LENGTH_SHORT
             ).show()
             setResult(Activity.RESULT_OK)

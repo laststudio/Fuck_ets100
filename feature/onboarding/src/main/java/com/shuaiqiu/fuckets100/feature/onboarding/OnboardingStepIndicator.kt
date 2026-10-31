@@ -13,14 +13,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-/** 顶部紧凑指示条 */
+/** 顶部紧凑指示条（3 步：欢迎 / 运行模式 / 完成） */
 @Composable
 internal fun OnboardingStepIndicator(
     currentStep: Int,
     totalSteps: Int,
     onBack: () -> Unit,
 ) {
-    val stepTitles = listOf("欢迎", "Fe 账号", "模式与权限", "绑定 e听说")
+    val stepTitles = listOf("欢迎", "运行模式", "完成")
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -41,7 +41,8 @@ internal fun OnboardingStepIndicator(
                 )
             }
             Text(
-                text = "${currentStep + 1} / $totalSteps  ${stepTitles.getOrElse(currentStep) { "" }}",
+                text = (currentStep + 1).toString() + " / " + totalSteps + "  " +
+                    stepTitles.getOrElse(currentStep) { "" },
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,

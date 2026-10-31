@@ -168,16 +168,14 @@ fun FeNavContainer(
                         onNavigateToCloudActivation = { navigator.push(FeRoute.CloudActivation) },
                         onNavigateToRead = {
                             navigator.popUntil { it is FeRoute.Main }
-                            onSelectRootPage(1)
+                            onSelectRootPage(0)
                         },
                     )
                 }
                 entry<FeRoute.CloudActivation> {
                     CloudActivationScreen(
                         onBack = navigator::pop,
-                        createChangyanLoginIntent = { ctx ->
-                            ChangyanWebLoginActivity.createIntent(ctx)
-                        },
+                        createChangyanLoginIntent = { ctx -> ChangyanWebLoginActivity.createIntent(ctx) },
                         onLoginSuccess = {
                             SettingsManager.saveActivationMode(ActivationMode.CLOUD)
                             onActivationModeChanged(ActivationMode.CLOUD)
@@ -186,38 +184,7 @@ fun FeNavContainer(
                         },
                     )
                 }
-                entry<FeRoute.Account> {
-                    FeAccountScreen(
-                        onBack = navigator::pop,
-                        onNavigateToDevices = { navigator.push(FeRoute.AccountDevices) },
-                        onNavigateToBindings = { navigator.push(FeRoute.AccountBindings(it)) },
-                        onNavigateToChangePassword = { navigator.push(FeRoute.AccountChangePassword) },
-                        onNavigateToSessions = { navigator.push(FeRoute.AccountSessions) },
-                        onLogoutNavigate = {
-                            navigator.popUntil { route -> route is FeRoute.Main }
-                            onSelectRootPage(0)
-                        },
-                    )
-                }
-                entry<FeRoute.AccountBindings> { route ->
-                    AccountBindingsScreen(isEtingshuo = route.isEtingshuo, onBack = navigator::pop)
-                }
-                entry<FeRoute.AccountChangePassword> {
-                    ChangePasswordScreen(
-                        onBack = navigator::pop,
-                        onPasswordChanged = {
-                            navigator.popUntil { route -> route is FeRoute.Main }
-                            onSelectRootPage(0)
-                        },
-                    )
-                }
-                entry<FeRoute.AccountDevices> {
-                    AccountDevicesPage(onBack = navigator::pop)
-                }
-                entry<FeRoute.AccountSessions> {
-                    AccountSessionsPage(onBack = navigator::pop)
-                }
-                entry<FeRoute.GeneralSettings> { GeneralSettingsScreen(onBack = navigator::pop) }
+                                                                                                                entry<FeRoute.GeneralSettings> { GeneralSettingsScreen(onBack = navigator::pop) }
                 entry<FeRoute.ThemeSettings> {
                     ThemeSettingsScreen(
                         onBack = navigator::pop,
@@ -232,36 +199,13 @@ fun FeNavContainer(
                         onPredictiveBackExitDirectionChanged = onPredictiveBackExitDirectionChanged,
                     )
                 }
-                entry<FeRoute.About> {
-                    AboutScreen(
-                        onBack = navigator::pop,
-                        onDonate = { navigator.push(FeRoute.Donate) },
-                        onLegal = { navigator.push(FeRoute.Legal) },
-                    )
-                }
-                entry<FeRoute.Legal> { LegalScreen(onBack = navigator::pop) }
-                entry<FeRoute.Donate> { DonateScreen(onBack = navigator::pop) }
-                entry<FeRoute.Answer> { route ->
+                                                                entry<FeRoute.Answer> { route ->
                     AnswerScreen(
                         paperKey = route.paperKey,
                         onBack = navigator::pop,
                     )
                 }
-                entry<FeRoute.RemoteContent> { route ->
-                    RemoteContentScreen(
-                        content = RemoteContent(
-                            announcementTitle = route.announcementTitle,
-                            announcementMessage = route.announcementMessage,
-                            announcementUpdatedAt = route.announcementUpdatedAt,
-                            announcementUrl = route.announcementUrl,
-                            changelogTitle = route.changelogTitle,
-                            changelogSummary = route.changelogSummary,
-                            changelogContent = route.changelogContent,
-                        ),
-                        onBack = navigator::pop,
-                    )
-                }
-            },
+                            },
         )
 
     val sceneState =

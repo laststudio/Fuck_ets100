@@ -85,8 +85,8 @@ def main() -> int:
     app_gradle = read(root, "app/build.gradle.kts")
     for needle in (
         'applicationId = "com.shuaiqiu.fuckets100"',
-        "versionCode = 23",
-        'versionName = "2.2.0"',
+        "versionCode = 25",
+        'versionName = "2.3.0.1-fix"',
         'EXPECTED_SIGNATURE_SHA256',
         'EXPECTED_PACKAGE_NAME',
     ):

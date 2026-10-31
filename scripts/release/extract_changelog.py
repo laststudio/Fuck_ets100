@@ -15,7 +15,10 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 
-HEADING_PATTERN = re.compile(r"^##\s+(?:\[?v?(?P<version>\d+\.\d+(?:\.\d+)?)\]?)(?:\s*-\s*(?P<date>\d{4}-\d{2}-\d{2}))?.*$")
+HEADING_PATTERN = re.compile(
+    r"^##\s+(?:\[?v?(?P<version>[0-9][0-9A-Za-z.\-_+]*)\]?)"
+    r"(?:\s*-\s*(?P<date>\d{4}-\d{2}-\d{2}))?.*$"
+)
 
 
 def normalize_version(version: str) -> str:

@@ -95,7 +95,9 @@ jobs:
         shell: bash
         run: chmod +x ./gradlew
 
+      # 离线版默认使用仓库内置补丁 SO；不要用 ets_resolver 最新 SO 覆盖。
       - name: 拉取最新解析器 so
+        if: vars.FE_FETCH_LATEST_SO == 'true'
         id: resolver
         uses: ./.github/actions/fetch-latest-resolver
         with:
@@ -108,6 +110,19 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: 校验解析器补丁未被覆盖
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$(tr -d '[:space:]' < scripts/release/expected_resolver.sha256)"
+          apk="app/build/outputs/apk/release/app-release.apk"
+          actual="$(unzip -p "$apk" lib/arm64-v8a/libresolver.so | sha256sum | awk '{print $1}')"
+          if [ "$actual" != "$expected" ]; then
+            echo "libresolver.so 与预期补丁版本不一致：expected=$expected actual=$actual" >&2
+            exit 1
+          fi
+          echo "bundled resolver patch verified: $actual"
 
       - name: 验证 R8 与资源压缩生效
         shell: bash
@@ -170,7 +185,7 @@ jobs:
             echo "- versionName：${{ steps.version.outputs.version_name }}"
             echo "- versionCode：${{ steps.version.outputs.version_code }}"
             echo "- Git 标签：${{ steps.version.outputs.tag_name }}"
-            echo "- 解析器内核：ets_resolver ${{ steps.resolver.outputs.resolver_tag }}"
+            echo "- 解析器内核：ets_resolver ${{ steps.resolver.outputs.resolver_tag || 'bundled (repo jniLibs)' }}"
             echo "- 默认更新下载地址：${{ steps.download.outputs.apk_url }}"
             echo
             echo "## 工作流信息"

@@ -36,7 +36,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      # 离线版默认使用仓库内置的 libresolver.so（含 0x126ad0 授权跳过补丁）。
+      # 上游正式版习惯用 ets_resolver 最新 SO 覆盖；这里改成显式开关，
+      # 避免再次把补丁 SO 覆盖成未打补丁版本导致解析不可用。
       - name: Fetch latest resolver/cloud SOs
+        if: vars.FE_FETCH_LATEST_SO == 'true'
         id: resolver
         uses: ./.github/actions/fetch-latest-resolver
         with:
@@ -72,6 +76,19 @@ jobs:
         run: |
           ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
+      - name: Verify bundled resolver patch
+        run: |
+          set -euo pipefail
+          expected="$(tr -d '[:space:]' < scripts/release/expected_resolver.sha256)"
+          apk="app/build/outputs/apk/release/app-release.apk"
+          actual="$(unzip -p "$apk" lib/arm64-v8a/libresolver.so | sha256sum | awk '{print $1}')"
+          if [ "$actual" != "$expected" ]; then
+            echo "libresolver.so 与预期补丁版本不一致：expected=$expected actual=$actual" >&2
+            echo "离线版禁止用未打补丁的 SO 覆盖 jniLibs（检查 fetch-latest-resolver / FE_FETCH_LATEST_SO）。" >&2
+            exit 1
+          fi
+          echo "bundled resolver patch verified: $actual"
+
       - name: Verify artifacts
         run: |
           ls -la app/build/outputs/apk/release/
@@ -96,7 +113,7 @@ jobs:
         with:
           tag_name: ${{ steps.meta.outputs.ci_tag }}
           name: "Fe ${{ steps.meta.outputs.ci_tag }}"
-          body: "解析器内核：ets_resolver ${{ steps.resolver.outputs.resolver_tag }}"
+          body: "解析器内核：ets_resolver ${{ steps.resolver.outputs.resolver_tag || 'bundled (repo jniLibs)' }}"
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -113,7 +130,7 @@ jobs:
             --apk-url "https://lastudio.cc/dl/Fe/latest" \
             --release-notes release_notes.md \
             --changelog-output current_changelog.md
-          printf '\n---\n\n解析器内核：ets_resolver %s\n' "${{ steps.resolver.outputs.resolver_tag }}" >> release_notes.md
+          printf '\n---\n\n解析器内核：ets_resolver %s\n' "${{ steps.resolver.outputs.resolver_tag || 'bundled (repo jniLibs)' }}" >> release_notes.md
 
       - name: Publish Official Release to Fuck_ets100
         env:

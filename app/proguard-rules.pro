@@ -26,6 +26,12 @@
 # kotlinx.coroutines debug agent, referenced via reflection in some toolchains.
 -dontwarn kotlinx.coroutines.debug.**
 
+# net.i2p.crypto:eddsa 仅使用其 EdDSAEngine/EdDSAPrivateKey（本地授权签名），
+# 其中针对 JDK X509Key 的分支在 Android 上不可用，R8 直接忽略即可。
+-dontwarn sun.security.x509.**
+-keep class net.i2p.crypto.eddsa.** { *; }
+-dontwarn net.i2p.crypto.eddsa.**
+
 # Aggressive R8 / ProGuard Optimization & Obfuscation
 -optimizationpasses 5
 -overloadaggressively

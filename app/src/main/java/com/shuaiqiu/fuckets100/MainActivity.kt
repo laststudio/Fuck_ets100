@@ -14,11 +14,12 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 
 sealed class Screen(val route: String, val icon: ImageVector, val label: String) {
     object Read : Screen("read", Icons.AutoMirrored.Filled.MenuBook, "读取")
+    object Auto : Screen("auto", Icons.Default.AutoAwesome, "自动完成")
     object Settings : Screen("settings", Icons.Default.Settings, "设置")
 }
 
 /**
- * 应用入口：只承载"读取 + 设置"。
+ * 应用入口：承载“读取 + 自动完成 + 设置”。
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {

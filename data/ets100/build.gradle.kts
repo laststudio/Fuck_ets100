@@ -30,6 +30,8 @@ dependencies {
     implementation(project(":core:platform"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
+    // 本地授权服务：Ed25519 签名（纯 Java，minSdk 26 可用）
+    implementation("net.i2p.crypto:eddsa:0.3.0")
     testImplementation(libs.junit)
     testImplementation("org.json:json:20240303")
 }

@@ -16,9 +16,11 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,6 +57,7 @@ private data class RootDestination(
 
 private val rootDestinations = listOf(
     RootDestination(Screen.Read, Icons.AutoMirrored.Filled.MenuBook, Icons.AutoMirrored.Outlined.MenuBook),
+    RootDestination(Screen.Auto, Icons.Filled.AutoAwesome, Icons.Outlined.AutoAwesome),
     RootDestination(Screen.Settings, Icons.Filled.Settings, Icons.Outlined.Settings),
 )
 

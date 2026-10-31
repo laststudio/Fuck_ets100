@@ -3,6 +3,9 @@ package com.shuaiqiu.fuckets100
 import android.app.Application
 import dagger.hilt.android.HiltAndroidApp
 import android.util.Log
+import com.shuaiqiu.fuckets100.core.common.AccountAccess
+import com.shuaiqiu.fuckets100.core.common.AppBuildInfo
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,6 +18,8 @@ import rikka.sui.Sui
  */
 @HiltAndroidApp
 class FeApplication : Application() {
+    @Inject lateinit var buildInfo: AppBuildInfo
+    @Inject lateinit var accountAccess: AccountAccess
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -29,8 +34,12 @@ class FeApplication : Application() {
 
         SettingsManager.init(this)
 
-        // 解析器本地授权初始化：离线启用解析能力（不发网络请求）
-        runCatching { ResolverAuthorizer.ensureLocalNativeConfigured(this) }
+        // 答案解析授权改为设备内本地签发（见 LocalResolverAuthService），
+        // 不再依赖 LastStudio 账号或远端 signingPublicKey。
+        ResolverAuthorizer.init(
+            buildInfo = buildInfo,
+            accountAccess = accountAccess,
+        )
 
         ShizukuRuntimeState.isSui = Sui.init(BuildConfig.APPLICATION_ID)
         Log.d(TAG, "Sui initialized: " + ShizukuRuntimeState.isSui)

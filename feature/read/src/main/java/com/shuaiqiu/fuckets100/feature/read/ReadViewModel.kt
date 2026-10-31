@@ -59,7 +59,6 @@ class ReadViewModel @Inject constructor(
 
     fun loadLocal(
         mode: ActivationMode,
-        accountOnline: Boolean,
         readAccessChecking: Boolean,
         readAccessIssue: String?,
     ) {
@@ -103,17 +102,6 @@ class ReadViewModel @Inject constructor(
                 )
             }
             log("已恢复上次读取的本地试卷内容")
-            return
-        }
-
-        if (!accountOnline) {
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    isParsingLocalAnswers = false,
-                    errorMessage = if (it.papers.isEmpty()) "已离线" else null,
-                )
-            }
             return
         }
 

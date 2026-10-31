@@ -250,7 +250,7 @@ internal class ReadCloudController(
             val cleared = state.cloudDownloadingHomeworks - cacheKey
             CloudHomeworkState.cloudDownloadingHomeworks = cleared
             uiStateFlow.update { it.copy(cloudDownloadingHomeworks = cleared) }
-            effectsFlow.trySend(ReadEffect.ShowToast("已离线"))
+            effectsFlow.trySend(ReadEffect.ShowToast("请登录E听说账号"))
             return
         }
 

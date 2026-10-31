@@ -49,6 +49,18 @@ object ETS100ApiClient {
         const val HOMEWORK_STRUCT_M = "/m/homework/struct"
         const val HOMEWORK_SCORE_DETAIL = "/g/homework/score-detail"
         const val WORD_STRUCT = "/g/word/struct"
+
+        /** 自动完成：作业详情（回读成绩/用时） */
+        const val HOMEWORK_INFO = "/m/homework/info"
+
+        /** 自动完成：同步作答用时 */
+        const val HOMEWORK_SET_USE_TIME = "/m/homework/set-use-time"
+
+        /** 自动完成：上报逐题成绩 */
+        const val HOMEWORK_REPORT_SCORE = "/g/homework/report-score"
+
+        /** 自动完成：提交作业 */
+        const val HOMEWORK_SUBMIT = "/m/homework/submit"
         const val SEND_USER_EXIST = "/code/send-user-exist"
         const val REBIND_CODE = "/user/rebind-code"  // 设备绑定端点
     }
@@ -253,7 +265,15 @@ object ETS100ApiClient {
         val contents: List<HomeworkContent>,
         val setType: Int = 0,
         val pk: Int = 0,
-        val resourceId: String = ""
+        val resourceId: String = "",
+        /** 卷面总分（作业列表中由平台下发，缺失时为 0） */
+        val totalScore: Double = 0.0,
+        /** 已得分数（未完成时为 null） */
+        val point: Double? = null,
+        /** 已用时长（秒） */
+        val useTime: Int = 0,
+        /** 作业所属状态（1 当前 / 2 历史 / 3 过期） */
+        val status: String = ""
     )
 
     data class HomeworkContent(
@@ -347,5 +367,34 @@ object ETS100ApiClient {
 
     suspend fun getWordStruct(token: String, wordIds: List<Int>): Result<org.json.JSONObject> =
         ets100GetWordStruct(token, wordIds)
+
+    // ============================================================================
+    // 自动完成（真实提交）
+    // ============================================================================
+
+    /** 作业详情：回读官方 point / total_point / use_time / submit_time。 */
+    suspend fun getHomeworkInfo(
+        token: String,
+        homeworkId: String,
+        resourceId: String = "",
+    ): Result<org.json.JSONObject> = ets100GetHomeworkInfo(token, homeworkId, resourceId)
+
+    /** 同步作答用时。 */
+    suspend fun setUseTime(
+        token: String,
+        params: Map<String, Any>,
+    ): Result<org.json.JSONObject> = ets100SetUseTime(token, params)
+
+    /** 上报逐题成绩。 */
+    suspend fun reportScore(
+        token: String,
+        params: Map<String, Any>,
+    ): Result<org.json.JSONObject> = ets100ReportScore(token, params)
+
+    /** 提交作业。 */
+    suspend fun submitHomework(
+        token: String,
+        params: Map<String, Any>,
+    ): Result<org.json.JSONObject> = ets100SubmitHomework(token, params)
 
 }

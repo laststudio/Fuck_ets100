@@ -169,7 +169,6 @@ fun ReadScreen(
     LaunchedEffect(currentMode, uiState.reloadTrigger, accountOnline, readAccessChecking, readAccessIssue, viewModel) {
         viewModel.loadLocal(
             mode = currentMode,
-            accountOnline = accountOnline,
             readAccessChecking = readAccessChecking,
             readAccessIssue = readAccessIssue,
         )
@@ -201,8 +200,8 @@ fun ReadScreen(
     val onRefresh: () -> Unit = {
         if (readAccessChecking || readAccessIssue != null) {
             onNavigateToActivation()
-        } else if (!accountOnline) {
-            Toast.makeText(context, "已离线", Toast.LENGTH_SHORT).show()
+        } else if (currentMode == ActivationMode.CLOUD && !accountOnline) {
+            Toast.makeText(context, "请登录E听说账号", Toast.LENGTH_SHORT).show()
         } else if (currentMode == ActivationMode.CLOUD) {
             requestCloudRead()
         } else {
@@ -231,7 +230,7 @@ fun ReadScreen(
                     Box {
                         IconButton(
                             onClick = { showReadActionsMenu = true },
-                            enabled = accountOnline,
+                            enabled = currentMode != ActivationMode.CLOUD || accountOnline,
                         ) {
                             Icon(Icons.Default.MoreVert, contentDescription = "更多操作")
                         }
@@ -289,8 +288,8 @@ fun ReadScreen(
                         onNavigateToActivation()
                         return@SmallExtendedFloatingActionButton
                     }
-                    if (!accountOnline) {
-                        Toast.makeText(context, "已离线", Toast.LENGTH_SHORT).show()
+                    if (currentMode == ActivationMode.CLOUD && !accountOnline) {
+                        Toast.makeText(context, "请登录E听说账号", Toast.LENGTH_SHORT).show()
                         return@SmallExtendedFloatingActionButton
                     }
                     if (currentMode == ActivationMode.CLOUD) {

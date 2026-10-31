@@ -395,6 +395,10 @@ object ReadPageStateStore {
                     .put("setType", homework.setType)
                     .put("pk", homework.pk)
                     .put("resourceId", homework.resourceId)
+                    .put("totalScore", homework.totalScore)
+                    .put("point", homework.point ?: JSONObject.NULL)
+                    .put("useTime", homework.useTime)
+                    .put("status", homework.status)
                     .put("contents", homework.contents.toHomeworkContentJsonArray())
             )
         }
@@ -434,7 +438,11 @@ object ReadPageStateStore {
                     contents = parseHomeworkContents(json.optJSONArray("contents")),
                     setType = json.optInt("setType", 0),
                     pk = json.optInt("pk", 0),
-                    resourceId = json.optString("resourceId", "")
+                    resourceId = json.optString("resourceId", ""),
+                    totalScore = json.optDouble("totalScore", 0.0),
+                    point = if (json.has("point") && !json.isNull("point")) json.optDouble("point", 0.0) else null,
+                    useTime = json.optInt("useTime", 0),
+                    status = json.optString("status", "")
                 )
             }
         }

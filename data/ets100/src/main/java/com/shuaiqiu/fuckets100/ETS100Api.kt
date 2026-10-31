@@ -432,6 +432,10 @@ internal suspend fun ets100GetHomeworkList(
                 val setType = item.optInt("set_type", 0)
                 val pk = item.optInt("pk", 0)
                 val resourceId = item.optString("resource_id", "")
+                val totalScore = item.optDouble("total_score", 0.0)
+                val point = if (item.has("point") && !item.isNull("point")) item.optDouble("point", 0.0) else null
+                val useTime = item.optInt("use_time", 0)
+                val itemStatus = item.optString("status", status)
 
                 // 解析 struct.contents 获取作业详情
                 val struct = item.optJSONObject("struct")
@@ -463,7 +467,11 @@ internal suspend fun ets100GetHomeworkList(
                     contents = contents,
                     setType = setType,
                     pk = pk,
-                    resourceId = resourceId
+                    resourceId = resourceId,
+                    totalScore = totalScore,
+                    point = point,
+                    useTime = useTime,
+                    status = itemStatus
                 ))
             }
 
@@ -690,4 +698,97 @@ internal suspend fun ets100GetWordStruct(
             }
             extractBody(json)
         }
+    }
+
+    // ============================================================================
+    // 自动完成（真实提交）
+    // ============================================================================
+
+    private fun autoCompleteCommonParams(token: String): MutableMap<String, Any> = mutableMapOf(
+        "sn" to ETS100ApiClient.RequestConfig.DEFAULT_SN,
+        "token" to token,
+        "version" to ETS100ApiClient.RequestConfig.DEFAULT_VERSION,
+        "system" to ETS100ApiClient.RequestConfig.DEFAULT_SYSTEM,
+        "global_client_version" to ETS100ApiClient.RequestConfig.DEFAULT_GLOBAL_CLIENT_VERSION,
+        "sign_response" to 1
+    )
+
+    private fun autoCompleteHomeworkId(value: String): Any = value.toIntOrNull() ?: value
+
+    private suspend fun autoCompleteRequest(
+        endpoint: String,
+        route: String,
+        params: Map<String, Any>,
+    ): Result<org.json.JSONObject> {
+        val bodyData = mapOf("r" to route, "params" to params)
+        return ETS100ApiClient.postRequest(endpoint, bodyData).mapCatching { responseBody ->
+            val json = responseBody.parseJson()
+            val code = json.optInt("code", -999)
+            if (code != -999 && code != 0) {
+                throw Exception("$route 失败: ${json.optString("msg", "")} ($code)")
+            }
+            extractBody(json)
+        }
+    }
+
+    /** POST /m/homework/info */
+    internal suspend fun ets100GetHomeworkInfo(
+        token: String,
+        homeworkId: String,
+        resourceId: String = ""
+    ): Result<org.json.JSONObject> {
+        val params = autoCompleteCommonParams(token)
+        params["homework_id"] = autoCompleteHomeworkId(homeworkId)
+        if (resourceId.isNotBlank()) params["resource_id"] = resourceId
+        Log.d(TAG, "getHomeworkInfo: homeworkId=$homeworkId, resourceId=$resourceId")
+        return autoCompleteRequest(
+            ETS100ApiClient.Endpoints.HOMEWORK_INFO,
+            "m/homework/info",
+            params
+        )
+    }
+
+    /** POST /m/homework/set-use-time */
+    internal suspend fun ets100SetUseTime(
+        token: String,
+        extraParams: Map<String, Any>
+    ): Result<org.json.JSONObject> {
+        val params = autoCompleteCommonParams(token)
+        params.putAll(extraParams)
+        Log.d(TAG, "setUseTime: $extraParams")
+        return autoCompleteRequest(
+            ETS100ApiClient.Endpoints.HOMEWORK_SET_USE_TIME,
+            "m/homework/set-use-time",
+            params
+        )
+    }
+
+    /** POST /g/homework/report-score */
+    internal suspend fun ets100ReportScore(
+        token: String,
+        extraParams: Map<String, Any>
+    ): Result<org.json.JSONObject> {
+        val params = autoCompleteCommonParams(token)
+        params.putAll(extraParams)
+        Log.d(TAG, "reportScore: detailCount=${(extraParams["detail"] as? List<*>)?.size ?: 0}")
+        return autoCompleteRequest(
+            ETS100ApiClient.Endpoints.HOMEWORK_REPORT_SCORE,
+            "g/homework/report-score",
+            params
+        )
+    }
+
+    /** POST /m/homework/submit */
+    internal suspend fun ets100SubmitHomework(
+        token: String,
+        extraParams: Map<String, Any>
+    ): Result<org.json.JSONObject> {
+        val params = autoCompleteCommonParams(token)
+        params.putAll(extraParams)
+        Log.d(TAG, "submitHomework: $extraParams")
+        return autoCompleteRequest(
+            ETS100ApiClient.Endpoints.HOMEWORK_SUBMIT,
+            "m/homework/submit",
+            params
+        )
     }

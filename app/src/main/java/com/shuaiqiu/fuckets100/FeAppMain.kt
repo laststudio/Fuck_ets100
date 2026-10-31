@@ -15,6 +15,7 @@ import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
 import com.shuaiqiu.fuckets100.core.designsystem.rememberFeMainPagerState
 import com.shuaiqiu.fuckets100.feature.onboarding.OnboardingScreen
+import com.shuaiqiu.fuckets100.feature.read.AutoCompleteScreen
 import com.shuaiqiu.fuckets100.feature.read.ReadScreen
 import com.shuaiqiu.fuckets100.feature.settings.SettingsScreen
 import com.shuaiqiu.fuckets100.navigation.FeNavContainer
@@ -24,9 +25,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 应用主界面：只保留"读取"与"设置"两个入口。
+ * 应用主界面：保留“读取”“自动完成”“设置”三个入口。
  * 本地三种模式（Shizuku / Root / 漏洞直读）无需任何登录；
- * 云端模式仅需登录 ETS100 账号，登录信息全部保存在本机。
+ * 云端模式与自动完成仅需登录 ETS100（E听说）账号，登录信息全部保存在本机。
  */
 @Composable
 fun FeAppMain() {
@@ -39,7 +40,7 @@ fun FeAppMain() {
         }
     }
 
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
     val mainPagerState = rememberFeMainPagerState(pagerState)
     var predictiveBackAnimation by remember {
         mutableStateOf(SettingsManager.getPredictiveBackAnimation())
@@ -189,10 +190,11 @@ fun FeAppMain() {
                         beyondViewportPageCount = 1,
                         modifier = Modifier.fillMaxSize(),
                     ) { page ->
+                        val accountOnline = ETS100AuthManager.isLoggedIn(context)
                         when (page) {
                             0 -> ReadScreen(
                                 currentMode = currentMode,
-                                accountOnline = true,
+                                accountOnline = accountOnline,
                                 readAccessChecking = readAccessChecking,
                                 readAccessIssue = readAccessIssue,
                                 onNavigateToActivation = {
@@ -205,6 +207,11 @@ fun FeAppMain() {
                                     context.startActivity(ChangyanWebLoginActivity.createIntent(context))
                                 },
                                 compactAnswerDisplay = compactAnswerDisplay,
+                            )
+
+                            1 -> AutoCompleteScreen(
+                                accountOnline = accountOnline,
+                                onOpenCloudLogin = { navigator.push(FeRoute.CloudActivation) },
                             )
 
                             else -> SettingsScreen(

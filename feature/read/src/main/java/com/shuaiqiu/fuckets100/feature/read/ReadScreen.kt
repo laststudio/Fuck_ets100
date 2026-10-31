@@ -6,8 +6,6 @@ import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -21,9 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.shuaiqiu.fuckets100.core.designsystem.ExpressiveScaffold
@@ -38,35 +34,6 @@ import com.shuaiqiu.fuckets100.FeAccountFeatures
 import com.shuaiqiu.fuckets100.SettingsManager
 private const val TAG = "ReadScreen"
 
-// ============================================================================
-// 调试日志系统 - 用于跟踪应用内数据和答案的读取过程
-// ============================================================================
-
-/**
- * 日志级别枚举
- * 定义日志的重要程度和显示颜色
- */
-private enum class LogLevel(val label: String, val colorHex: Long) {
-    DEBUG("调试", 0xFF60A5FA),      // 蓝色 - 调试信息
-    INFO("信息", 0xFFFFD93D),       // 黄色 - 一般信息
-    SUCCESS("成功", 0xFF2DD4BF),    // 青色 - 成功状态
-    WARN("警告", 0xFFFB923C),       // 橙色 - 警告信息
-    ERROR("错误", 0xFFFF6B6B),      // 红色 - 错误信息
-    INIT("初始化", 0xFFE879F9)      // 紫色 - 初始化相关
-}
-
-/**
- * 日志类别枚举
- * 用于分组显示不同类型的数据
- */
-private enum class LogCategory(val label: String) {
-    SYSTEM("系统"),
-    FILE("文件"),
-    PAPER("试卷"),
-    SECTION("分区"),
-    QUESTION("题目"),
-    ANSWER("答案")
-}
 
 /**
  * 阅读界面 - 显示ETS 100答案的阅读界面
@@ -124,7 +91,6 @@ fun ReadScreen(
     var showCloudReadConfirmDialog by remember { mutableStateOf(false) }
     var showReadActionsMenu by remember { mutableStateOf(false) }
     var errorDialog by remember { mutableStateOf<Pair<String, String>?>(null) }
-    val clipboardManager = LocalClipboardManager.current
     val paperListState = key(currentMode) { rememberLazyListState() }
     val readFabExpanded by remember(paperListState) {
         derivedStateOf {
@@ -197,29 +163,7 @@ fun ReadScreen(
 
     // 详细错误弹窗：可滚动查看并一键复制，方便反馈给开发者（日志里也有同样内容）。
     errorDialog?.let { (title, message) ->
-        AlertDialog(
-            onDismissRequest = { errorDialog = null },
-            title = { Text(title) },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 380.dp)
-                        .verticalScroll(rememberScrollState()),
-                ) {
-                    Text(message, style = MaterialTheme.typography.bodySmall)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    clipboardManager.setText(AnnotatedString(message))
-                    errorDialog = null
-                    Toast.makeText(context, "错误详情已复制", Toast.LENGTH_SHORT).show()
-                }) { Text("复制详情") }
-            },
-            dismissButton = {
-                TextButton(onClick = { errorDialog = null }) { Text("关闭") }
-            },
-        )
+        DetailedErrorDialog(title = title, message = message, onDismiss = { errorDialog = null })
     }
 
     LaunchedEffect(currentMode, uiState.reloadTrigger, accountOnline, readAccessChecking, readAccessIssue, viewModel) {

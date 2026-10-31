@@ -588,22 +588,11 @@ object ETS100AnswerReader {
         //   ① 响应里多了 meta（layer / family / shape / spec_known），便于诊断与上报；
         //   ② 解析器新增能力只加 op，客户端不需要再改 JNI 声明；
         //   ③ 旧接口 parseTaskAuthorized 仍保留，但业务层统一走契约。
-        var contract = ResolverContract.parseTask(
+        var contract = parseTaskWithAuthRetry(
             content = json.toString(),
             info = infoJson,
             content2 = content2Json,
         )
-        if (!contract.ok && (contract.errorCode == "auth_disabled" || contract.errorCode == "auth_not_configured")) {
-            // 离线版容错：解析器可能尚未完成本地授权初始化。
-            // 补丁版 so 的 authorizeFeature 不会真正联网；失败也不影响后续错误提示。
-            val authRaw = runCatching { ResolverNative.authorizeFeature() }.getOrNull()
-            Log.i(TAG, "解析器授权重试: " + (authRaw?.take(240) ?: "authorizeFeature 调用异常"))
-            contract = ResolverContract.parseTask(
-                content = json.toString(),
-                info = infoJson,
-                content2 = content2Json,
-            )
-        }
         if (!contract.ok) {
             // 解析为空/失败时把结构指纹记下来：官方出了新题型时这是唯一的发现渠道
             ResolverContract.reportUnparsed(
@@ -612,22 +601,7 @@ object ETS100AnswerReader {
                 content2 = content2Json,
                 tag = "ETS100AnswerReader.parseContentNative",
             )
-            val baseMessage = contract.errorMessage?.takeIf { it.isNotBlank() }
-                ?: "答案解析功能当前不可用"
-            val detail = buildString {
-                append(baseMessage)
-                if (!contract.errorCode.isNullOrBlank()) {
-                    append("（code=").append(contract.errorCode).append("）")
-                }
-                if (!contract.errorHint.isNullOrBlank()) {
-                    append("；提示：").append(contract.errorHint)
-                }
-                if (contract.errorCode == "auth_disabled" || contract.errorCode == "auth_not_configured") {
-                    append("；解析器本地授权状态：").append(ResolverAuthorizer.localAuthStatus())
-                    append("（离线版应自动初始化，无需登录 LastStudio 账号）")
-                }
-            }
-            throw ResolverAuthorizationDeniedException(detail)
+            throw ResolverAuthorizationDeniedException(buildParseTaskError(contract))
         }
         return contract.resultArray ?: run {
             ResolverContract.reportUnparsed(

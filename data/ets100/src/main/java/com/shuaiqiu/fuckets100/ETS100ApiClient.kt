@@ -3,13 +3,16 @@ package com.shuaiqiu.fuckets100
 import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.util.UUID
 
 /**
  * ETS100 API 客户端
@@ -61,6 +64,24 @@ object ETS100ApiClient {
 
         /** 自动完成：提交作业 */
         const val HOMEWORK_SUBMIT = "/m/homework/submit"
+
+        /** 自动完成：开始作答（返回最新的 resource_id） */
+        const val HOMEWORK_CHECKSTART = "/g/homework/checkstart"
+
+        /** 自动完成：重新提交前清除官方侧旧分数 */
+        const val HOMEWORK_SCORE_DROP = "/g/homework/score-drop"
+
+        /** 自动完成：逐题作答同步（官方记账的唯一入口） */
+        const val AUDIO_SYNC_V2 = "/m/audio/sync-v2"
+
+        /** 自动完成：作答文件预上传（拿到文件 id） */
+        const val FILE_PRE_UPLOAD = "/m/file/pre-upload"
+
+        /** 自动完成：OSS 直传配置（host/dir/accessid/policy/signature） */
+        const val SYSTEM_OSS_CONFIG = "/system/oss-config"
+
+        /** 自动完成：初始化试卷题目资源绑定 */
+        const val SET_PPR_RES = "/g/set/ppr-res"
         const val SEND_USER_EXIST = "/code/send-user-exist"
         const val REBIND_CODE = "/user/rebind-code"  // 设备绑定端点
     }
@@ -195,6 +216,82 @@ object ETS100ApiClient {
         }
     }
 
+    /**
+     * 直传阿里云 OSS（multipart/form-data），逐字对齐后端 `upload_oss_form`。
+     *
+     * @return 可回填到 sync-v2 的 `upload_file_url` / `detail_file_url`
+     */
+    suspend fun uploadOssForm(
+        host: String,
+        dirName: String,
+        fileName: String,
+        accessId: String,
+        policy: String,
+        signature: String,
+        callback: String,
+        content: ByteArray,
+    ): String = withContext(Dispatchers.IO) {
+        val base = host.trimEnd('/').let { if (it.startsWith("http")) it else "https://$it" }
+        val boundary = "------------------------" + UUID.randomUUID().toString().replace("-", "")
+        val body = ByteArrayOutputStream().use { out ->
+            fun field(name: String, value: String) {
+                out.write("--$boundary\r\n".toByteArray(Charsets.UTF_8))
+                out.write("Content-Disposition: form-data; name=\"$name\"\r\n\r\n".toByteArray(Charsets.UTF_8))
+                out.write(value.toByteArray(Charsets.UTF_8))
+                out.write("\r\n".toByteArray(Charsets.UTF_8))
+            }
+            field("name", fileName)
+            field("key", dirName + fileName)
+            field("OSSAccessKeyId", accessId)
+            field("policy", policy)
+            field("signature", signature)
+            field("callback", callback)
+            out.write("--$boundary\r\n".toByteArray(Charsets.UTF_8))
+            out.write(
+                "Content-Disposition: form-data; name=\"file\"; filename=\"$fileName\"\r\n"
+                    .toByteArray(Charsets.UTF_8)
+            )
+            out.write("Content-Type: application/octet-stream\r\n\r\n".toByteArray(Charsets.UTF_8))
+            out.write(content)
+            out.write("\r\n".toByteArray(Charsets.UTF_8))
+            out.write("--$boundary--\r\n".toByteArray(Charsets.UTF_8))
+            out.toByteArray()
+        }
+
+        var lastError: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                val connection = URL(base).openConnection() as HttpURLConnection
+                connection.apply {
+                    requestMethod = "POST"
+                    connectTimeout = Config.TIMEOUT_MS
+                    readTimeout = Config.TIMEOUT_MS
+                    doOutput = true
+                    doInput = true
+                    setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                    setFixedLengthStreamingMode(body.size)
+                }
+                connection.outputStream.use { it.write(body) }
+                val code = connection.responseCode
+                val errorStream = if (code in 200..299) null else runCatching {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }
+                }.getOrNull()
+                connection.disconnect()
+                if (code in 200..299) {
+                    Log.d(TAG, "OSS uploaded $fileName -> $code")
+                    return@withContext base + "/" + dirName + fileName
+                }
+                lastError = Exception("OSS 上传响应非成功状态: $code ${errorStream.orEmpty().take(200)}")
+                Log.w(TAG, "OSS upload $fileName failed: $code")
+            } catch (e: Exception) {
+                lastError = e
+                Log.w(TAG, "OSS upload $fileName error: ${e.message}")
+            }
+            if (attempt < 2) delay(2_000L * (attempt + 1))
+        }
+        throw lastError ?: Exception("OSS 上传失败")
+    }
+
     // ============================================================================
     // 设备绑定异常
     // ============================================================================
@@ -266,6 +363,8 @@ object ETS100ApiClient {
         val setType: Int = 0,
         val pk: Int = 0,
         val resourceId: String = "",
+        /** 官方试卷集 ID（官方提交链路里作为 set_id；缺失时回退 homework_id） */
+        val setId: String = "",
         /** 卷面总分（作业列表中由平台下发，缺失时为 0） */
         val totalScore: Double = 0.0,
         /** 已得分数（未完成时为 null） */
@@ -377,7 +476,33 @@ object ETS100ApiClient {
         token: String,
         homeworkId: String,
         resourceId: String = "",
-    ): Result<org.json.JSONObject> = ets100GetHomeworkInfo(token, homeworkId, resourceId)
+        parentAccountId: String = "",
+    ): Result<org.json.JSONObject> =
+        ets100GetHomeworkInfo(token, homeworkId, resourceId, parentAccountId)
+
+    /** 开始作答：返回最新的 resource_id。 */
+    suspend fun checkStart(
+        token: String,
+        homeworkId: String,
+    ): Result<org.json.JSONObject> = ets100CheckStart(token, homeworkId)
+
+    /** 重新提交前清除官方侧旧分数。 */
+    suspend fun scoreDrop(
+        token: String,
+        homeworkId: String,
+    ): Result<org.json.JSONObject> = ets100ScoreDrop(token, homeworkId)
+
+    /** 逐题作答同步（官方记账的唯一入口）。 */
+    suspend fun syncQuestion(
+        token: String,
+        params: Map<String, Any>,
+    ): Result<org.json.JSONObject> = ets100SyncQuestion(token, params)
+
+    /** 初始化试卷题目资源绑定。 */
+    suspend fun pprResources(
+        token: String,
+        batch: List<Map<String, Any>>,
+    ): Result<org.json.JSONObject> = ets100PprResources(token, batch)
 
     /** 同步作答用时。 */
     suspend fun setUseTime(
@@ -396,5 +521,15 @@ object ETS100ApiClient {
         token: String,
         params: Map<String, Any>,
     ): Result<org.json.JSONObject> = ets100SubmitHomework(token, params)
+
+    /** 预上传：返回官方文件 id（`{id}.mp3` / `{id}.xml` 的文件名）。 */
+    suspend fun preUpload(token: String): Result<org.json.JSONObject> = ets100PreUpload(token)
+
+    /** OSS 直传配置：type=audio|xml，id 为预上传返回的文件 id。 */
+    suspend fun ossConfig(
+        token: String,
+        type: String,
+        id: String,
+    ): Result<org.json.JSONObject> = ets100OssConfig(token, type, id)
 
 }

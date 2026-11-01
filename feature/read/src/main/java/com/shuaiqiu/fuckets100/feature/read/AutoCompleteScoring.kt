@@ -25,8 +25,8 @@ internal object AutoCompleteScoring {
     private const val BIG_QUESTION_SHARE = 0.15
 
     private val ORAL_CATEGORIES = setOf(
-        "role", "read_sentence", "read_chapter", "dialogue", "picture", "3q5a",
-        "repeat_essay", "repeat_dialogue", "word_read", "read_word",
+        "role", "read_sentence", "dialogue", "picture", "3q5a",
+        "repeat_essay", "repeat_dialogue", "word_read", "word.read", "word.dictation",
     )
     private val ORAL_KEYWORDS = listOf(
         "听选信息", "模仿朗读", "信息转述", "三问五答", "回答问题",
@@ -356,6 +356,494 @@ internal object AutoCompleteScoring {
                 lossRatio = if (full > 0) max(0.0, 1 - value / full) else 0.0,
             )
         }
+    }
+
+    // ==================== 官方 ISE / 逐题账口径（移植自 scoring.py） ====================
+
+    /** 两位小数四舍五入（官方口径：不是银行家舍入）。 */
+    fun roundPoints(value: Double): Double = floor(value * 100.0 + 0.5) / 100.0
+
+    /** `scoreFormatter_125`：0.125 向上取整后再四舍五入两位。 */
+    fun scoreFormatter125(value: Double): Double {
+        val rounded = 0.125 * ceil(value / GRADUATION)
+        return roundPoints(rounded)
+    }
+
+    /** 官方记账口径下的单题贡献：`scoreFormatter_125(ise / 5 × point)`。 */
+    fun officialContribution(ise: Double, point: Double, cap: Boolean = true): Double {
+        if (point <= 0.0) return 0.0
+        val iseValue = ise.coerceIn(0.0, 5.0)
+        val value = scoreFormatter125(iseValue * point / 5.0)
+        return if (cap) min(point, value) else max(0.0, value)
+    }
+
+    /** 档位数 → ISE（与分配器反推逐字一致，保证上传值可复现）。 */
+    fun iseForScoreSlot(slot: Int, point: Double, graduation: Double = GRADUATION): Double {
+        if (point <= 0.0 || graduation <= 0.0) return 5.0
+        val raw = max(0, slot).toDouble() * graduation * 5.0 / point - 0.0001
+        if (raw >= 5.0) return 5.0
+        return max(0.0, floor(raw * 100.0) / 100.0)
+    }
+
+    /** 档位数 → 该题实得分。 */
+    fun awardedForScoreSlot(slot: Int, point: Double, graduation: Double = GRADUATION): Double {
+        if (point <= 0.0 || graduation <= 0.0) return 0.0
+        return min(point, roundPoints(max(0, slot).toDouble() * graduation))
+    }
+
+    /** 档位数 → 官方记账贡献。 */
+    fun contributionForScoreSlot(slot: Int, point: Double, graduation: Double = GRADUATION): Double =
+        officialContribution(iseForScoreSlot(slot, point, graduation), point)
+
+    /** 判定"账 == 目标"的容差：逐题进位 0.005×n 叠加半个档位。 */
+    fun reconcileTolerance(questionCount: Int, graduation: Double = GRADUATION): Double =
+        0.005 * max(1, questionCount) + 0.5 * graduation + 1e-9
+
+    data class ReconcileResult(
+        val iseScores: List<Double>,
+        val awardedScores: List<Double>,
+        val total: Double,
+        val steps: Int,
+    )
+
+    /**
+     * 把逐题分配重分配到目标分，使 Σ官方贡献 == 目标（能到就到，到不了如实）。
+     *
+     * 移植自 `reconcile_ise_scores_to_target` 的残差 ±1 档阶段：
+     * 客观题（all_or_nothing）只在 0 / 满档之间跳，主观题按单档贡献增益贪心。
+     */
+    fun reconcileIseScoresToTarget(
+        iseScores: List<Double>,
+        awardedScores: List<Double>,
+        fullPoints: List<Double>,
+        targetTotal: Double?,
+        objectiveFlags: List<Boolean> = emptyList(),
+    ): ReconcileResult {
+        val n = fullPoints.size
+        if (n == 0) return ReconcileResult(emptyList(), emptyList(), 0.0, 0)
+        val maxSlots = fullPoints.map { max(0, ceil(max(0.0, it) / GRADUATION).toInt()) }
+        val slots = (0 until n).map { i ->
+            max(0, min(maxSlots[i], round(awardedScores.getOrElse(i) { 0.0 } / GRADUATION).toInt()))
+        }.toMutableList()
+        fun contributionAt(i: Int, slot: Int): Double =
+            if (objectiveFlags.getOrElse(i) { false } && slot > 0) {
+                officialContribution(5.0, fullPoints[i])
+            } else {
+                contributionForScoreSlot(slot, fullPoints[i])
+            }
+        var total = (0 until n).sumOf { contributionAt(it, slots[it]) }
+        if (targetTotal == null || targetTotal <= 0.0) {
+            return ReconcileResult(
+                iseScores = (0 until n).map { iseForScoreSlot(slots[it], fullPoints[it]) },
+                awardedScores = (0 until n).map { awardedForScoreSlot(slots[it], fullPoints[it]) },
+                total = roundPoints(total),
+                steps = 0,
+            )
+        }
+        val tolerance = reconcileTolerance(n)
+        var steps = 0
+        val maxSteps = 4 * n + 8
+        while (kotlin.math.abs(total - targetTotal) > tolerance && steps < maxSteps) {
+            steps += 1
+            val needMore = targetTotal - total > 0
+            var bestIndex = -1
+            var bestGain = Double.NEGATIVE_INFINITY
+            for (i in 0 until n) {
+                val slot = slots[i]
+                if (needMore) {
+                    if (slot >= maxSlots[i]) continue
+                    val nextSlot = if (objectiveFlags.getOrElse(i) { false }) maxSlots[i] else slot + 1
+                    if (nextSlot <= slot) continue
+                    val gain = contributionAt(i, nextSlot) - contributionAt(i, slot)
+                    if (gain > bestGain + 1e-12) {
+                        bestGain = gain
+                        bestIndex = i
+                    }
+                } else {
+                    if (slot <= 0) continue
+                    val nextSlot = if (objectiveFlags.getOrElse(i) { false }) 0 else slot - 1
+                    if (nextSlot >= slot) continue
+                    val loss = contributionAt(i, slot) - contributionAt(i, nextSlot)
+                    // 选"扣得最少"的那题
+                    if (bestIndex < 0 || loss < bestGain - 1e-12) {
+                        bestGain = loss
+                        bestIndex = i
+                    }
+                }
+            }
+            if (bestIndex < 0) break
+            val slot = slots[bestIndex]
+            val nextSlot = if (objectiveFlags.getOrElse(bestIndex) { false }) {
+                if (needMore) maxSlots[bestIndex] else 0
+            } else {
+                slot + if (needMore) 1 else -1
+            }
+            total += contributionAt(bestIndex, nextSlot) - contributionAt(bestIndex, slot)
+            slots[bestIndex] = nextSlot
+        }
+        return ReconcileResult(
+            iseScores = (0 until n).map { iseForScoreSlot(slots[it], fullPoints[it]) },
+            awardedScores = (0 until n).map { awardedForScoreSlot(slots[it], fullPoints[it]) },
+            total = roundPoints(total),
+            steps = steps,
+        )
+    }
+
+    /**
+     * 逐题 sync-v2 的 `score_detail`（移动端默认口径，8 键）：
+     * `{total_score, fluency_score, accuracy_score, integrity_score, standard_score,
+     * category, rate_scale}`，选项类额外带 `choose` / `choose_id`。
+     */
+    fun buildScoreDetail(
+        ise: Double,
+        category: String,
+        choose: String = "",
+        chooseId: String = "",
+    ): String {
+        val total = ise.coerceIn(0.0, 5.0)
+        val payload = org.json.JSONObject()
+            .put("total_score", format2(total))
+            .put("fluency_score", format2(min(5.0, total * 0.98)))
+            .put("accuracy_score", format2(min(5.0, total * 0.99)))
+            .put("integrity_score", format2(min(5.0, total * 0.99)))
+            .put("standard_score", format2(min(5.0, total * 0.97)))
+            .put("category", category)
+            .put("rate_scale", 1)
+        if (choose.isNotEmpty()) payload.put("choose", choose)
+        if (chooseId.isNotEmpty()) payload.put("choose_id", chooseId)
+        return payload.toString()
+    }
+
+    private fun format2(value: Double): String = String.format(java.util.Locale.US, "%.2f", value)
+
+    // ==================== 评分 XML（对齐 scoring.generate_score_xml） ====================
+
+    /** 口语题的四个可见维度（0–5 分制），与 `ScoreProfile` 一致。 */
+    data class ScoreProfile(
+        val total: Double,
+        val accuracy: Double,
+        val fluency: Double,
+        val integrity: Double,
+        val standard: Double,
+    ) {
+        fun clamped(): ScoreProfile {
+            fun clamp(value: Double) = max(0.0, min(5.0, value))
+            return ScoreProfile(
+                total = clamp(total),
+                accuracy = clamp(accuracy),
+                fluency = clamp(fluency),
+                integrity = clamp(integrity),
+                standard = clamp(standard),
+            )
+        }
+    }
+
+    /** `derived_dimension_scores`：未给维度时的机械派生（后端逐字口径）。 */
+    fun profileForIse(ise: Double): ScoreProfile {
+        val total = ise.coerceIn(0.0, 5.0)
+        return ScoreProfile(
+            total = total,
+            accuracy = min(5.0, total * 0.99),
+            fluency = min(5.0, total * 0.98),
+            integrity = min(5.0, total * 0.99),
+            standard = min(5.0, total * 0.97),
+        )
+    }
+
+    /**
+     * 官方评分 XML（后端 `generate_score_xml` 的 Kotlin 版）。
+     *
+     * 结构：`xml_result > {read_sentence|read_chapter} > rec_paper > sentence > word > syll`，
+     * 分数全部为 0–5 分制，`is_rejected=false`。
+     */
+    fun generateScoreXml(
+        text: String,
+        profile: ScoreProfile,
+        category: String,
+        seed: Long,
+        clamp: Boolean = true,
+    ): String {
+        val effective = if (clamp) profile.clamped() else profile
+        val randomizer = Random(seed)
+        fun uniform(min: Double, max: Double) = min + (max - min) * randomizer.nextDouble()
+        fun bounded(value: Double): Double =
+            if (clamp) max(0.0, min(5.0, value)) else max(0.0, value)
+
+        val categoryName = category.takeIf {
+            it in setOf("read_sentence", "read_chapter", "talk_recite", "talk_free")
+        } ?: "read_chapter"
+
+        val builder = StringBuilder()
+        builder.append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n")
+        builder.append("<xml_result>")
+        builder.append("<").append(categoryName).append(">")
+
+        val standard = bounded(effective.total + uniform(-0.1, 0.1))
+        builder.append("<rec_paper")
+            .append(" total_score=\"").append(format2(effective.total)).append("\"")
+            .append(" accuracy_score=\"").append(format2(effective.accuracy)).append("\"")
+            .append(" fluency_score=\"").append(format2(effective.fluency)).append("\"")
+            .append(" integrity_score=\"").append(format2(effective.integrity)).append("\"")
+            .append(" standard_score=\"").append(format2(standard)).append("\"")
+            .append(" stress_score=\"").append(format2(effective.standard)).append("\"")
+            .append(" is_rejected=\"false\"")
+            .append(" except_info=\"\"")
+            .append(" content=\"").append(escapeXml(text)).append("\">")
+
+        val sentences = text.split(Regex("[.!?]+")).map { it.trim() }.filter { it.isNotEmpty() }
+            .ifEmpty { listOf(text) }
+        for (sentenceText in sentences) {
+            val sentenceScore = bounded(effective.total + uniform(-0.15, 0.15))
+            builder.append("<sentence")
+                .append(" content=\"").append(escapeXml(sentenceText)).append("\"")
+                .append(" total_score=\"").append(format2(sentenceScore)).append("\">")
+            for (wordText in sentenceText.split(Regex("\\s+")).filter { it.isNotBlank() }) {
+                val wordScore = bounded(sentenceScore + uniform(-0.3, 0.3))
+                builder.append("<word")
+                    .append(" content=\"").append(escapeXml(wordText)).append("\"")
+                    .append(" total_score=\"").append(format2(wordScore)).append("\"")
+                    .append(" dp_message=\"0\">")
+                for (symbol in phonemes(wordText)) {
+                    builder.append("<syll")
+                        .append(" content=\"").append(escapeXml(symbol)).append("\"")
+                        .append(" score=\"").append(format2(bounded(wordScore + uniform(-0.2, 0.2))))
+                        .append("\"/>")
+                }
+                builder.append("</word>")
+            }
+            builder.append("</sentence>")
+        }
+        builder.append("</rec_paper></").append(categoryName).append("></xml_result>")
+        return builder.toString()
+    }
+
+    /** 粗粒度音素切分（与后端 `_phonemes` 一致）。 */
+    private fun phonemes(word: String): List<String> {
+        val cleaned = word.replace(Regex("[^a-zA-Z]"), "").lowercase()
+        if (cleaned.isEmpty()) return listOf("*")
+        val pairs = mapOf(
+            "th" to "θ", "sh" to "ʃ", "ch" to "tʃ", "wh" to "w", "ph" to "f", "ck" to "k",
+            "ng" to "ŋ", "oo" to "uː", "ee" to "iː", "ea" to "iː", "ou" to "aʊ",
+            "ow" to "aʊ", "ai" to "eɪ", "ay" to "eɪ", "oi" to "ɔɪ", "oy" to "ɔɪ",
+        )
+        val result = mutableListOf<String>()
+        var index = 0
+        while (index < cleaned.length) {
+            val pair = cleaned.substring(index, min(cleaned.length, index + 2))
+            val mapped = pairs[pair]
+            if (pair.length == 2 && mapped != null) {
+                result.add(mapped)
+                index += 2
+            } else {
+                result.add(cleaned[index].toString())
+                index += 1
+            }
+        }
+        return result
+    }
+
+    /** XML 属性转义（对齐 ElementTree 对 `\n`/`\r`/`\t` 的实体化）。 */
+    private fun escapeXml(value: String): String = buildString {
+        value.forEach { ch ->
+            when (ch) {
+                '&' -> append("&amp;")
+                '<' -> append("&lt;")
+                '>' -> append("&gt;")
+                '"' -> append("&quot;")
+                '\n' -> append("&#10;")
+                '\r' -> append("&#13;")
+                '\t' -> append("&#9;")
+                else -> append(ch)
+            }
+        }
+    }
+
+    /** `_classify_question_type`：返回（是否口语题，是否客观题）。 */
+    fun classifyQuestionType(
+        category: String,
+        typeName: String,
+        options: List<String>,
+    ): Pair<Boolean, Boolean> {
+        val cat = category.lowercase()
+        val type = typeName.lowercase()
+        val isOral = cat in ORAL_CATEGORIES || ORAL_KEYWORDS.any { it in type }
+        val isChoose = cat in CHOICE_CATEGORIES || CHOICE_KEYWORDS.any { it in type } || options.isNotEmpty()
+        return isOral to isChoose
+    }
+
+    /** Σ 官方记账贡献（两位小数）—— 官方会记在账上的总分。 */
+    fun officialLedgerTotal(iseScores: List<Double>, points: List<Double>): Double {
+        var total = 0.0
+        for (index in points.indices) {
+            total += officialContribution(iseScores.getOrElse(index) { 0.0 }, points[index])
+        }
+        return roundPoints(total)
+    }
+
+    data class TargetScores(val ise: List<Double>, val awarded: List<Double>)
+
+    /**
+     * `calc_target_ise_scores_by_full`：把目标总分摊到各题并反推 ISE。
+     *
+     * 客观题（[allOrNothing]）只给 0 / 满分；零头由主观题连续档位吸收。
+     */
+    fun calcTargetIseScoresByFull(
+        targetRatePercent: Double,
+        fullPoints: List<Double>,
+        allOrNothing: List<Boolean>,
+        seed: Long,
+    ): TargetScores {
+        val n = fullPoints.size
+        if (n <= 0) return TargetScores(emptyList(), emptyList())
+        val rate = targetRatePercent / 100.0
+        val totalFull = fullPoints.sumOf { max(0.0, it) }
+        val maxSlots = fullPoints.map { ceil(max(0.0, it) / GRADUATION).toInt() }
+        if (totalFull <= 0) return TargetScores(List(n) { 5.0 }, List(n) { 0.0 })
+        val targetTotal = totalFull * rate
+        val flags = allOrNothing.toMutableList()
+        while (flags.size < n) flags.add(false)
+        val binaryIndices = (0 until n).filter { flags[it] && fullPoints[it] > 0.0 }
+        val contIndices = (0 until n).filter { it !in binaryIndices }
+        if (binaryIndices.isEmpty()) {
+            return continuousScores(
+                fullPoints = fullPoints,
+                maxSlots = maxSlots,
+                targetTotal = targetTotal,
+                targetRatePercent = targetRatePercent,
+                rng = Random(seed),
+            )
+        }
+
+        val rng = Random(seed)
+        val iseScores = MutableList(n) { 0.0 }
+        val awardedScores = MutableList(n) { 0.0 }
+        val contFull = contIndices.sumOf { max(0.0, fullPoints[it]) }
+        val binaryFloor = max(0.0, targetTotal - contFull)
+
+        val order = binaryIndices
+            .map { index -> index to max(0.0, fullPoints[index]).pow(0.9) * (0.5 + rng.nextDouble()) }
+            .sortedByDescending { it.second }
+            .map { it.first }
+        val binaryFull = mutableSetOf<Int>()
+        var binaryAwarded = 0.0
+        for (index in order) {
+            val point = max(0.0, fullPoints[index])
+            if (binaryAwarded + point <= targetTotal + 1e-9) {
+                binaryFull.add(index)
+                binaryAwarded += point
+            }
+        }
+        if (binaryAwarded < binaryFloor - 1e-9) {
+            val rest = binaryIndices.filter { it !in binaryFull }.sortedBy { max(0.0, fullPoints[it]) }
+            for (index in rest) {
+                if (binaryAwarded >= binaryFloor - 1e-9) break
+                val point = max(0.0, fullPoints[index])
+                if (binaryAwarded + point <= targetTotal + 1e-9) {
+                    binaryFull.add(index)
+                    binaryAwarded += point
+                } else {
+                    if (kotlin.math.abs(binaryAwarded + point - targetTotal) <=
+                        kotlin.math.abs(binaryAwarded - targetTotal)
+                    ) {
+                        binaryFull.add(index)
+                        binaryAwarded += point
+                    }
+                    break
+                }
+            }
+        }
+        binaryAwarded = binaryFull.sumOf { max(0.0, fullPoints[it]) }
+
+        for (index in binaryIndices) {
+            val point = max(0.0, fullPoints[index])
+            if (index in binaryFull) {
+                iseScores[index] = 5.0
+                awardedScores[index] = min(point, roundPoints(point))
+            } else {
+                iseScores[index] = 0.0
+                awardedScores[index] = 0.0
+            }
+        }
+
+        if (contIndices.isNotEmpty()) {
+            val contPoints = contIndices.map { fullPoints[it] }
+            val contSlots = contIndices.map { maxSlots[it] }
+            val contTarget = max(0.0, min(contFull, targetTotal - binaryAwarded))
+            val cont = continuousScores(contPoints, contSlots, contTarget, targetRatePercent, rng)
+            for ((position, index) in contIndices.withIndex()) {
+                iseScores[index] = cont.ise.getOrElse(position) { 5.0 }
+                awardedScores[index] = cont.awarded.getOrElse(position) { 0.0 }
+            }
+        }
+        return TargetScores(iseScores.toList(), awardedScores.toList())
+    }
+
+    /** `_continuous_scores`：主观题连续档位分配（返回与分配器反推逐字一致的 ISE）。 */
+    private fun continuousScores(
+        fullPoints: List<Double>,
+        maxSlots: List<Int>,
+        targetTotal: Double,
+        targetRatePercent: Double,
+        rng: Random,
+    ): TargetScores {
+        val totalMaxSlots = maxSlots.sum()
+        var targetSlots = round(targetTotal / GRADUATION).toInt()
+        targetSlots = max(0, min(totalMaxSlots, targetSlots))
+        val loss = allocateLossSlots(
+            fullPoints = fullPoints,
+            lossSlots = totalMaxSlots - targetSlots,
+            maxSlots = maxSlots,
+            targetRate = targetRatePercent,
+            rng = rng,
+        )
+        val slots = maxSlots.indices.map { maxSlots[it] - loss[it] }.toMutableList()
+
+        fun awardFor(index: Int, slotCount: Int): Double {
+            val full = max(0.0, fullPoints[index])
+            if (full <= 0.0) return 0.0
+            return min(full, roundPoints(slotCount * GRADUATION))
+        }
+
+        val awardedScores = slots.indices.map { awardFor(it, slots[it]) }.toMutableList()
+
+        val n = fullPoints.size
+        for (step in 0 until 4 * n + 8) {
+            val gap = targetTotal - awardedScores.sum()
+            if (kotlin.math.abs(gap) <= 1e-9) break
+            if (gap > 0) {
+                var bestIndex = -1
+                var bestGain = 0.0
+                for (index in 0 until n) {
+                    if (slots[index] >= maxSlots[index]) continue
+                    val gain = awardFor(index, slots[index] + 1) - awardedScores[index]
+                    if (gain <= 1e-9 || gain > gap + 1e-9) continue
+                    if (gain > bestGain) {
+                        bestIndex = index
+                        bestGain = gain
+                    }
+                }
+                if (bestIndex < 0) break
+                slots[bestIndex] += 1
+                awardedScores[bestIndex] = awardFor(bestIndex, slots[bestIndex])
+            } else {
+                val candidates = mutableListOf<Int>()
+                for (index in 0 until n) {
+                    if (slots[index] <= 0) continue
+                    val drop = awardedScores[index] - awardFor(index, slots[index] - 1)
+                    if (drop <= 1e-9 || drop > -gap + 1e-9) continue
+                    candidates.add(index)
+                }
+                if (candidates.isEmpty()) break
+                val chosen = candidates[rng.nextInt(candidates.size)]
+                slots[chosen] -= 1
+                awardedScores[chosen] = awardFor(chosen, slots[chosen])
+            }
+        }
+
+        return TargetScores(
+            ise = slots.indices.map { iseForScoreSlot(slots[it], fullPoints[it]) },
+            awarded = awardedScores.toList(),
+        )
     }
 
     /** 按题型/文本长度给每题分配作答用时，总和等于 [totalSeconds]。 */

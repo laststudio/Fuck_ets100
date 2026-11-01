@@ -29,6 +29,7 @@ data class AutoCompleteUiState(
     val listError: String? = null,
     val tokenExpired: Boolean = false,
     val selectedHomeworkId: String? = null,
+    val cloudBaseUrl: String = "",
     val targetRatio: Float = 0.95f,
     val isRunning: Boolean = false,
     val progress: Int = 0,
@@ -75,29 +76,39 @@ class AutoCompleteViewModel @Inject constructor(
         listJob?.cancel()
         listJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, listError = null, tokenExpired = false) }
-            val status = _uiState.value.status
-            when (val result = loadCloudHomeworkListResult(context, status, accountOnline, accountManager)) {
-                is CloudHomeworkListResult.Success -> {
-                    val selected = _uiState.value.selectedHomeworkId
-                        ?.takeIf { key -> result.homeworks.any { cloudHomeworkIdentity(it) == key } }
-                        ?: result.homeworks.firstOrNull()?.let(::cloudHomeworkIdentity)
-                    _uiState.update {
-                        it.copy(
-                            homeworks = result.homeworks,
-                            selectedHomeworkId = selected,
-                            isLoading = false,
-                            listError = null,
-                            tokenExpired = false,
-                        )
+            try {
+                val status = _uiState.value.status
+                when (val result = loadCloudHomeworkListResult(context, status, accountOnline, accountManager)) {
+                    is CloudHomeworkListResult.Success -> {
+                        val selected = _uiState.value.selectedHomeworkId
+                            ?.takeIf { key -> result.homeworks.any { cloudHomeworkIdentity(it) == key } }
+                            ?: result.homeworks.firstOrNull()?.let(::cloudHomeworkIdentity)
+                        _uiState.update {
+                            it.copy(
+                                homeworks = result.homeworks,
+                                selectedHomeworkId = selected,
+                                cloudBaseUrl = result.baseUrl,
+                                isLoading = false,
+                                listError = null,
+                                tokenExpired = false,
+                            )
+                        }
+                    }
+
+                    is CloudHomeworkListResult.ChangyanExpired -> _uiState.update {
+                        it.copy(isLoading = false, listError = result.message, tokenExpired = true)
+                    }
+
+                    is CloudHomeworkListResult.Failure -> _uiState.update {
+                        it.copy(isLoading = false, listError = result.message)
                     }
                 }
-
-                is CloudHomeworkListResult.ChangyanExpired -> _uiState.update {
-                    it.copy(isLoading = false, listError = result.message, tokenExpired = true)
-                }
-
-                is CloudHomeworkListResult.Failure -> _uiState.update {
-                    it.copy(isLoading = false, listError = result.message)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // 云端/解析器的任何异常都收敛成列表错误，避免切换界面时整个应用闪退。
+                _uiState.update {
+                    it.copy(isLoading = false, listError = e.message ?: "加载作业列表失败")
                 }
             }
         }
@@ -140,6 +151,7 @@ class AutoCompleteViewModel @Inject constructor(
                 val result = engine.run(
                     homework = homework,
                     targetRatio = state.targetRatio.toDouble(),
+                    cloudBaseUrl = state.cloudBaseUrl,
                 ) { update ->
                     _uiState.update {
                         it.copy(
@@ -158,7 +170,7 @@ class AutoCompleteViewModel @Inject constructor(
                     it.copy(isRunning = false, stageLabel = "任务已被手动终止", currentQuestion = "")
                 }
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 val message = e.message ?: "执行失败"
                 _uiState.update {
                     it.copy(

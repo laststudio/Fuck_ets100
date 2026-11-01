@@ -158,6 +158,53 @@ object ResolverContract {
     fun resTemplate(resJson: String): Response =
         call("res_template", JSONObject().put("res", resJson))
 
+    /**
+     * 把官方 res.json 的**题号与逐题满分**盖到已解析题目上。
+     *
+     * 只补 `no` / `score`（不覆盖已有题号、不改内容与答案）。
+     * 分节定位优先 [structureType]（`exam_type_collect`），找不到再用第 0 节。
+     */
+    fun applyResTemplate(
+        resJson: String,
+        questions: JSONArray,
+        structureType: String? = null,
+        sectionIndex: Int? = null,
+    ): Response {
+        val payload = JSONObject()
+            .put("res", resJson)
+            .put("questions", questions)
+        if (!structureType.isNullOrBlank()) payload.put("structure_type", structureType)
+        if (sectionIndex != null) payload.put("section_index", sectionIndex)
+        return call("apply_res_template", payload)
+    }
+
+    /** 官方权威规格：题型全集、词汇双通道、展示要素、res.json 权威路径与边界规则。 */
+    fun spec(): Response = call("spec")
+
+    /**
+     * 官方题型全集（`structure_type` 白名单，来自 `op: spec`）。
+     *
+     * 解析成功但 `structure_type` 不在其中，说明官方加了新题型：应当上报，而不是静默吞掉。
+     * 取不到时返回 null（不阻断解析主流程）。
+     */
+    fun officialStructureTypes(): Set<String>? {
+        officialStructureTypesCache?.let { cached ->
+            if (cached.isNotEmpty()) return cached
+        }
+        val types = mutableSetOf<String>()
+        val array = spec().result?.optJSONArray("structure_types") ?: return null
+        for (i in 0 until array.length()) {
+            val id = array.optJSONObject(i)?.optString("id").orEmpty()
+            if (id.isNotBlank()) types.add(id)
+        }
+        if (types.isEmpty()) return null
+        officialStructureTypesCache = types
+        return types
+    }
+
+    @Volatile
+    private var officialStructureTypesCache: Set<String>? = null
+
     // ---------------- 诊断与分类 ----------------
 
     /** 解析诊断（不含题目文本，可安全打日志）。 */

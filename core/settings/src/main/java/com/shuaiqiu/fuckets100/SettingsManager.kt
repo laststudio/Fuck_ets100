@@ -22,6 +22,7 @@ object SettingsManager {
     private const val KEY_COMPACT_ANSWER_DISPLAY = "compact_answer_display"
     private const val KEY_SKIP_CLOUD_READ_WARNING = "skip_cloud_read_warning"
     private const val KEY_LAST_SEEN_ANNOUNCEMENT = "last_seen_announcement_updated_at"
+    private const val KEY_LAST_STUDIO_SKIPPED = "last_studio_skipped"
     
     private lateinit var prefs: SharedPreferences
     
@@ -108,6 +109,19 @@ object SettingsManager {
 
     fun hasCompletedOnboarding(): Boolean {
         return prefs.getBoolean(KEY_ONBOARDING_COMPLETED, false)
+    }
+
+    /**
+     * 记录用户是否选择跳过 LastStudio 账号登录（仅使用 E听说账号）。
+     */
+    fun saveLastStudioSkipped(skipped: Boolean) {
+        prefs.edit {
+            putBoolean(KEY_LAST_STUDIO_SKIPPED, skipped)
+        }
+    }
+
+    fun isLastStudioSkipped(): Boolean {
+        return prefs.getBoolean(KEY_LAST_STUDIO_SKIPPED, false)
     }
 
     fun saveLocalVerificationCode(code: String) {

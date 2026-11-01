@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shuaiqiu.fuckets100.CloudHomeworkState
 import com.shuaiqiu.fuckets100.ETS100ApiClient
+import com.shuaiqiu.fuckets100.FeAccountManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -46,12 +47,13 @@ data class AutoCompleteUiState(
 @HiltViewModel
 class AutoCompleteViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val accountManager: FeAccountManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AutoCompleteUiState())
     val uiState: StateFlow<AutoCompleteUiState> = _uiState.asStateFlow()
 
-    private val engine = AutoCompleteEngine(context)
+    private val engine = AutoCompleteEngine(context, accountManager)
     private var listJob: Job? = null
     private var runJob: Job? = null
 
@@ -74,7 +76,7 @@ class AutoCompleteViewModel @Inject constructor(
         listJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, listError = null, tokenExpired = false) }
             val status = _uiState.value.status
-            when (val result = loadCloudHomeworkListResult(context, status, accountOnline)) {
+            when (val result = loadCloudHomeworkListResult(context, status, accountOnline, accountManager)) {
                 is CloudHomeworkListResult.Success -> {
                     val selected = _uiState.value.selectedHomeworkId
                         ?.takeIf { key -> result.homeworks.any { cloudHomeworkIdentity(it) == key } }

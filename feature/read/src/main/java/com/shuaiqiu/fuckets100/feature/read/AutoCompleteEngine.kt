@@ -3,6 +3,7 @@ package com.shuaiqiu.fuckets100.feature.read
 import android.content.Context
 import com.shuaiqiu.fuckets100.ETS100ApiClient
 import com.shuaiqiu.fuckets100.ETS100AuthManager
+import com.shuaiqiu.fuckets100.FeAccountManager
 import com.shuaiqiu.fuckets100.ResolverAuthorizationDeniedException
 import com.shuaiqiu.fuckets100.ResolverAuthorizer
 import java.text.SimpleDateFormat
@@ -23,6 +24,7 @@ import org.json.JSONObject
  */
 internal class AutoCompleteEngine(
     private val context: Context,
+    private val accountManager: FeAccountManager,
 ) {
 
     private data class Session(val token: String, val parentId: String)
@@ -253,7 +255,7 @@ internal class AutoCompleteEngine(
         }
     }
 
-    /** 会话：只使用本机保存的 E 听说登录态（Token / 手机号 / 密码 / 机器码）。 */
+    /** 会话：优先复用已保存的讯飞登录，否则从 LastStudio 后端换取绑定会话。 */
     private suspend fun resolveSession(): Session {
         try {
             ResolverAuthorizer.requireCloudAuthorized(context)
@@ -261,12 +263,34 @@ internal class AutoCompleteEngine(
             throw AutoCompleteException(e.message ?: "云端模式当前不可用")
         }
 
-        val token = ETS100AuthManager.getToken(context).orEmpty()
-        val parentId = ETS100AuthManager.getParentAccountId(context).orEmpty()
-        if (token.isEmpty() || parentId.isEmpty()) {
-            throw AutoCompleteException("请登录E听说账号")
+        val loginMethod = ETS100AuthManager.getLoginMethod(context)
+        if (loginMethod == ETS100AuthManager.LOGIN_METHOD_PASSWORD ||
+            loginMethod == ETS100AuthManager.LOGIN_METHOD_CHANGYAN_WEB
+        ) {
+            val token = ETS100AuthManager.getToken(context).orEmpty()
+            val parentId = ETS100AuthManager.getParentAccountId(context).orEmpty()
+            if (token.isEmpty() || parentId.isEmpty()) {
+                throw AutoCompleteException("请登录E听说账号")
+            }
+            return Session(token, parentId)
         }
-        return Session(token, parentId)
+
+        val cloudSession = try {
+            accountManager.cloudSession(ETS100AuthManager.getSelectedEcardId(context).orEmpty())
+        } catch (e: Exception) {
+            throw AutoCompleteException(
+                if (!ETS100AuthManager.isLoggedIn(context)) {
+                    "请登录E听说账号"
+                } else {
+                    e.message ?: "无法读取 LastStudio 绑定账号"
+                }
+            )
+        }
+        persistBoundSession(context, cloudSession)
+        if (cloudSession.token.isEmpty() || cloudSession.parentAccountId.isEmpty()) {
+            throw AutoCompleteException("云端账号会话不完整，请重新绑定账号")
+        }
+        return Session(cloudSession.token, cloudSession.parentAccountId)
     }
 
     private fun buildQuestions(struct: JSONObject): List<AutoQuestion> {

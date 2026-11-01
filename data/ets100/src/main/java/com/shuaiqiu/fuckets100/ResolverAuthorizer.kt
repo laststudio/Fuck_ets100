@@ -53,11 +53,6 @@ object ResolverAuthorizer : AuthCacheInvalidator {
     @Volatile private var lastResolverAuthorization: FeatureAuthorizationCache? = null
     private const val AUTH_CACHE_TTL_MS = 3 * 60 * 1000L // 3 分钟内存缓存，避免频繁点击重复请求网络
 
-    /** 诊断信息（用于错误提示/日志，不包含隐私数据）。 */
-    fun localAuthStatus(): String = runCatching {
-        "authEnabled=" + ResolverNative.isAuthEnabled() + ", configured=" + (buildInfo != null)
-    }.getOrDefault("authEnabled=unknown")
-
     override fun invalidateAuthCache() {
         lastCloudAuthorization = null
         lastResolverAuthorization = null
@@ -177,7 +172,8 @@ object ResolverAuthorizer : AuthCacheInvalidator {
         try {
             val manager = account()
             val shouldCheck = integrityEnabled ?: manager.isIntegrityCheckEnabled()
-            ResolverNative.setIntegrityCheckEnabled(shouldCheck)
+            // 新版解析器不再提供 setIntegrityCheckEnabled：完整性策略固定在 so 内，
+            // 客户端只通过 selfIntegrityCheck 自校验并按开关决定是否拦截。
             AppIntegrityGuard.ensureResolver(context, buildInfo ?: return@withContext "授权信息未初始化", enabled = shouldCheck)
             val rc = ResolverNative.setAuthConfig(
                 baseUrl = LocalResolverAuthService.baseUrl(),

@@ -46,6 +46,7 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:platform"))
     implementation(project(":data:account"))
+    implementation(project(":data:ets100"))
     implementation(project(":data:content"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

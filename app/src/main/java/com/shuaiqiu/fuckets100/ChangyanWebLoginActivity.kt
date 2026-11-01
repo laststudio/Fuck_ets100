@@ -7,6 +7,8 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
@@ -32,7 +34,10 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import android.util.Base64
 
+@AndroidEntryPoint
 open class ChangyanWebLoginActivity : ComponentActivity() {
+    @Inject lateinit var accountManager: FeAccountManager
+
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
     @Volatile
@@ -227,32 +232,63 @@ open class ChangyanWebLoginActivity : ComponentActivity() {
     private fun exchangeToken(login: String, userId: String, sucUserToken: String) {
         lifecycleScope.launch {
             try {
-                val deviceCode = ETS100AuthManager.getDeviceCode(this@ChangyanWebLoginActivity)
-                val loginResponse = ETS100ApiClient.loginZt(login, userId, sucUserToken, deviceCode).getOrThrow()
-                val savedEcardId = ETS100AuthManager.getSelectedEcardId(this@ChangyanWebLoginActivity)
-                val preferredAccountId = savedEcardId ?: loginResponse.recentAccountId
-                val selectionResult = ETS100ApiClient
-                    .getEcardSelection(loginResponse.token, preferredAccountId)
-                    .getOrThrow()
-                val validAccounts = selectionResult.validAccounts
-                if (validAccounts.isEmpty()) {
-                    isHandlingLogin = false
-                    showFailure("当前账号没有可用的班级信息")
-                } else if (savedEcardId.isNullOrBlank() && validAccounts.size > 1) {
-                    showAccountSelectionDialog(login, loginResponse.token, validAccounts)
+                val savedEcardId = ETS100AuthManager.getSelectedEcardId(this@ChangyanWebLoginActivity).orEmpty()
+                if (accountManager.gateState.value is FeAccountGateState.Ready) {
+                    // LastStudio 已登录：让后端完成校验与绑定，并使用后端下发的短期会话。
+                    val session = withContext(Dispatchers.IO) {
+                        accountManager.bindChangyanAccount(
+                            login = login,
+                            userId = userId,
+                            sucUserToken = sucUserToken,
+                            preferredAccountId = savedEcardId,
+                        )
+                    }
+                    val selectedAccount = parseNativeAccount(session.selectedAccount)
+                    val validAccounts = session.validAccounts.map(::parseNativeAccount)
+                    if (validAccounts.isEmpty()) {
+                        throw IllegalStateException("当前账号没有可用的班级信息")
+                    }
+                    val shouldAskUser = validAccounts.size > 1 &&
+                        (savedEcardId.isBlank() || selectedAccount.id != savedEcardId)
+                    if (shouldAskUser) {
+                        showAccountSelectionDialog(login, session.token, validAccounts)
+                    } else {
+                        completeLogin(login, session.token, selectedAccount)
+                    }
                 } else {
-                    completeLogin(login, loginResponse.token, selectionResult.selectedAccount)
+                    // 已跳过 LastStudio 登录：直接在本地完成 ETS100 登录。
+                    val loginResponse = withContext(Dispatchers.IO) {
+                        ETS100ApiClient.loginZt(
+                            login = login,
+                            userId = userId,
+                            sucUserToken = sucUserToken,
+                            deviceCode = ETS100AuthManager.getDeviceCode(this@ChangyanWebLoginActivity),
+                        ).getOrThrow()
+                    }
+                    val preferredId = savedEcardId.ifBlank { loginResponse.recentAccountId.orEmpty() }
+                    val selection = withContext(Dispatchers.IO) {
+                        ETS100ApiClient.getEcardSelection(
+                            token = loginResponse.token,
+                            preferredAccountId = preferredId,
+                        ).getOrThrow()
+                    }
+                    if (selection.validAccounts.isEmpty()) {
+                        throw IllegalStateException("当前账号没有可用的班级信息")
+                    }
+                    val shouldAskUser = selection.validAccounts.size > 1 &&
+                        (savedEcardId.isBlank() || selection.selectedAccount.id != savedEcardId)
+                    if (shouldAskUser) {
+                        showAccountSelectionDialog(login, loginResponse.token, selection.validAccounts)
+                    } else {
+                        completeLogin(login, loginResponse.token, selection.selectedAccount)
+                    }
                 }
-            } catch (e: ETS100ApiClient.SmsVerificationRequiredException) {
-                isHandlingLogin = false
-                showFailure("账号需要短信验证，请稍后重试")
-            } catch (e: ETS100ApiClient.DeviceBindRequiredException) {
-                isHandlingLogin = false
-                showFailure("设备需要重新绑定，请稍后重试")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 isHandlingLogin = false
-                Log.e(TAG, "讯飞登录换取 token 失败: ${e.message}", e)
-                showFailure("讯飞登录异常：${e.message}")
+                Log.e(TAG, "讯飞登录流程失败: ${e.message}")
+                showFailure(e.message ?: "讯飞登录失败")
             }
         }
     }
@@ -284,7 +320,7 @@ open class ChangyanWebLoginActivity : ComponentActivity() {
         withContext(Dispatchers.Main) {
             Toast.makeText(
                 this@ChangyanWebLoginActivity,
-                "讯飞登录成功，登录信息仅保存在本机：${account.name.ifBlank { account.grade }}",
+                "讯飞登录成功：${account.name.ifBlank { account.grade }}",
                 Toast.LENGTH_SHORT
             ).show()
             setResult(Activity.RESULT_OK)

@@ -37,9 +37,6 @@ object ResolverNative {
     external fun clearAccessToken()
 
     /** 启用/关闭内部授权。 */
-    /** 同步已验证会话的完整性策略；不影响账号、会员或功能授权。 */
-    external fun setIntegrityCheckEnabled(enabled: Boolean)
-
     external fun setAuthEnabled(enabled: Boolean)
 
     /** 查询内部授权是否启用。 */

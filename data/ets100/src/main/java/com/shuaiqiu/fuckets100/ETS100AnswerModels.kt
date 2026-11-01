@@ -94,13 +94,23 @@ internal data class LocalResourceTemplateSection(
     val structureType: String,
     val title: String,
     val templateOrder: Int,
-    val questionNumbers: List<Int>
+    val questionNumbers: List<Int>,
+    /** 本节的来源 res.json：本地模式交给 `op: apply_res_template` 补题号/满分。 */
+    val resJson: String? = null
 )
 
 internal data class LocalResourceTemplate(
     val folder: ETS100FileReader.FileItem,
     val sections: List<LocalResourceTemplateSection>,
-    val profile: ResourceGroupProfile
+    val profile: ResourceGroupProfile,
+    /** 官方卷面总分（res.json 的 `set_score`，经 `op: res_template` 规范化）。 */
+    val totalScore: Double? = null
+)
+
+/** 本地模板选择结果：题段 + 官方卷面总分。 */
+internal data class LocalResourceTemplateSelection(
+    val sections: List<LocalResourceTemplateSection>,
+    val totalScore: Double? = null
 )
 
 internal fun cleanQuestionText(text: String): String {

@@ -15,10 +15,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 import com.shuaiqiu.fuckets100.ActivationMode
+// ============================================================================
+// 步骤 4: 结束页面 (凝练欢迎)
+// ============================================================================
 
-/**
- * 步骤 3：完成页（只展示本地读取相关状态，不含账号/云端信息）。
- */
 @Composable
 internal fun FinishStep(
     selectedMode: ActivationMode,
@@ -33,6 +33,7 @@ internal fun FinishStep(
     ) {
         Spacer(Modifier.weight(0.7f))
 
+        // 成功图标
         Box(
             modifier = Modifier
                 .size(96.dp)
@@ -51,14 +52,14 @@ internal fun FinishStep(
         Spacer(Modifier.height(24.dp))
 
         Text(
-            text = "准备就绪",
+            text = "配置就绪，欢迎使用！",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "已经可以读取本地作业，开始使用吧",
+            text = "所有初始化项目已就绪，开启畅爽学习体验",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -66,6 +67,7 @@ internal fun FinishStep(
 
         Spacer(Modifier.height(28.dp))
 
+        // 清单卡片
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.large,
@@ -77,16 +79,17 @@ internal fun FinishStep(
                 modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                SummaryItem(text = "仅本地读取，无登录、无云端、无联网功能")
-                SummaryItem(text = "运行模式：" + selectedMode.title)
-                SummaryItem(text = "可在设置中随时切换运行模式")
+                SummaryItem(text = "用户服务协议与免责声明已确认")
+                SummaryItem(text = "LastStudio 云端服务已连接")
+                SummaryItem(text = "默认运行模式：${selectedMode.title}")
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
+        // 贴心小提示
         Text(
-            text = "提示：开始读取前请确保已用 e听说 客户端缓存过作业数据。",
+            text = "💡 提示：在主界面顶部卡片可随时切换运行授权模式喵~",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -102,7 +105,7 @@ internal fun FinishStep(
                 .height(52.dp),
             shape = MaterialTheme.shapes.large,
         ) {
-            Text("进入读取页", style = MaterialTheme.typography.titleMedium)
+            Text("进入主界面", style = MaterialTheme.typography.titleMedium)
         }
 
         Spacer(Modifier.height(16.dp))
@@ -118,7 +121,11 @@ internal fun SummaryItem(text: String) {
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(18.dp),
         )
-        Spacer(Modifier.width(8.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }

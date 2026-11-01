@@ -8,30 +8,25 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.compose.runtime.collectAsState
-import com.shuaiqiu.fuckets100.rememberShizukuState
 
+import com.shuaiqiu.fuckets100.ActivationMode
+import com.shuaiqiu.fuckets100.rememberShizukuState
 /**
- * 冷启动引导（3 步）：1.欢迎 -> 2.运行模式与权限 -> 3.完成。
- * 已移除账号登录 / 云端绑定 / 官网协议拉取。
+ * 软件初始化冷启动引导向导 (Material 3 Expressive 风格)
+ * 4 步流程：1.欢迎与协议 -> 2.账号登录 -> 3.模式与按需权限 -> 4.完成
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingScreen(
     onFinished: () -> Unit,
+    createChangyanLoginIntent: (android.content.Context) -> android.content.Intent,
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -39,9 +34,11 @@ fun OnboardingScreen(
     val uiState by viewModel.uiState.collectAsState()
     val currentStep = uiState.currentStep
     val selectedMode = uiState.selectedMode
+    val accountManager = viewModel.accountManager
     val shizukuState = rememberShizukuState()
 
-    BackHandler(enabled = true) {
+    // 处理系统返回键：第一步退出应用，后几步回退上一向导页
+    BackHandler {
         if (currentStep > 0) {
             viewModel.back()
         } else {
@@ -49,53 +46,68 @@ fun OnboardingScreen(
         }
     }
 
-    Scaffold { padding ->
-        Column(
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
+        topBar = {
+            OnboardingStepIndicator(
+                currentStep = currentStep,
+                totalSteps = 4,
+                onBack = {
+                    if (currentStep > 0) viewModel.back()
+                    else activity?.finish()
+                },
+            )
+        },
+    ) { padding ->
+        AnimatedContent(
+            targetState = currentStep,
+            transitionSpec = {
+                if (targetState > initialState) {
+                    (slideInHorizontally { width -> width / 2 } + fadeIn()) togetherWith
+                        (slideOutHorizontally { width -> -width / 2 } + fadeOut())
+                } else {
+                    (slideInHorizontally { width -> -width / 2 } + fadeIn()) togetherWith
+                        (slideOutHorizontally { width -> width / 2 } + fadeOut())
+                }
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-        ) {
-            OnboardingStepIndicator(
-                currentStep = currentStep,
-                totalSteps = 3,
-                onBack = {
-                    if (currentStep > 0) viewModel.back() else activity?.finish()
-                },
-            )
-            Spacer(Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            ) {
-                AnimatedContent(
-                    targetState = currentStep,
-                    transitionSpec = {
-                        if (targetState > initialState) {
-                            (slideInHorizontally { it / 4 } + fadeIn()) togetherWith
-                                (slideOutHorizontally { -it / 4 } + fadeOut())
-                        } else {
-                            (slideInHorizontally { -it / 4 } + fadeIn()) togetherWith
-                                (slideOutHorizontally { it / 4 } + fadeOut())
-                        }
-                    },
-                    label = "onboarding_step",
-                ) { step ->
-                    when (step) {
-                        0 -> WelcomeStep(onNext = viewModel::acceptWelcomeAndContinue)
-                        1 -> ModeAndPermissionStep(
-                            initialMode = selectedMode,
-                            shizukuState = shizukuState,
-                            onNext = viewModel::selectModeAndContinue,
-                        )
-                        else -> FinishStep(
-                            selectedMode = selectedMode,
-                            onFinish = {
-                                viewModel.completeOnboarding()
-                                onFinished()
-                            },
-                        )
-                    }
+            label = "onboarding_step_content",
+        ) { step ->
+            when (step) {
+                0 -> WelcomeStep(
+                    onNext = viewModel::acceptWelcomeAndContinue,
+                    onRefreshLegalAgreement = viewModel::refreshLegalAgreement,
+                    currentAgreement = viewModel.currentAgreement.collectAsState().value,
+                )
+                1 -> AccountStep(
+                    accountManager = accountManager,
+                    onNext = viewModel::continueFromAccount,
+                    onSkip = viewModel::skipAccountAndContinue,
+                )
+                2 -> ModeAndPermissionStep(
+                    initialMode = selectedMode,
+                    shizukuState = shizukuState,
+                    onNext = viewModel::selectModeAndContinue,
+                )
+                3 -> if (selectedMode == ActivationMode.CLOUD) {
+                    CloudBindingStep(
+                        accountManager = accountManager,
+                        onFinish = {
+                            viewModel.completeOnboarding()
+                            onFinished()
+                        },
+                        createChangyanLoginIntent = createChangyanLoginIntent,
+                    )
+                } else {
+                    FinishStep(
+                        selectedMode = selectedMode,
+                        onFinish = {
+                            viewModel.completeOnboarding()
+                            onFinished()
+                        },
+                    )
                 }
             }
         }

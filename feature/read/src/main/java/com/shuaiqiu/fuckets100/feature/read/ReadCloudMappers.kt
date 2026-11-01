@@ -3,6 +3,7 @@ package com.shuaiqiu.fuckets100.feature.read
 import com.shuaiqiu.fuckets100.CloudHomeworkState
 import com.shuaiqiu.fuckets100.ETS100AnswerReader
 import com.shuaiqiu.fuckets100.ETS100ApiClient
+import com.shuaiqiu.fuckets100.ETS100HomeworkClassifier
 
 // ========== 云端模式辅助函数喵~ ==========
 
@@ -12,7 +13,8 @@ import com.shuaiqiu.fuckets100.ETS100ApiClient
  */
 internal fun createCloudHomeworkPlaceholder(homework: ETS100ApiClient.HomeworkInfo): ETS100AnswerReader.Paper {
     val identity = cloudHomeworkIdentity(homework)
-    val isPk = homework.pk == 1 || homework.setType == 6
+    val isPk = ETS100HomeworkClassifier.classify(homework)?.isVocabPk
+        ?: (homework.pk == 1 || homework.setType == 6)
     val defaultTitle = if (isPk) "词汇PK" else "云端作业"
     val placeholderSections = homework.contents.mapIndexed { index, content ->
         val title = content.groupName.ifBlank { "云端内容 ${index + 1}" }

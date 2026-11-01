@@ -28,6 +28,10 @@ object ETS100CloudMerge {
         val logs: List<String>,
         /** 完整性对账：缺题时界面要能提示（卷面分照旧是官方值，看不出缺题） */
         val integrity: ETS100AnswerReader.PaperIntegrity? = null,
+        /** 官方模板合并后的原始 paper（sections[].questions[] 含 entity_id/sub_order/point） */
+        val rawPaper: JSONObject? = null,
+        /** 官方模板包的 res.json（逐题满分/官方题号的权威来源） */
+        val res: JSONObject? = null,
     )
 
     /**
@@ -174,7 +178,7 @@ object ETS100CloudMerge {
             } else if (integrity != null) {
                 logs.add("✅ 完整性对账通过（官方 ${integrity.templateQuestions} 题 / 实际 ${integrity.parsedQuestions} 题）")
             }
-            MergedPaper(sections, totalScore, logs, integrity)
+            MergedPaper(sections, totalScore, logs, integrity, rawPaper = paper, res = resJson)
         } catch (e: Exception) {
             Log.w(TAG, "官方模板合并异常（保持逐包结果）", e)
             null

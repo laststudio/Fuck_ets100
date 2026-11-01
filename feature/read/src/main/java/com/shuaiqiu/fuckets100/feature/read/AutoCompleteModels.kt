@@ -1,8 +1,11 @@
 package com.shuaiqiu.fuckets100.feature.read
 
-/** 自动完成：从官方 struct 归一化后的单题。 */
+/**
+ * 自动完成：归一化后的单题（字段对齐 lastudio_backend `_flatten_questions`）。
+ */
 internal data class AutoQuestion(
     val order: Int,
+    /** 全局节下标（0-based；官方按 entity_id + 节内 order 记账） */
     val sectionOrder: Int,
     val sectionCaption: String,
     val typeName: String,
@@ -10,7 +13,21 @@ internal data class AutoQuestion(
     val category: String,
     val point: Double,
     val options: List<String> = emptyList(),
-)
+    /** 官方 entity_id（sync-v2 定位某题的一半键） */
+    val entityId: String = "",
+    val subOrder: Int = 0,
+    val ttsText: String = "",
+    val answers: List<String> = emptyList(),
+    val choose: String = "",
+    val chooseId: String = "",
+    val isOral: Boolean = false,
+    val isChoose: Boolean = false,
+    /** sync-v2 的 order（官方该节内的题号） */
+    val syncOrder: Int = 0,
+) {
+    /** 兼容旧字段命名 */
+    val text: String get() = questionText
+}
 
 /** 自动完成：逐题结果。 */
 data class AutoQuestionResult(
@@ -19,6 +36,7 @@ data class AutoQuestionResult(
     val text: String,
     val awardedScore: Double,
     val maxScore: Double,
+    val iseScore: Double = 0.0,
 )
 
 /** 自动完成：一次任务的最终结果（同时用于历史记录）。 */

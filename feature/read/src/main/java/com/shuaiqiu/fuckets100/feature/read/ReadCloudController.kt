@@ -7,6 +7,7 @@ import com.shuaiqiu.fuckets100.ETS100ApiClient
 import com.shuaiqiu.fuckets100.ETS100HomeworkClassifier
 import com.shuaiqiu.fuckets100.FeAccountManager
 import com.shuaiqiu.fuckets100.PaperSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -141,17 +142,28 @@ internal class ReadCloudController(
         }
         CloudHomeworkState.selectedStatus = status
 
-        val result = loadCloudHomeworkListResult(
-            context = context,
-            status = status,
-            accountOnline = accountOnline,
-            accountManager = accountManager,
-        )
+        // 任何异常（含 JNI 链接错误/解析器 Error）都必须收敛为列表错误，
+        // 否则会从 UI 协程逃逸导致切换界面时闪退。
+        val result = try {
+            loadCloudHomeworkListResult(
+                context = context,
+                status = status,
+                accountOnline = accountOnline,
+                accountManager = accountManager,
+            )
+        } catch (e: CancellationException) {
+            CloudHomeworkState.isLoading = false
+            uiStateFlow.update { it.copy(isLoadingCloudHomework = false) }
+            throw e
+        } catch (e: Throwable) {
+            ReadCloudLog.error("✗ 加载云端作业列表异常: ${e.message}")
+            CloudHomeworkListResult.Failure(e.message ?: "加载云端作业列表失败")
+        }
 
         when (result) {
             is CloudHomeworkListResult.Success -> {
                 // 一次批量分类（op: classify_homework_list），给本页作业打标并预热缓存
-                ETS100HomeworkClassifier.classifyList(result.homeworks)
+                runCatching { ETS100HomeworkClassifier.classifyList(result.homeworks) }
                 val state = uiStateFlow.value
                 val nextLists = state.homeworkListsByStatus + (status to result.homeworks)
                 val nextBaseUrl = result.baseUrl.ifBlank { state.cloudBaseUrl }
@@ -203,11 +215,18 @@ internal class ReadCloudController(
         accountOnline: Boolean,
     ) {
         scope.launch {
-            downloadAndParseHomework(
-                homeworkInfo = homeworkInfo,
-                status = status,
-                accountOnline = accountOnline,
-            )
+            try {
+                downloadAndParseHomework(
+                    homeworkInfo = homeworkInfo,
+                    status = status,
+                    accountOnline = accountOnline,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                ReadCloudLog.error("✗ 云端作业下载解析异常: ${e.message}")
+                effectsFlow.trySend(ReadEffect.ShowToast("下载或解析失败: ${e.message}", long = true))
+            }
         }
     }
 
@@ -397,7 +416,7 @@ internal class ReadCloudController(
                     )
                 }
                 effectsFlow.trySend(ReadEffect.ShowToast("已清除所有云端缓存"))
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 ReadCloudLog.error("✗ 清除云端缓存失败: ${e.message}")
                 effectsFlow.trySend(ReadEffect.ShowToast("删除失败: ${e.message}", long = true))
             } finally {

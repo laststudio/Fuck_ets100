@@ -1,45 +1,14 @@
 package com.shuaiqiu.fuckets100.feature.account
 
-import com.shuaiqiu.fuckets100.feature.shared.AccountViewModel
+import androidx.compose.runtime.Composable
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.repeatOnLifecycle
-import kotlinx.coroutines.delay
-
-import com.shuaiqiu.fuckets100.FeAccountGateState
+/**
+ * 账号门禁。
+ *
+ * LastStudio 账号服务已停用，不再发起 LastStudio 的联网校验；这里只保留可扩展的
+ * 门禁入口，直接放行内容，避免在云端模式切换界面时触发已停用的接口。
+ */
 @Composable
-fun FeAccountGate(
-    viewModel: AccountViewModel = hiltViewModel(),
-    content: @Composable () -> Unit,
-) {
-    val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(viewModel) { viewModel.checkGate() }
-    LaunchedEffect(viewModel, lifecycleOwner) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            val resumedState = viewModel.gateState.value
-            if (resumedState is FeAccountGateState.Ready ||
-                resumedState is FeAccountGateState.Offline
-            ) {
-                viewModel.revalidateOnline()
-            }
-            while (true) {
-                delay(ONLINE_REVALIDATION_INTERVAL_MS)
-                if (viewModel.gateState.value is FeAccountGateState.Ready ||
-                    viewModel.gateState.value is FeAccountGateState.Offline
-                ) {
-                    viewModel.revalidateOnline()
-                }
-            }
-        }
-    }
-
+fun FeAccountGate(content: @Composable () -> Unit) {
     content()
 }
-
-
-internal const val ONLINE_REVALIDATION_INTERVAL_MS = 60_000L

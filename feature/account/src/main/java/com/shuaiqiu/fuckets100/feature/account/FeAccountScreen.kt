@@ -50,22 +50,9 @@ fun FeAccountScreen(
     var isLoggingOut by remember { mutableStateOf(false) }
     var logoutError by remember { mutableStateOf<String?>(null) }
 
-    if (state is FeAccountGateState.LoginRequired) {
-        FeLoginScreen(manager)
-        return
-    }
+    // LastStudio 账号服务已停用：不再发起任何 LastStudio 校验，直接提示用户改用 E 听说账号。
     if (session == null) {
-        AccountOfflineMessage(
-            message = when (val current = state) {
-                is FeAccountGateState.Checking -> "正在连接 LastStudio…"
-                is FeAccountGateState.Offline -> current.message
-                is FeAccountGateState.Blocked -> current.message
-                else -> "账号暂不可用"
-            },
-            showProgress = state is FeAccountGateState.Checking,
-            onRetry = viewModel::checkGate,
-            onBack = onBack,
-        )
+        FeLoginScreen(manager, onBack)
         return
     }
 
@@ -102,7 +89,7 @@ fun FeAccountScreen(
         onRefresh = { bindingsViewModel.refresh(force = true) },
     ) {
         if (state is FeAccountGateState.Offline || state is FeAccountGateState.Checking) {
-            AccountMessage(if (state is FeAccountGateState.Checking) "正在连接 LastStudio…" else "已离线，显示缓存账号信息")
+            AccountMessage("LastStudio 账号服务已停用，以下为本地缓存的账号信息")
         }
         Row(
             modifier = Modifier

@@ -4,6 +4,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.security.MessageDigest
 
@@ -41,6 +42,8 @@ class FeCapSolverTest {
 
     @Test
     fun `live cap solver succeeds against production endpoint`() = runBlocking {
+        // 生产端点存在速率限制，默认跳过；需要实测时设置 FE_LIVE_CAP_TEST=1。
+        assumeTrue(System.getenv("FE_LIVE_CAP_TEST") == "1")
         val solver = FeCapSolver()
         var lastProgress = 0f
         val result = solver.solve { progress ->

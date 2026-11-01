@@ -117,7 +117,7 @@ object ResolverAuthorizer : AuthCacheInvalidator {
                     msg ?: "云端模式当前不可用"
                 }
             }
-        } catch (e: Exception) {
+        } catch (_: Throwable) {
             "无法连接云端授权服务，请检查网络后重试"
         }
     }
@@ -163,7 +163,7 @@ object ResolverAuthorizer : AuthCacheInvalidator {
                     msg ?: "该功能当前不可用"
                 }
             }
-        } catch (e: Exception) {
+        } catch (_: Throwable) {
             "无法连接授权服务，请检查网络后重试"
         }
     }
@@ -190,7 +190,7 @@ object ResolverAuthorizer : AuthCacheInvalidator {
             null
         } catch (e: AppIntegrityGuard.IntegrityFailure) {
             e.message
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             "本地授权服务初始化失败: ${e.message}"
         }
     }
@@ -199,7 +199,8 @@ object ResolverAuthorizer : AuthCacheInvalidator {
         try {
             val manager = account()
             val shouldCheck = integrityEnabled ?: manager.isIntegrityCheckEnabled()
-            CloudNative.setIntegrityCheckEnabled(shouldCheck)
+            // 云端库可能未注册该方法（新版 so）：缺失时跳过，绝不让 JNI 链接错误冒泡成崩溃。
+            runCatching { CloudNative.setIntegrityCheckEnabled(shouldCheck) }
             AppIntegrityGuard.ensureCloud(context, buildInfo ?: return@withContext "授权信息未初始化", enabled = shouldCheck)
             val rc = CloudNative.setAuthConfig(
                 baseUrl = LocalResolverAuthService.baseUrl(),
@@ -214,7 +215,7 @@ object ResolverAuthorizer : AuthCacheInvalidator {
             null
         } catch (e: AppIntegrityGuard.IntegrityFailure) {
             e.message
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             "本地云端授权服务初始化失败: ${e.message}"
         }
     }

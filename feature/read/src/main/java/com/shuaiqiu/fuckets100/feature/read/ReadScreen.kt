@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.shuaiqiu.fuckets100.core.designsystem.ExpressiveScaffold
 import com.shuaiqiu.fuckets100.core.designsystem.expressiveTopAppBarColors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -204,6 +205,11 @@ fun ReadScreen(
             isRefreshing = true
             try {
                 viewModel.loadCloudHomeworkList(accountOnline = accountOnline)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // 云端异常不能从 UI 协程逃逸，否则切换界面会直接闪退。
+                Toast.makeText(context, e.message ?: "加载云端作业失败", Toast.LENGTH_LONG).show()
             } finally {
                 isRefreshing = false
             }

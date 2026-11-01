@@ -62,18 +62,9 @@ internal suspend fun loadCloudHomeworkListResult(
             return CloudHomeworkListResult.Failure("请登录E听说账号")
         }
     } else {
-        try {
-            val cloudSession = accountManager.cloudSession(
-                ETS100AuthManager.getSelectedEcardId(context).orEmpty()
-            )
-            persistBoundSession(context, cloudSession)
-            savedToken = cloudSession.token
-            parentId = cloudSession.parentAccountId
-            candidateAccounts = cloudSession.validAccounts
-        } catch (e: Exception) {
-            ReadCloudLog.error("✗ 后端绑定账号不可用: ${e.message}")
-            return CloudHomeworkListResult.Failure(e.message ?: "无法读取 LastStudio 绑定账号")
-        }
+        // LastStudio 账号服务已停用：不再读取绑定账号，引导用户改用 E 听说账号登录。
+        ReadCloudLog.error("✗ LastStudio 账号已停用，拒绝使用绑定账号读取云端作业")
+        return CloudHomeworkListResult.Failure("LastStudio 账号已停用，请登录 E 听说账号")
     }
 
     ReadCloudLog.info("☁️ 开始加载${cloudHomeworkStatusLabel(status)}列表")

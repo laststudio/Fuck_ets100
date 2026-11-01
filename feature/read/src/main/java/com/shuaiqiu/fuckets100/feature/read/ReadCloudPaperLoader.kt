@@ -21,7 +21,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 internal sealed interface CloudPaperResult {
-    data class Success(val paper: ETS100AnswerReader.Paper) : CloudPaperResult
+    data class Success(
+        val paper: ETS100AnswerReader.Paper,
+        /** 每包解析器原始题目（含 stid：自动完成的 entity_id 来源） */
+        val nativePackages: List<ETS100CloudTemplate.PackageQuestions> = emptyList(),
+        /** 官方模板合并后的原始 paper（自动完成按官方口径摊满分用） */
+        val officialPaper: JSONObject? = null,
+        /** 官方模板包 res.json（官方题号/逐题满分） */
+        val resJson: JSONObject? = null,
+    ) : CloudPaperResult
 
     /** 授权被拒绝：不写入失败缓存，交由调用方提示。 */
     data class AuthDenied(val message: String, val longToast: Boolean) : CloudPaperResult
@@ -98,7 +106,7 @@ internal suspend fun downloadAndParseCloudPaper(
         val isPkOrVocab = verdict?.needsOnlineFetch
             ?: (homeworkInfo.contents.isEmpty() || homeworkInfo.pk == 1 || homeworkInfo.setType == 6)
         if (isPkOrVocab) {
-            parseOnlineHomework(context, homeworkInfo, cacheDir, allSections) { added ->
+            parseOnlineHomework(context, homeworkInfo, cacheDir, allSections, nativePackages) { added ->
                 questionIndex += added
             }
         }
@@ -180,7 +188,12 @@ internal suspend fun downloadAndParseCloudPaper(
                 contents = homeworkInfo.contents.map { CloudContent(it.groupName, it.url) },
             )
         )
-        return CloudPaperResult.Success(paper)
+        return CloudPaperResult.Success(
+            paper = paper,
+            nativePackages = nativePackages,
+            officialPaper = official?.rawPaper,
+            resJson = official?.res,
+        )
     } catch (e: Exception) {
         ReadCloudLog.error("✗ 下载解析失败: ${e.message}")
         val hasCachedSource = cacheDir?.let { directory ->
@@ -203,6 +216,7 @@ private suspend fun parseOnlineHomework(
     homeworkInfo: ETS100ApiClient.HomeworkInfo,
     cacheDir: File,
     allSections: MutableList<ETS100AnswerReader.Section>,
+    nativePackages: MutableList<ETS100CloudTemplate.PackageQuestions>,
     onQuestionIndexAdvanced: (Int) -> Unit,
 ) {
     ReadCloudLog.info("🌐 检测到 PK/词汇在线作业，正在从云端获取题目数据...")
@@ -330,6 +344,17 @@ private suspend fun parseOnlineHomework(
                         originalContent = originalContent
                     )
                 )
+                // 同时留一份解析器原始题目：自动完成需要 entity_id/question_id
+                runCatching {
+                    nativePackages.add(
+                        ETS100CloudTemplate.PackageQuestions(
+                            structureType = pkJson.optString("structure_type", "word_pk"),
+                            groupName = groupName,
+                            questions = ETS100AnswerReader.parseContentNative(pkJson, "", ""),
+                            order = nativePackages.size,
+                        ),
+                    )
+                }
                 onQuestionIndexAdvanced(questions.size)
                 ReadCloudLog.success("✅ 成功解析 PK/词汇题目 ${questions.size} 道")
             } else {
@@ -476,6 +501,8 @@ private suspend fun parseZipContent(
 
         val infoJson = File(extractDir, "info.json").takeIf { it.isFile }?.readText().orEmpty()
         val content2Json = File(extractDir, "content2.json").takeIf { it.isFile }?.readText().orEmpty()
+        // content.json 的 info.stid：官方逐题同步的 entity_id（后端 resolve_content_with_resolver 同口径）
+        val stid = json.optJSONObject("info")?.optString("stid", "").orEmpty()
         val (questions, originalContent) = ETS100AnswerReader.parseContentJson(
             json = json,
             startIndex = startIndex,
@@ -494,6 +521,7 @@ private suspend fun parseZipContent(
                     questions = ETS100AnswerReader.parseContentNative(json, infoJson, content2Json),
                     realId = content.realId ?: "",
                     order = contentIndex,
+                    stid = stid,
                 ),
             )
         }.onFailure { ReadCloudLog.warn("   └─ 记录原始题目失败（不影响解析）: ${it.message}") }

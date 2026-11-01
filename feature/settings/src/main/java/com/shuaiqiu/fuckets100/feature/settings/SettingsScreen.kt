@@ -81,8 +81,8 @@ fun SettingsScreen(
                             },
                             supportingContent = {
                                 Text(
-                                    accountSession?.user?.let { "${it.tierDisplayName} · LastStudio" }
-                                        ?: "查看账号信息",
+                                    accountSession?.user?.let { "${it.tierDisplayName} · LastStudio 已停用" }
+                                        ?: "LastStudio 已停用 · 查看账号信息",
                                 )
                             },
                             trailingContent = {

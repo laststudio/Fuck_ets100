@@ -159,5 +159,7 @@ object ETS100CloudTemplate {
         val codeId: String = "",
         val realId: String = "",
         val order: Int = -1,
+        /** content.json 的 info.stid：官方逐题同步的 entity_id（缺失时回退 realId） */
+        val stid: String = "",
     )
 }

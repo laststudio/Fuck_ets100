@@ -551,19 +551,51 @@ object ETS100AnswerReader {
         sectionCaption: String,
         infoJson: String = "",
         content2Json: String = "",
+        /** 本地模板目录里的 `res.json`：有则用 `op: apply_res_template` 补官方题号与逐题满分。 */
+        resJson: String? = null,
     ): Pair<List<Question>, String?> {
         val originalContent = nativeOriginalContent(json)
         val native = parseContentNative(json, infoJson, content2Json)
+        val applied = applyResTemplateIfPossible(native, json, resJson)
+        val scoreOf: ((Int) -> Double?)? = if (applied === native) {
+            null
+        } else {
+            { index ->
+                applied.optJSONObject(index)
+                    ?.optDouble("score", Double.NaN)
+                    ?.takeIf { !it.isNaN() }
+            }
+        }
         val questions = mapNativeQuestions(
-            native = native,
+            native = applied,
             json = json,
             startIndex = startIndex,
             category = category,
             typeName = typeName,
             sectionCaption = sectionCaption,
             originalContent = originalContent,
+            scoreOf = scoreOf,
         )
         return Pair(questions, originalContent)
+    }
+
+    /** 用官方 `res.json` 给解析器原始题目盖分/补题号；失败或无模板时原样返回。 */
+    private fun applyResTemplateIfPossible(
+        native: JSONArray,
+        json: JSONObject,
+        resJson: String?,
+    ): JSONArray {
+        val res = resJson?.takeIf { it.isNotBlank() } ?: return native
+        val applied = ResolverContract.applyResTemplate(
+            resJson = res,
+            questions = native,
+            structureType = json.optString("structure_type", "").takeIf { it.isNotBlank() },
+        )
+        if (!applied.ok) {
+            logVerbose("apply_res_template 失败（${applied.errorCode}），保留解析器原始题号/分值")
+            return native
+        }
+        return applied.resultArray ?: native
     }
 
     /** 从 content.json 抽"朗读原文"（info.value，去标签）。 */
@@ -588,7 +620,7 @@ object ETS100AnswerReader {
         //   ① 响应里多了 meta（layer / family / shape / spec_known），便于诊断与上报；
         //   ② 解析器新增能力只加 op，客户端不需要再改 JNI 声明；
         //   ③ 旧接口 parseTaskAuthorized 仍保留，但业务层统一走契约。
-        var contract = parseTaskWithAuthRetry(
+        val contract = ResolverContract.parseTask(
             content = json.toString(),
             info = infoJson,
             content2 = content2Json,
@@ -601,7 +633,21 @@ object ETS100AnswerReader {
                 content2 = content2Json,
                 tag = "ETS100AnswerReader.parseContentNative",
             )
-            throw ResolverAuthorizationDeniedException(buildParseTaskError(contract))
+            throw ResolverAuthorizationDeniedException(
+                contract.errorMessage?.takeIf { it.isNotBlank() }
+                    ?: "答案解析功能当前不可用"
+            )
+        }
+        val structureType = json.optString("structure_type", "")
+        // 官方题型白名单来自 op: spec；解析成功却不在表里，说明官方加了新题型/方言别名。
+        val specTypes = if (structureType.isNotBlank()) ResolverContract.officialStructureTypes() else null
+        val unknownStructureType = structureType.isNotBlank() && specTypes != null && structureType !in specTypes
+        if (!contract.specKnown || unknownStructureType) {
+            Log.w(
+                TAG,
+                "parseContentNative: 未知 structure_type=$structureType " +
+                    "layer=${contract.layer} family=${contract.family} shape=${contract.shapeHash}（请上报）",
+            )
         }
         return contract.resultArray ?: run {
             ResolverContract.reportUnparsed(

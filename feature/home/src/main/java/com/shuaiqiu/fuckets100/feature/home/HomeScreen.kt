@@ -210,18 +210,15 @@ fun StatusCard(
     onNavigateToActivation: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
-    val isConnecting = accountState is FeAccountGateState.Checking
-    val needsLogin = accountState is FeAccountGateState.LoginRequired
-    val isOffline = accountState is FeAccountGateState.Offline
-    val isBlocked = accountState is FeAccountGateState.Blocked
+    // LastStudio 账号不再是使用前提：本地模式与云端模式只依赖各自的实际运行条件。
+    val isConnecting = false
+    val needsLogin = false
+    val isOffline = false
+    val isBlocked = false
     val isEightSeriesLocalMode = mode != ActivationMode.CLOUD &&
         EtsAppVersion.parseMajorVersion(etsAppVersion.orEmpty()) == 8
-    val showLocalCompatibilityWarning = !isConnecting &&
-        !needsLogin &&
-        !isOffline &&
-        !isBlocked &&
-        isEightSeriesLocalMode
-    val effectiveActivated = accountState is FeAccountGateState.Ready && isTrulyActivated
+    val showLocalCompatibilityWarning = isEightSeriesLocalMode
+    val effectiveActivated = isTrulyActivated
     val statusContainerColor = when {
         isConnecting -> MaterialTheme.colorScheme.surfaceContainerHighest
         showLocalCompatibilityWarning -> Color(0xFFFFF3CD)
@@ -267,7 +264,7 @@ fun StatusCard(
         isConnecting -> "正在验证账号和软件授权，请稍候"
         needsLogin -> "请先登录 LastStudio 账号后继续使用"
         isOffline -> "LastStudio 已离线，部分功能受限"
-        isBlocked -> accountState.message
+        isBlocked -> "LastStudio 当前不可用"
         showLocalCompatibilityWarning -> "检测到 E 听说 ${etsAppVersion.orEmpty()}，原有 7.x 本地读取方式可能无法读取数据"
         mode == ActivationMode.CLOUD -> if (cloudLoggedIn) "云端作业与试卷解析服务已连接" else "未绑定或未配置云端凭据，点击前往配置"
         !hasAllBasicPermissions -> "需要文件访问权限才能读取题库，请授权"

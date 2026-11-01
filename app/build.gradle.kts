@@ -38,7 +38,7 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 25
-        versionName = "2.3.0.1-fix"
+        versionName = "2.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "EXPECTED_SIGNATURE_SHA256", "\"$expectedSignatureSha256\"")

@@ -21,7 +21,8 @@ internal object ETS100AnswerLocalTemplate {
         kind: LocalPaperKind
     ): List<ETS100AnswerReader.Paper> {
         Log.d(TAG, "parseLocalResourcePapers: 第 $groupIndex 组，${folders.size} 个文件夹，kind=$kind")
-        val templateSections = readLocalResourceTemplateSections(reader, folders, kind)
+        val templateSelection = readLocalResourceTemplateSections(reader, folders, kind)
+        val templateSections = templateSelection.sections
         val baseStid = readLocalBaseStid(reader, folders)
         val templateCursors = mutableMapOf<String, Int>()
         val parsedSections = mutableListOf<LocalParsedSection>()
@@ -54,6 +55,7 @@ internal object ETS100AnswerLocalTemplate {
                 sectionCaption = sectionInfo.title,
                 infoJson = infoJson,
                 content2Json = content2Json,
+                resJson = templateSection?.resJson,
             )
 
             if (questions.isNotEmpty()) {
@@ -89,6 +91,7 @@ internal object ETS100AnswerLocalTemplate {
                 downloadTime = folders.first().lastModified,
                 regionLabel = kind.regionLabel,
                 paperName = null,
+                totalScore = templateSelection.totalScore,
                 source = ETS100AnswerReader.localPaperSource(reader.getMode(), folders)
             )
         )
@@ -98,15 +101,15 @@ internal object ETS100AnswerLocalTemplate {
         reader: ETS100FileReader.Reader,
         folders: List<ETS100FileReader.FileItem>,
         kind: LocalPaperKind
-    ): List<LocalResourceTemplateSection> {
+    ): LocalResourceTemplateSelection {
         val resourceDir = ETS100FileReader.Path.getResourceDir()
         val groupNames = folders.mapTo(mutableSetOf()) { it.name }
         val groupTemplates = folders
             .mapNotNull { readLocalResourceTemplate(reader, resourceDir, it) }
             .filter { isTemplateCompatibleWithKind(it.profile, kind) }
 
-        val templateSections = if (groupTemplates.isNotEmpty()) {
-            groupTemplates.flatMap { it.sections }
+        val selectedTemplates = if (groupTemplates.isNotEmpty()) {
+            groupTemplates
         } else {
             val groupTimeRange = folders.map { it.lastModified }.filter { it > 0L }
             val candidateTemplates = reader.listFiles(resourceDir)
@@ -118,16 +121,16 @@ internal object ETS100AnswerLocalTemplate {
                 .filter { isTemplateCompatibleWithKind(it.profile, kind) }
                 .toList()
 
-            candidateTemplates
-                .minByOrNull { templateDistanceFromGroup(it.folder, groupTimeRange) }
-                ?.sections
-                .orEmpty()
+            listOfNotNull(candidateTemplates.minByOrNull { templateDistanceFromGroup(it.folder, groupTimeRange) })
         }
+
+        val templateSections = selectedTemplates.flatMap { it.sections }
+        val totalScore = selectedTemplates.mapNotNull { it.totalScore }.firstOrNull()
 
         if (templateSections.isNotEmpty()) {
             Log.d(TAG, "readLocalResourceTemplateSections: 读取到 ${templateSections.size} 个模板题段")
         }
-        return templateSections
+        return LocalResourceTemplateSelection(templateSections, totalScore)
     }
 
     internal fun resolveTemplateFolderModifiedTime(
@@ -164,7 +167,8 @@ internal object ETS100AnswerLocalTemplate {
                             structureType = structureType,
                             title = title,
                             templateOrder = extractTemplateOrder(exam, templateSections.size + 1),
-                            questionNumbers = extractTemplateQuestionNumbers(exam)
+                            questionNumbers = extractTemplateQuestionNumbers(exam),
+                            resJson = resContent
                         )
                     )
                 }
@@ -174,7 +178,8 @@ internal object ETS100AnswerLocalTemplate {
                         structureType = structureType,
                         title = title,
                         templateOrder = extractTemplateOrder(examType, templateSections.size + 1),
-                        questionNumbers = extractTemplateQuestionNumbers(examType)
+                        questionNumbers = extractTemplateQuestionNumbers(examType),
+                        resJson = resContent
                     )
                 )
             }
@@ -184,8 +189,18 @@ internal object ETS100AnswerLocalTemplate {
         return LocalResourceTemplate(
             folder = folder,
             sections = templateSections,
-            profile = buildTemplateProfile(templateSections)
+            profile = buildTemplateProfile(templateSections),
+            totalScore = readTemplateTotalScore(resContent)
         )
+    }
+
+    /** 用解析器 `op: res_template` 规范化 res.json，取官方卷面总分（失败返回 null）。 */
+    private fun readTemplateTotalScore(resContent: String): Double? {
+        val normalized = ResolverContract.resTemplate(resContent)
+        if (!normalized.ok) return null
+        return normalized.result
+            ?.optDouble("total_score", Double.NaN)
+            ?.takeIf { !it.isNaN() && it > 0.0 }
     }
 
     internal fun buildTemplateProfile(

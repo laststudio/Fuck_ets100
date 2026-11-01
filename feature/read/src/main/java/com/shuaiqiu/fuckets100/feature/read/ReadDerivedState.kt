@@ -3,6 +3,7 @@ package com.shuaiqiu.fuckets100.feature.read
 import com.shuaiqiu.fuckets100.CloudHomeworkState
 import com.shuaiqiu.fuckets100.ETS100ApiClient
 import com.shuaiqiu.fuckets100.ETS100AnswerReader
+import com.shuaiqiu.fuckets100.ETS100HomeworkClassifier
 import com.shuaiqiu.fuckets100.PaperSource
 
 /**
@@ -28,7 +29,8 @@ internal object ReadDerivedState {
                 homeworkListsByStatus[CloudHomeworkState.STATUS_HISTORY].orEmpty()
             allLoaded
                 .distinctBy { it.id.ifBlank { it.name } }
-                .filter { it.pk == 1 || it.setType == 6 }
+                // 解析器判定词汇/PK（失败时回退旧字段）
+                .filter { ETS100HomeworkClassifier.classify(it)?.isVocabPk ?: (it.pk == 1 || it.setType == 6) }
         }
 
         else -> homeworkListsByStatus[CloudHomeworkState.STATUS_CURRENT].orEmpty()

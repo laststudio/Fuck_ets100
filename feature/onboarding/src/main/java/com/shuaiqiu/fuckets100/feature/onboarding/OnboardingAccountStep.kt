@@ -37,6 +37,7 @@ import com.shuaiqiu.fuckets100.FeAccountManager
 internal fun AccountStep(
     accountManager: FeAccountManager,
     onNext: () -> Unit,
+    onSkip: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -105,13 +106,13 @@ internal fun AccountStep(
         Spacer(Modifier.height(16.dp))
 
         Text(
-            text = "连接 LastStudio 账号",
+            text = "连接 LastStudio 账号（可选）",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "同步会员特权与云端解析服务",
+            text = "登录后可同步会员特权与云端解析服务，也可以直接跳过",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -121,13 +122,13 @@ internal fun AccountStep(
         TonalCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    "先登录 Fe 账号",
+                    "LastStudio 账号是可选的",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "这是 LastStudio 账号，用来保存设置和使用云端服务。注册完成后回到这里登录；下一步会单独引导你绑定 e听说账号。",
+                    "选择跳过时，云端模式与自动完成功能需要先登录 E听说账号，但会员特权与账号绑定功能将不可用。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -247,6 +248,20 @@ internal fun AccountStep(
                     Text("没有账号？注册新账号")
                 }
             }
+
+            Spacer(Modifier.height(4.dp))
+            TextButton(
+                enabled = !loading,
+                onClick = onSkip,
+            ) {
+                Text("跳过登录，仅使用 E听说账号")
+            }
+            Text(
+                text = "跳过后无法使用 LastStudio 会员特权；使用云端模式与自动完成时会提示登录 E听说账号。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
         }
 
         Spacer(Modifier.height(16.dp))

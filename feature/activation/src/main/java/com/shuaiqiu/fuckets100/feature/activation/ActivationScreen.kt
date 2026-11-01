@@ -70,9 +70,7 @@ fun ActivationSettingsScreen(
 
     // 首次打开异步读取；已有短时缓存时直接沿用，不重复触发页面闪变。
     LaunchedEffect(cloudAuthRevision) {
-        // 登录成功后 cloudAuthRevision 会变化：必须强制刷新，
-        // 否则会命中 15s 缓存导致界面仍显示“未激活”，要再点一次登录才更新。
-        viewModel.refresh(force = true)
+        viewModel.refresh(force = false)
     }
 
     var hasPaused by remember { mutableStateOf(false) }
@@ -111,9 +109,7 @@ fun ActivationSettingsScreen(
     val successColor = MaterialTheme.colorScheme.primary
     val hasLocalBasicPermissions = hasFilesPerm
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val activationModes = ActivationMode.values().filter {
-        it == ActivationMode.SHIZUKU || it == ActivationMode.ROOT || it == ActivationMode.DIRECT_READ || it == ActivationMode.CLOUD
-    }
+    val activationModes = ActivationMode.values().filter { it != ActivationMode.DEFAULT }
 
     ExpressiveScaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

@@ -1,169 +1,297 @@
 package com.shuaiqiu.fuckets100.feature.onboarding
 
+import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.shuaiqiu.fuckets100.feature.onboarding.R
+import com.shuaiqiu.fuckets100.LegalAgreement
 import com.shuaiqiu.fuckets100.core.designsystem.RighteousFont
+import com.shuaiqiu.fuckets100.feature.shared.LegalContent
+import kotlinx.coroutines.launch
 
-/**
- * 重新设计的欢迎页：只强调"本地读取"这一件事，不包含任何账号/云端入口。
- */
+import com.shuaiqiu.fuckets100.SettingsManager
+// ============================================================================
+// 步骤 1: 欢迎与幽默标语 + 用户协议
+// ============================================================================
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun WelcomeStep(onNext: () -> Unit) {
+internal fun WelcomeStep(
+    onNext: () -> Unit,
+    onRefreshLegalAgreement: () -> Unit,
+    currentAgreement: LegalAgreement,
+) {
+    val context = LocalContext.current
     var entered by remember { mutableStateOf(false) }
+    var legalAccepted by rememberSaveable { mutableStateOf(SettingsManager.hasAcceptedLegal()) }
+    var showLegalSheet by remember { mutableStateOf(false) }
+    val shakeOffset = remember { Animatable(0f) }
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        entered = true
+        onRefreshLegalAgreement()
+    }
+
+    // Logo 弹性缩放与渐显
     val logoScale by animateFloatAsState(
-        targetValue = if (entered) 1f else 0.6f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        targetValue = if (entered) 1f else 0.5f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow,
+        ),
         label = "logo_scale",
     )
-    val contentAlpha by animateFloatAsState(
+    val logoAlpha by animateFloatAsState(
         targetValue = if (entered) 1f else 0f,
-        animationSpec = tween(420, delayMillis = 120),
-        label = "content_alpha",
+        animationSpec = tween(400),
+        label = "logo_alpha",
     )
-    LaunchedEffect(Unit) { entered = true }
 
-    Column(
+    // 标语文本渐显与上移
+    val textAlpha by animateFloatAsState(
+        targetValue = if (entered) 1f else 0f,
+        animationSpec = tween(400, delayMillis = 160),
+        label = "text_alpha",
+    )
+    val textOffsetY by animateFloatAsState(
+        targetValue = if (entered) 0f else 24f,
+        animationSpec = tween(400, delayMillis = 160),
+        label = "text_offset_y",
+    )
+
+    // 底部操作区渐显与上移
+    val bottomAlpha by animateFloatAsState(
+        targetValue = if (entered) 1f else 0f,
+        animationSpec = tween(400, delayMillis = 280),
+        label = "bottom_alpha",
+    )
+    val bottomOffsetY by animateFloatAsState(
+        targetValue = if (entered) 0f else 20f,
+        animationSpec = tween(400, delayMillis = 280),
+        label = "bottom_offset_y",
+    )
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 28.dp, vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .padding(horizontal = 24.dp)
+            .navigationBarsPadding(),
     ) {
-        Spacer(Modifier.height(36.dp))
-
-        Box(
+        // 中间主体（Logo + 标题 + 幽默标语），居中稳定布局
+        Column(
             modifier = Modifier
-                .size(108.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center,
+                .align(Alignment.Center)
+                .padding(bottom = 60.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(
-                Icons.Default.FolderOpen,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(56.dp),
-            )
+            // 图标展示 (Spring 缩放 + 淡入)
+            Box(
+                modifier = Modifier
+                    .size(112.dp)
+                    .graphicsLayer {
+                        scaleX = logoScale
+                        scaleY = logoScale
+                        alpha = logoAlpha
+                    }
+                    .clip(MaterialTheme.shapes.extraLarge)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.fe_logo),
+                    contentDescription = "Fuck ETS100",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(68.dp)
+                        .clip(MaterialTheme.shapes.large),
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // 标题与幽默标语 (平滑位移与淡入，不改变占位大小)
+            Column(
+                modifier = Modifier.graphicsLayer {
+                    alpha = textAlpha
+                    translationY = textOffsetY
+                },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "Fuck ETS100",
+                    style = MaterialTheme.typography.headlineLarge.copy(fontFamily = RighteousFont),
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "把做口语的痛苦留给算法，把大好青春还给生活喵~",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
 
-        Spacer(Modifier.height(28.dp))
-
-        Text(
-            text = "Fe",
-            style = MaterialTheme.typography.displaySmall,
-            fontFamily = RighteousFont,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = "本地作业读取工具",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = "无需登录，不需要账号，不联网。\n直接读取手机里 e听说 已缓存的作业并解析答案。",
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        Spacer(Modifier.height(32.dp))
-
-        FeatureRow(
-            icon = Icons.Default.FolderOpen,
-            title = "只做一件事",
-            desc = "扫描本地题库、离线解析答案，不包含任何在线服务",
-        )
-        FeatureRow(
-            icon = Icons.Default.Security,
-            title = "三种本地模式",
-            desc = "Shizuku / Root / 漏洞直读，按设备情况任选其一",
-        )
-        FeatureRow(
-            icon = Icons.Default.Bolt,
-            title = "启动即用",
-            desc = "没有登录框、没有强制更新，打开就能读取",
-        )
-
-        Spacer(Modifier.height(36.dp))
-
-        Button(
-            onClick = onNext,
+        // 底部协议与行动按钮，固定底部锚点
+        Column(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(54.dp),
-            shape = MaterialTheme.shapes.large,
+                .padding(bottom = 20.dp)
+                .graphicsLayer {
+                    alpha = bottomAlpha
+                    translationY = bottomOffsetY
+                },
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("开始使用", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.width(8.dp))
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
-        }
+            // 协议勾选行 (带 shakeOffset 左右抖动提醒，不产生纵向位移)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        translationX = shakeOffset.value
+                    }
+                    .clip(MaterialTheme.shapes.medium)
+                    .clickable { legalAccepted = !legalAccepted }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(
+                    checked = legalAccepted,
+                    onCheckedChange = { legalAccepted = it },
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = "已阅读并同意",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "《用户协议与全链路免责声明》",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    textDecoration = TextDecoration.Underline,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clickable { showLegalSheet = true },
+                )
+            }
 
-        Spacer(Modifier.height(14.dp))
-        Text(
-            text = "继续即表示你已阅读并同意随应用内置的使用说明：仅限个人学习交流使用，请勿传播。",
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(14.dp))
+
+            Button(
+                onClick = {
+                    if (legalAccepted) {
+                        onNext()
+                    } else {
+                        Toast.makeText(context, "请先阅读并勾选同意用户协议喵~", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch {
+                            shakeOffset.snapTo(0f)
+                            shakeOffset.animateTo(14f, tween(50))
+                            shakeOffset.animateTo(-14f, tween(50))
+                            shakeOffset.animateTo(10f, tween(50))
+                            shakeOffset.animateTo(-10f, tween(50))
+                            shakeOffset.animateTo(0f, tween(50))
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = MaterialTheme.shapes.large,
+            ) {
+                Text("开启旅程", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
     }
-}
 
-@Composable
-private fun FeatureRow(icon: ImageVector, title: String, desc: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(enabled = false) {}
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.secondaryContainer),
-            contentAlignment = Alignment.Center,
+    // 用户协议查看抽屉
+    if (showLegalSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showLegalSheet = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         ) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(22.dp))
-        }
-        Spacer(Modifier.width(14.dp))
-        Column {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.85f)
+                    .padding(horizontal = 20.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "用户协议与全链路免责声明",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    IconButton(onClick = { showLegalSheet = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "关闭")
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    LegalContent(
+                        showHeader = false,
+                        agreement = currentAgreement,
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        legalAccepted = true
+                        showLegalSheet = false
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Text("我已阅读并知悉")
+                }
+                Spacer(Modifier.height(16.dp))
+            }
         }
     }
 }

@@ -17,8 +17,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.shuaiqiu.fuckets100.feature.shared.EtingshuoBindingCard
+import com.shuaiqiu.fuckets100.feature.shared.EtingshuoLocalLoginCard
 import kotlinx.coroutines.launch
 
+import com.shuaiqiu.fuckets100.FeAccountGateState
 import com.shuaiqiu.fuckets100.FeAccountManager
 // ============================================================================
 // 云端模式：明确完成 e听说账号绑定
@@ -30,12 +32,8 @@ internal fun CloudBindingStep(
     onFinish: () -> Unit,
     createChangyanLoginIntent: (android.content.Context) -> android.content.Intent,
 ) {
-    val context = LocalContext.current
-    val changyanLoginLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) onFinish()
-    }
+    val gateState by accountManager.gateState.collectAsState()
+    val lastStudioReady = gateState is FeAccountGateState.Ready
 
     Column(
         modifier = Modifier
@@ -52,19 +50,27 @@ internal fun CloudBindingStep(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "云端模式还需要一个 e听说（ETS100）学生账号来读取作业。它和刚才的 LastStudio 账号不是同一个账号。",
+            text = if (lastStudioReady) {
+                "云端模式还需要一个 e听说（ETS100）学生账号来读取作业。它和刚才的 LastStudio 账号不是同一个账号。"
+            } else {
+                "云端模式需要一个 e听说（ETS100）学生账号来读取作业。已跳过 LastStudio 登录，请直接输入手机号和密码登录。"
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(18.dp))
 
-        EtingshuoBindingCard(
-            manager = accountManager,
-            modifier = Modifier.fillMaxWidth(),
-            onChangyanLogin = {
-                changyanLoginLauncher.launch(createChangyanLoginIntent(context))
-            },
-        )
+        if (lastStudioReady) {
+            EtingshuoBindingCard(
+                manager = accountManager,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            EtingshuoLocalLoginCard(
+                modifier = Modifier.fillMaxWidth(),
+                onLoggedIn = onFinish,
+            )
+        }
 
         Spacer(Modifier.height(20.dp))
         Button(

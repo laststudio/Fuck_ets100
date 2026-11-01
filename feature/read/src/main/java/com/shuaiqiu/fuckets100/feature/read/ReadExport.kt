@@ -14,7 +14,7 @@ import com.shuaiqiu.fuckets100.ETS100AnswerReader
 import com.shuaiqiu.fuckets100.FeAccountFeatures
 import com.shuaiqiu.fuckets100.FeAccountManager
 
-private const val FE_SHARE_SIGNATURE = "Fe 本地读取 · 仅供学习交流"
+private const val FE_SHARE_SIGNATURE = "Fe守护你的答案喵~ 官网:lastudio.cc"
 
 internal fun exportPaperAsImage(
     context: android.content.Context,

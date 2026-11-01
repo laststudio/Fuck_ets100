@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import com.shuaiqiu.fuckets100.CloudHomeworkState
 import com.shuaiqiu.fuckets100.ETS100ApiClient
+import com.shuaiqiu.fuckets100.ETS100HomeworkClassifier
+import com.shuaiqiu.fuckets100.FeAccountManager
 import com.shuaiqiu.fuckets100.PaperSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -23,6 +25,7 @@ import kotlinx.coroutines.CoroutineScope
  */
 internal class ReadCloudController(
     private val context: Context,
+    private val accountManager: FeAccountManager,
     private val uiStateFlow: MutableStateFlow<ReadUiState>,
     private val effectsFlow: Channel<ReadEffect>,
     private val scope: CoroutineScope,
@@ -142,10 +145,13 @@ internal class ReadCloudController(
             context = context,
             status = status,
             accountOnline = accountOnline,
+            accountManager = accountManager,
         )
 
         when (result) {
             is CloudHomeworkListResult.Success -> {
+                // 一次批量分类（op: classify_homework_list），给本页作业打标并预热缓存
+                ETS100HomeworkClassifier.classifyList(result.homeworks)
                 val state = uiStateFlow.value
                 val nextLists = state.homeworkListsByStatus + (status to result.homeworks)
                 val nextBaseUrl = result.baseUrl.ifBlank { state.cloudBaseUrl }
@@ -186,7 +192,6 @@ internal class ReadCloudController(
                         cloudHomeworkError = result.message,
                     )
                 }
-                effectsFlow.trySend(ReadEffect.ShowError("获取作业列表失败", result.message))
             }
         }
     }
@@ -250,7 +255,7 @@ internal class ReadCloudController(
             val cleared = state.cloudDownloadingHomeworks - cacheKey
             CloudHomeworkState.cloudDownloadingHomeworks = cleared
             uiStateFlow.update { it.copy(cloudDownloadingHomeworks = cleared) }
-            effectsFlow.trySend(ReadEffect.ShowToast("已离线"))
+            effectsFlow.trySend(ReadEffect.ShowToast("请登录E听说账号"))
             return
         }
 
@@ -327,7 +332,7 @@ internal class ReadCloudController(
                         )
                     }
                     ReadCloudLog.error("✗ ${result.message}")
-                    effectsFlow.trySend(ReadEffect.ShowError("答案解析不可用", result.message))
+                    effectsFlow.trySend(ReadEffect.ShowToast(result.message, long = result.longToast))
                 }
 
                 is CloudPaperResult.Failure -> {
@@ -350,7 +355,7 @@ internal class ReadCloudController(
                         )
                     }
                     saveCloudReadState()
-                    effectsFlow.trySend(ReadEffect.ShowError("下载或解析失败", result.message))
+                    effectsFlow.trySend(ReadEffect.ShowToast("下载或解析失败: ${result.message}", long = true))
                 }
             }
         } finally {

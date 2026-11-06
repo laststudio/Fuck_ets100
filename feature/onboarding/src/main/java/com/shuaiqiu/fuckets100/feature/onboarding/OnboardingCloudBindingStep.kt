@@ -31,6 +31,12 @@ internal fun CloudBindingStep(
     createChangyanLoginIntent: (android.content.Context) -> android.content.Intent,
 ) {
     // LastStudio 账号服务已停用：这里只提供 E 听说账号登录。
+    val context = LocalContext.current
+    val changyanLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) onFinish()
+    }
 
     Column(
         modifier = Modifier
@@ -57,6 +63,20 @@ internal fun CloudBindingStep(
         EtingshuoLocalLoginCard(
             modifier = Modifier.fillMaxWidth(),
             onLoggedIn = onFinish,
+        )
+
+        TextButton(
+            onClick = { changyanLauncher.launch(createChangyanLoginIntent(context)) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("使用讯飞企业登录（网页）")
+        }
+        Text(
+            "学校统一发放的企业账号请用讯飞网页登录，登录成功后会自动继续。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
         )
 
         Spacer(Modifier.height(20.dp))

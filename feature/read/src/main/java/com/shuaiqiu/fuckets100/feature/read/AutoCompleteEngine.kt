@@ -38,7 +38,7 @@ internal class AutoCompleteEngine(
     private val accountManager: FeAccountManager,
 ) {
 
-    private data class Session(val token: String, val parentId: String)
+    private data class Session(var token: String, val parentId: String)
 
     private data class OfficialSnapshot(
         val totalPoint: Double,
@@ -88,7 +88,9 @@ internal class AutoCompleteEngine(
 
         // checkstart：官方会下发最新的 resource_id
         runCatching {
-            ETS100ApiClient.checkStart(session.token, homework.id).getOrThrow()
+            callWithTokenRefresh(session) { token ->
+                ETS100ApiClient.checkStart(token, homework.id)
+            }.getOrThrow()
         }.getOrNull()?.let { started ->
             val next = started.optString("resource_id").ifBlank { started.optString("id") }
             if (next.isNotBlank() && next != "0") resourceId = next
@@ -103,7 +105,9 @@ internal class AutoCompleteEngine(
 
         // score-drop：重新提交前先清掉官方旧分（resource_id 置空、不带 parent_account_id）
         runCatching {
-            ETS100ApiClient.scoreDrop(session.token, homework.id).getOrThrow()
+            callWithTokenRefresh(session) { token ->
+                ETS100ApiClient.scoreDrop(token, homework.id)
+            }.getOrThrow()
         }
 
         onStage(stage(2, 25, totalQuestions = questions.size))
@@ -158,7 +162,11 @@ internal class AutoCompleteEngine(
             val batch = questions.mapIndexed { index, q ->
                 mapOf<String, Any>("entity_id" to q.entityId, "order" to index)
             }
-            runCatching { ETS100ApiClient.pprResources(session.token, batch).getOrThrow() }
+            runCatching {
+                callWithTokenRefresh(session) { token ->
+                    ETS100ApiClient.pprResources(token, batch)
+                }.getOrThrow()
+            }
         }
 
         // ── 逐题 sync-v2 ──
@@ -201,14 +209,15 @@ internal class AutoCompleteEngine(
             )
 
             // 作答音频 + 评分 XML 上传（官方必须在 OSS 上看到文件，否则口语题记 0 分）
-            val artifacts = uploadAnswerArtifacts(
+            val answerText = if (isChoose) {
+                question.questionText.ifBlank { ansVal }
+            } else {
+                question.ttsText.ifBlank { question.questionText }
+            }
+            var artifacts = uploadAnswerArtifacts(
                 token = session.token,
                 question = question,
-                text = if (isChoose) {
-                    question.questionText.ifBlank { ansVal }
-                } else {
-                    question.ttsText.ifBlank { question.questionText }
-                },
+                text = answerText,
                 ise = qScore,
                 isChoose = isChoose,
                 index = index,
@@ -246,7 +255,28 @@ internal class AutoCompleteEngine(
                 "spx_file_url" to "",
                 "mark_trace_id" to "{\"engine\": \"cloud\"}",
             )
-            val syncResult = ETS100ApiClient.syncQuestion(session.token, syncParams)
+            var syncResult = ETS100ApiClient.syncQuestion(session.token, syncParams)
+            if (syncResult.isFailure && isTokenExpired(syncResult.exceptionOrNull())) {
+                // token 过期：用保存的账号密码重新登录，重新上传后再同步一次
+                val renewed = renewEts100Token(context)
+                    ?: throw AutoCompleteException(
+                        "第 ${index + 1} 题云端答题同步失败：E听说登录已过期，请重新登录后再试"
+                    )
+                session.token = renewed
+                artifacts = uploadAnswerArtifacts(
+                    token = renewed,
+                    question = question,
+                    text = answerText,
+                    ise = qScore,
+                    isChoose = isChoose,
+                    index = index,
+                )
+                syncParams["upload_file_id"] = artifacts.uploadFileId
+                syncParams["upload_file_url"] = artifacts.uploadFileUrl
+                syncParams["detail_file_id"] = artifacts.detailFileId
+                syncParams["detail_file_url"] = artifacts.detailFileUrl
+                syncResult = ETS100ApiClient.syncQuestion(renewed, syncParams)
+            }
             if (syncResult.isFailure) {
                 val error = syncResult.exceptionOrNull()?.message ?: "未知错误"
                 throw AutoCompleteException("第 ${index + 1} 题云端答题同步失败：$error")
@@ -302,18 +332,20 @@ internal class AutoCompleteEngine(
 
         // set-use-time：失败仅告警（官方口径）
         runCatching {
-            ETS100ApiClient.setUseTime(
-                session.token,
-                mapOf(
-                    "homework_id" to homeworkIdValue,
-                    "resource_id" to resourceId,
-                    "use_time" to finalUseTime,
-                    "reset" to 0,
-                    "end" to 1,
-                    "correct" to 0,
-                    "version" to 2,
-                ),
-            ).getOrThrow()
+            callWithTokenRefresh(session) { token ->
+                ETS100ApiClient.setUseTime(
+                    token,
+                    mapOf(
+                        "homework_id" to homeworkIdValue,
+                        "resource_id" to resourceId,
+                        "use_time" to finalUseTime,
+                        "reset" to 0,
+                        "end" to 1,
+                        "correct" to 0,
+                        "version" to 2,
+                    ),
+                )
+            }.getOrThrow()
         }
 
         val scoreRate = min(
@@ -330,21 +362,25 @@ internal class AutoCompleteEngine(
             "resource_id" to resourceId,
             "parent_account_id" to session.parentId,
         )
-        ETS100ApiClient.reportScore(session.token, reportParams).getOrElse {
+        callWithTokenRefresh(session) { token ->
+            ETS100ApiClient.reportScore(token, reportParams)
+        }.getOrElse {
             throw AutoCompleteException("上报成绩失败：${it.message ?: "未知错误"}")
         }
 
         // 辅助提交（忽略失败）
         runCatching {
-            ETS100ApiClient.submitHomework(
-                session.token,
-                mapOf(
-                    "homework_id" to homeworkIdValue,
-                    "resource_id" to resourceId,
-                    "seq_id" to "",
-                    "use_time" to finalUseTime,
-                ),
-            )
+            callWithTokenRefresh(session) { token ->
+                ETS100ApiClient.submitHomework(
+                    token,
+                    mapOf(
+                        "homework_id" to homeworkIdValue,
+                        "resource_id" to resourceId,
+                        "seq_id" to "",
+                        "use_time" to finalUseTime,
+                    ),
+                )
+            }
         }
 
         onStage(stage(7, 95, totalQuestions = questions.size))
@@ -361,7 +397,11 @@ internal class AutoCompleteEngine(
 
         // 官方账明显低于我们上报的分 → 同一份载荷裸重试一次 report-score 并回读
         if (shareableRetry(classification.first, delta, paperTotal)) {
-            runCatching { ETS100ApiClient.reportScore(session.token, reportParams).getOrThrow() }
+            runCatching {
+                callWithTokenRefresh(session) { token ->
+                    ETS100ApiClient.reportScore(token, reportParams)
+                }.getOrThrow()
+            }
             delay(500)
             readback = readHomeworkInfo(session, homework, resourceId)
             officialPoint = readback.point
@@ -414,6 +454,23 @@ internal class AutoCompleteEngine(
 
         // LastStudio 账号服务已停用：不再请求绑定会话，统一要求登录 E 听说账号。
         throw AutoCompleteException("LastStudio 账号已停用，请登录 E 听说账号")
+    }
+
+    /**
+     * 自动完成的每个官方请求都经过这里：token 过期（20004）时用保存的手机号
+     * 和密码重新登录，刷新后再重试一次（等价于重新登录）。
+     */
+    private suspend fun <T> callWithTokenRefresh(
+        session: Session,
+        block: suspend (String) -> Result<T>,
+    ): Result<T> {
+        val first = block(session.token)
+        if (first.isFailure && isTokenExpired(first.exceptionOrNull())) {
+            val renewed = renewEts100Token(context) ?: return first
+            session.token = renewed
+            return block(renewed)
+        }
+        return first
     }
 
     // ==================== 题目来源 ====================
@@ -562,12 +619,14 @@ internal class AutoCompleteEngine(
             AutoCompleteOfficialRes.parse(json)?.let { return it }
         }
         return runCatching {
-            val body = ETS100ApiClient.getHomeworkStructM(
-                token = session.token,
-                homeworkId = homework.id,
-                resourceId = homework.resourceId,
-                parentAccountId = session.parentId,
-            ).getOrThrow()
+            val body = callWithTokenRefresh(session) { token ->
+                ETS100ApiClient.getHomeworkStructM(
+                    token = token,
+                    homeworkId = homework.id,
+                    resourceId = homework.resourceId,
+                    parentAccountId = session.parentId,
+                )
+            }.getOrThrow()
             val struct = ETS100CloudTemplate.parseStruct(body) ?: return@runCatching null
             val cacheDir = File(context.cacheDir, "auto_complete_templates")
             val resJson = ETS100CloudTemplate.fetchResJson(struct.templateUrl, cacheDir) { zipFile, destDir ->
@@ -583,12 +642,14 @@ internal class AutoCompleteEngine(
         resourceId: String,
     ): OfficialSnapshot {
         return runCatching {
-            val body = ETS100ApiClient.getHomeworkInfo(
-                token = session.token,
-                homeworkId = homework.id,
-                resourceId = resourceId.ifBlank { "58" },
-                parentAccountId = session.parentId,
-            ).getOrThrow()
+            val body = callWithTokenRefresh(session) { token ->
+                ETS100ApiClient.getHomeworkInfo(
+                    token = token,
+                    homeworkId = homework.id,
+                    resourceId = resourceId.ifBlank { "58" },
+                    parentAccountId = session.parentId,
+                )
+            }.getOrThrow()
             val totalPoint = jsonDouble(body.opt("total_point")) ?: 0.0
             val rows = mutableListOf<JSONObject>()
             body.optJSONArray("score")?.let { array ->
@@ -610,12 +671,14 @@ internal class AutoCompleteEngine(
         resourceId: String,
     ): Readback {
         return runCatching {
-            val body = ETS100ApiClient.getHomeworkInfo(
-                token = session.token,
-                homeworkId = homework.id,
-                resourceId = resourceId,
-                parentAccountId = session.parentId,
-            ).getOrThrow()
+            val body = callWithTokenRefresh(session) { token ->
+                ETS100ApiClient.getHomeworkInfo(
+                    token = token,
+                    homeworkId = homework.id,
+                    resourceId = resourceId,
+                    parentAccountId = session.parentId,
+                )
+            }.getOrThrow()
             val useTime = jsonInt(body.opt("use_time"))
                 ?: jsonInt(body.opt("submit_use_time"))
                 ?: jsonInt(body.opt("homework_use_time"))

@@ -139,6 +139,15 @@ internal suspend fun loadCloudHomeworkListResult(
     ReadCloudLog.info("🔐 使用已保存 Token 请求作业列表")
     var responses = requestHomeworkLists(savedToken)
 
+    // token 过期：用保存的手机号 + 密码自动重新登录一次（等价于重新登录）
+    if (responses.isEmpty() && isTokenExpiredMessage(lastError?.message)) {
+        val renewed = renewEts100Token(context)
+        if (renewed != null) {
+            ReadCloudLog.info("✓ Token 已过期，已使用保存的账号密码自动重新登录")
+            responses = requestHomeworkLists(renewed)
+        }
+    }
+
     if (responses.isEmpty()) {
         if (!isLocalLogin) {
             try {

@@ -1,7 +1,10 @@
 package com.shuaiqiu.fuckets100.feature.account
 
-import android.content.Intent
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -20,12 +23,14 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.shuaiqiu.fuckets100.ETS100AuthManager
@@ -47,11 +52,18 @@ import com.shuaiqiu.fuckets100.feature.shared.LastStudioUnavailableCard
 fun CloudActivationScreen(
     onBack: () -> Unit,
     onLoginSuccess: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") createChangyanLoginIntent: (Context) -> Intent,
+    createChangyanLoginIntent: (Context) -> Intent,
     @Suppress("UNUSED_PARAMETER") accountManager: FeAccountManager = hiltViewModel<AccountViewModel>().manager,
 ) {
     val context = LocalContext.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val changyanLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && ETS100AuthManager.isLoggedIn(context)) {
+            onLoginSuccess()
+        }
+    }
 
     LaunchedEffect(Unit) {
         if (ETS100AuthManager.isLoggedIn(context)) onLoginSuccess()
@@ -92,6 +104,19 @@ fun CloudActivationScreen(
             EtingshuoLocalLoginCard(
                 modifier = Modifier.fillMaxWidth(),
                 onLoggedIn = onLoginSuccess,
+            )
+            TextButton(
+                onClick = { changyanLauncher.launch(createChangyanLoginIntent(context)) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("使用讯飞企业登录（网页）")
+            }
+            Text(
+                "学校统一发放的企业账号请用讯飞网页登录，登录成功后会自动回到这里。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

@@ -77,7 +77,8 @@ fun EtingshuoLocalLoginCard(
             account.grade,
             account.classId,
         )
-        ETS100AuthManager.clearPassword(context)
+        // 保存账号密码，供自动完成 / 云端模式在 token 过期时自动重新登录。
+        ETS100AuthManager.savePassword(context, password)
         password = ""
         verificationCode = ""
         needsSmsCode = false

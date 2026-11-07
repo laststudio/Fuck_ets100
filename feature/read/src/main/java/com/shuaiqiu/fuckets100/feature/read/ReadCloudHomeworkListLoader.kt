@@ -173,12 +173,20 @@ internal suspend fun loadCloudHomeworkListResult(
                 return CloudHomeworkListResult.Failure(message)
             }
         } else if (isChangyanLogin) {
+            if (isTokenExpiredMessage(lastError?.message)) {
+                // 清除失效 Token，避免登录页误判“已登录”而立即返回。
+                ETS100AuthManager.invalidateToken(context)
+            }
             val login = ETS100AuthManager.getPhone(context).orEmpty()
             ReadCloudLog.warn(
                 "企业登录 Token 请求失败，不执行账号密码重登；login=$login，保留已选账号上下文，等待重新讯飞登录"
             )
             return CloudHomeworkListResult.ChangyanExpired("企业账号 Token 已失效，请重新进行讯飞登录")
         } else {
+            if (isTokenExpiredMessage(lastError?.message)) {
+                // 清除失效 Token，避免登录页误判“已登录”而立即返回。
+                ETS100AuthManager.invalidateToken(context)
+            }
             ReadCloudLog.warn("E听说账号 Token 已失效，需要用户重新输入手机号和密码")
             return CloudHomeworkListResult.Failure("E听说账号登录状态已失效，请重新登录")
         }

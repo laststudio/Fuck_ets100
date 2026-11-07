@@ -283,6 +283,22 @@ object ETS100AuthManager {
     }
 
     /**
+     * 作废已失效的 Token（如被顶号），使 [isLoggedIn] 返回 false。
+     *
+     * 只清除 Token 与已登录标记，保留手机号、父账号、已选账号与登录方式，
+     * 重新登录成功后这些上下文仍可复用。
+     */
+    fun invalidateToken(context: Context) {
+        getSecureTokenStore(context).clear()
+        getPrefs(context).edit().apply {
+            remove(Keys.TOKEN)
+            putBoolean(Keys.IS_LOGGED_IN, false)
+            apply()
+        }
+        Log.d(TAG, "已作废失效的 Token")
+    }
+
+    /**
      * 登出
      * 喵~ 清除所有登录信息，但保留机器码喵！
      */

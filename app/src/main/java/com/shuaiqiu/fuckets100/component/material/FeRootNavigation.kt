@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -23,13 +21,9 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FlexibleBottomAppBar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.WideNavigationRail
 import androidx.compose.material3.WideNavigationRailDefaults
@@ -44,7 +38,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.text.style.TextOverflow
 import com.shuaiqiu.fuckets100.Screen
 import kotlinx.coroutines.launch
 
@@ -61,6 +54,10 @@ private val rootDestinations = listOf(
     RootDestination(Screen.Auto, Icons.Filled.AutoAwesome, Icons.Outlined.AutoAwesome),
     RootDestination(Screen.Settings, Icons.Filled.Settings, Icons.Outlined.Settings),
 )
+
+private val liquidItems = rootDestinations.map {
+    LiquidNavItem(label = it.screen.label, icon = it.unselectedIcon, selectedIcon = it.selectedIcon)
+}
 
 @Composable
 fun FeRootNavigationScaffold(
@@ -93,43 +90,16 @@ fun FeRootNavigationScaffold(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun RootBottomBar(
     selectedPage: Int,
     onNavigatePage: (Int) -> Unit,
 ) {
-    FlexibleBottomAppBar(
-        modifier = Modifier.windowInsetsPadding(
-            WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
-        ),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-    ) {
-        rootDestinations.forEachIndexed { index, destination ->
-            val selected = selectedPage == index
-            NavigationBarItem(
-                selected = selected,
-                onClick = { if (!selected) onNavigatePage(index) },
-                icon = {
-                    Icon(
-                        if (selected) destination.selectedIcon else destination.unselectedIcon,
-                        contentDescription = destination.screen.label,
-                    )
-                },
-                label = {
-                    Text(
-                        destination.screen.label,
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Visible,
-                    )
-                },
-                alwaysShowLabel = false,
-            )
-        }
-    }
+    LiquidGlassBottomBar(
+        items = liquidItems,
+        selectedIndex = selectedPage,
+        onSelect = onNavigatePage,
+    )
 }
 
 @Composable

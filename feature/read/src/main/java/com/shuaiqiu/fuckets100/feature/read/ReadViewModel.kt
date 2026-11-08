@@ -8,6 +8,7 @@ import com.shuaiqiu.fuckets100.ActivationMode
 import com.shuaiqiu.fuckets100.CloudHomeworkState
 import com.shuaiqiu.fuckets100.ETS100AnswerReader
 import com.shuaiqiu.fuckets100.ETS100ApiClient
+import com.shuaiqiu.fuckets100.ETS100AuthManager
 import com.shuaiqiu.fuckets100.ETS100FileReader
 import com.shuaiqiu.fuckets100.FeAccountManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -58,6 +59,15 @@ class ReadViewModel @Inject constructor(
         restoreCloudSnapshotIfNeeded()
     }
 
+    private fun clearStaleCloudLoginError() {
+        val error = _uiState.value.cloudHomeworkError ?: return
+        if (!ETS100AuthManager.isLoggedIn(context)) return
+        if (isTokenExpiredMessage(error) || error.contains("登录")) {
+            // 重新登录成功后清掉上一次「登录已失效」的旧错误，避免停留在失败状态。
+            cloudController.clearCloudHomeworkError()
+        }
+    }
+
     fun loadLocal(
         mode: ActivationMode,
         readAccessChecking: Boolean,
@@ -83,6 +93,7 @@ class ReadViewModel @Inject constructor(
         }
 
         if (mode == ActivationMode.CLOUD) {
+            clearStaleCloudLoginError()
             log("☁️ 云端模式，等待用户点击读取按钮加载作业列表")
             _uiState.update { it.copy(isLoading = false, isParsingLocalAnswers = false) }
             return
@@ -252,6 +263,8 @@ class ReadViewModel @Inject constructor(
         status: String = _uiState.value.selectedCloudHomeworkStatus,
         accountOnline: Boolean,
     ) = cloudController.loadCloudHomeworkList(status, accountOnline)
+
+    fun clearCloudHomeworkError() = cloudController.clearCloudHomeworkError()
 
     fun requestHomeworkDownload(
         homeworkInfo: ETS100ApiClient.HomeworkInfo,

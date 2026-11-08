@@ -227,7 +227,7 @@ fun ReadScreen(
         if (readAccessChecking || readAccessIssue != null) {
             onNavigateToActivation()
         } else if (currentMode == ActivationMode.CLOUD && !accountOnline) {
-            Toast.makeText(context, "请登录E听说账号", Toast.LENGTH_SHORT).show()
+            onNavigateToActivation()
         } else if (currentMode == ActivationMode.CLOUD) {
             requestCloudRead()
         } else {
@@ -315,7 +315,7 @@ fun ReadScreen(
                         return@SmallExtendedFloatingActionButton
                     }
                     if (currentMode == ActivationMode.CLOUD && !accountOnline) {
-                        Toast.makeText(context, "请登录E听说账号", Toast.LENGTH_SHORT).show()
+                        onNavigateToActivation()
                         return@SmallExtendedFloatingActionButton
                     }
                     if (currentMode == ActivationMode.CLOUD) {

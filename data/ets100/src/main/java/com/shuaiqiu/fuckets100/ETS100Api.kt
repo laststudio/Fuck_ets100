@@ -413,6 +413,8 @@ internal suspend fun ets100GetHomeworkList(
                     "homework/list 返回业务错误: code=$code, msg=${json.optString("msg")}, " +
                         "parent_account_id=$parentAccountId, status=$status, token=${maskSensitiveToken(token)}"
                 )
+                // 必须把业务码带回上层：调用方依赖 20004 判断 token 失效并重新登录。
+                throw Exception("作业列表获取失败：${json.optString("msg")} ($code)")
             }
             val bodyObj = json.optJSONObject("body")
 

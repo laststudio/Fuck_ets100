@@ -123,6 +123,13 @@ internal class ReadCloudController(
         }
     }
 
+    fun clearCloudHomeworkError() {
+        CloudHomeworkState.error = null
+        uiStateFlow.update {
+            it.copy(cloudHomeworkError = null, changyanTokenExpired = false)
+        }
+    }
+
     suspend fun loadCloudHomeworkList(
         status: String = uiStateFlow.value.selectedCloudHomeworkStatus,
         accountOnline: Boolean,

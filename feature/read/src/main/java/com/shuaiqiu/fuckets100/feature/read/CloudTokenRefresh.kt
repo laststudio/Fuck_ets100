@@ -12,11 +12,27 @@ internal fun isTokenExpired(cause: Throwable?): Boolean = isTokenExpiredMessage(
 
 internal fun isTokenExpiredMessage(message: String?): Boolean {
     val text = message.orEmpty()
-    return text.contains("20004") ||
-        text.contains("token过期") ||
-        text.contains("token 过期") ||
-        text.contains("Token 已失效") ||
-        text.contains("Token 已经失效")
+    if (text.isBlank()) return false
+    return EXPIRED_MARKERS.any { text.contains(it, ignoreCase = true) } ||
+        (text.contains("token", ignoreCase = true) &&
+            listOf("过期", "失效", "无效", "错误").any { text.contains(it) })
+}
+
+private val EXPIRED_MARKERS = listOf(
+    "20004",
+    "登录状态无效",
+    "登录状态已失效",
+    "登录已失效",
+    "Token 已失效",
+    "Token 已经失效",
+    "未登录",
+)
+
+/** 检测到 token 失效时作废本地凭据，避免登录页误判“已登录”而立即返回。 */
+internal fun invalidateTokenIfExpired(context: Context, message: String?) {
+    if (isTokenExpiredMessage(message)) {
+        ETS100AuthManager.invalidateToken(context)
+    }
 }
 
 /**

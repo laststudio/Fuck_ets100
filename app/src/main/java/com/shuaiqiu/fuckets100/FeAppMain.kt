@@ -74,7 +74,13 @@ fun FeAppMain(
     val lifecycleOwner = LocalLifecycleOwner.current
     val feAccountState by accountManager.gateState.collectAsState()
     // 跳过 LastStudio 登录后，云端能力直接依赖 E听说账号登录状态。
-    val etsLoggedIn = ETS100AuthManager.isLoggedIn(context)
+    // Token 被作废 / 重新登录时由 ETS100AuthManager 通知，避免 UI 一直停留在旧状态。
+    var etsLoggedIn by remember { mutableStateOf(ETS100AuthManager.isLoggedIn(context)) }
+    DisposableEffect(context) {
+        val listener: () -> Unit = { etsLoggedIn = ETS100AuthManager.isLoggedIn(context) }
+        ETS100AuthManager.addLoginStateListener(listener)
+        onDispose { ETS100AuthManager.removeLoginStateListener(listener) }
+    }
     val accountOnline = etsLoggedIn
     val navigator = rememberFeNavigator(FeRoute.Main)
     // 答题页被弹出时释放对应 Paper，避免 navigation 层直接依赖 PaperStore。

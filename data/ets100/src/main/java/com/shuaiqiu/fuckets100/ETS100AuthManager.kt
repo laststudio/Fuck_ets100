@@ -48,6 +48,21 @@ object ETS100AuthManager {
     private var prefsInstance: SharedPreferences? = null
     @Volatile
     private var secureTokenStoreInstance: ETS100SecureTokenStore? = null
+
+    /** 登录态监听：登录、作废 Token、登出时通知 UI 重新计算 [isLoggedIn]。 */
+    private val loginStateListeners = java.util.concurrent.CopyOnWriteArraySet<() -> Unit>()
+
+    fun addLoginStateListener(listener: () -> Unit) {
+        loginStateListeners.add(listener)
+    }
+
+    fun removeLoginStateListener(listener: () -> Unit) {
+        loginStateListeners.remove(listener)
+    }
+
+    private fun notifyLoginStateChanged() {
+        loginStateListeners.forEach { runCatching { it() } }
+    }
     
     private fun getPrefs(context: Context): SharedPreferences {
         return prefsInstance ?: synchronized(this) {
@@ -149,6 +164,7 @@ object ETS100AuthManager {
             apply()
         }
         Log.d(TAG, "保存登录信息成功")
+        notifyLoginStateChanged()
     }
 
     fun saveLoginMethod(context: Context, method: String) {
@@ -296,6 +312,7 @@ object ETS100AuthManager {
             apply()
         }
         Log.d(TAG, "已作废失效的 Token")
+        notifyLoginStateChanged()
     }
 
     /**
@@ -315,6 +332,7 @@ object ETS100AuthManager {
         }
         
         Log.d(TAG, "已登出，机器码已保留")
+        notifyLoginStateChanged()
     }
 
     /**
@@ -326,5 +344,6 @@ object ETS100AuthManager {
         val prefs = getPrefs(context)
         prefs.edit().clear().apply()
         Log.d(TAG, "已清除所有认证数据")
+        notifyLoginStateChanged()
     }
 }

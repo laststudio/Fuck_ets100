@@ -26,7 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -65,9 +64,8 @@ fun CloudActivationScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        if (ETS100AuthManager.isLoggedIn(context)) onLoginSuccess()
-    }
+    // 不再在进入页面时自动判定“已登录”并返回：token 可能已失效但本地仍有记录，
+    // 自动 pop 会让用户从错误提示点「前往激活」后立刻被弹回，形成无法重新登录的死循环。
 
     ExpressiveScaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

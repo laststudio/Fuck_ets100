@@ -37,8 +37,8 @@ android {
         applicationId = "com.shuaiqiu.fuckets100"
         minSdk = 26
         targetSdk = 37
-        versionCode = 29
-        versionName = "2.3.5"
+        versionCode = 30
+        versionName = "2.3.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "EXPECTED_SIGNATURE_SHA256", "\"$expectedSignatureSha256\"")

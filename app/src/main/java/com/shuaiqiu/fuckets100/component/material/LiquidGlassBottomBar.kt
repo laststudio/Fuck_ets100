@@ -1,10 +1,11 @@
 package com.shuaiqiu.fuckets100.component.material
 
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,30 +24,39 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.addOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
+import com.shuaiqiu.fuckets100.component.material.liquidglass.LiquidGlassSurface
 
-/**
- * 液态玻璃导航栏的单个条目。
- */
+/** 液态玻璃导航栏的单个条目。 */
 internal data class LiquidNavItem(
     val label: String,
     val icon: ImageVector,
@@ -53,15 +64,29 @@ internal data class LiquidNavItem(
 )
 
 private val BarHeight = 58.dp
-private val LensHeight = 72.dp
-private val LensSize = 68.dp
-private val BarCorner = 30.dp
+private val BarCorner = 29.dp
+
+/** 胶囊上下留出的空间，给阴影用。 */
+private val OverlayPadding = 10.dp
+
+/** 玻璃块刚好盖住图标与文字，比胶囊矮一圈，宽度拉到 72dp。 */
+private val ThumbWidth = 72.dp
+private val ThumbHeight = 46.dp
+private val ThumbCorner = 23.dp
+private val ThumbCenterY = 42.dp
+
+/** 块内内容的放大倍数：图标与文字整体被放大，保持扁平不变形。 */
+private const val ThumbContentScale = 1.12f
+
+private val NavGlyph = 21.dp
+private val NavIconOffset = (-6).dp
+private val NavLabelSize = 11.sp
 
 /**
- * 液态玻璃底栏：内部半透明放大 + 外圈折射高光。
+ * 扁平的液态玻璃底栏。
  *
- * 选中项用一枚圆形「镜头」表现：中心是放大的图标，镜片本身是透明白色径向渐变，
- * 外圈用带色散的 sweep 渐变描边模拟折射，再用左上角的镜面高光收口。
+ * 选中位置是一枚半透明白色高光，夹在磨砂胶囊与页签之间，图标保持清晰；
+ * 长按底栏可左右拖动高光，松手吸附到最近的页签。
  */
 @Composable
 internal fun LiquidGlassBottomBar(
@@ -70,218 +95,221 @@ internal fun LiquidGlassBottomBar(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(BarCorner)
+    if (items.isEmpty()) return
 
-    Box(
+    val density = LocalDensity.current
+    val selected = selectedIndex.coerceIn(0, items.lastIndex)
+
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .windowInsetsPadding(
                 WindowInsets.navigationBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
             )
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .height(LensHeight),
+            .padding(horizontal = 18.dp)
+            .height(BarHeight + OverlayPadding * 2),
         contentAlignment = Alignment.Center,
     ) {
-        // 胶囊玻璃底
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(BarHeight)
-                .drawBehind { drawGlassCapsule(shape, colors.surface, colors.primary) }
-        )
-        Row(
+        val contentWidthPx = with(density) { maxWidth.toPx() }
+        val slotWidthPx = contentWidthPx / items.size
+        val thumbHalfWidthPx = with(density) { ThumbWidth.toPx() } / 2f
+        val thumbHalfHeightPx = with(density) { ThumbHeight.toPx() } / 2f
+        val thumbCenterYPx = with(density) { ThumbCenterY.toPx() }
+
+        // 镜头位置：点击切换时用弹簧，长按拖动时直接跟随手指。
+        val lensIndex = remember { Animatable(selected.toFloat()) }
+        var dragX by remember { mutableFloatStateOf(Float.NaN) }
+        val scope = rememberCoroutineScope()
+
+        LaunchedEffect(selected) {
+            lensIndex.animateTo(
+                targetValue = selected.toFloat(),
+                animationSpec = spring(
+                    dampingRatio = 0.8f,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            )
+        }
+
+        LiquidGlassSurface(
+            lensRect = {
+                val centerX = if (dragX.isFinite()) dragX else (lensIndex.value + 0.5f) * slotWidthPx
+                Rect(
+                    left = centerX - thumbHalfWidthPx,
+                    top = thumbCenterYPx - thumbHalfHeightPx,
+                    right = centerX + thumbHalfWidthPx,
+                    bottom = thumbCenterYPx + thumbHalfHeightPx,
+                )
+            },
+            cornerRadius = ThumbCorner,
+            contentScale = ThumbContentScale,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            items.forEachIndexed { index, item ->
-                LiquidGlassNavItem(
-                    item = item,
-                    selected = index == selectedIndex,
+                .pointerInput(items.size, slotWidthPx) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { offset ->
+                            dragX = offset.x.coerceIn(slotWidthPx / 2f, contentWidthPx - slotWidthPx / 2f)
+                        },
+                        onDrag = { change, amount ->
+                            change.consume()
+                            dragX = (dragX + amount.x)
+                                .coerceIn(slotWidthPx / 2f, contentWidthPx - slotWidthPx / 2f)
+                        },
+                        onDragEnd = {
+                            val target = (dragX / slotWidthPx)
+                                .toInt()
+                                .coerceIn(0, items.lastIndex)
+                            onSelect(target)
+                            scope.launch {
+                                lensIndex.snapTo(target.toFloat())
+                                dragX = Float.NaN
+                                lensIndex.animateTo(
+                                    targetValue = target.toFloat(),
+                                    animationSpec = spring(),
+                                )
+                            }
+                        },
+                        onDragCancel = {
+                            val target = selected
+                            scope.launch {
+                                lensIndex.snapTo(target.toFloat())
+                                dragX = Float.NaN
+                            }
+                        },
+                    )
+                },
+            background = {
+                FrostedCapsule(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .height(BarHeight),
+                )
+            },
+            content = {
+                NavRow(
+                    items = items,
+                    selected = selected,
+                    onSelect = onSelect,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .height(BarHeight),
+                )
+            },
+        )
+    }
+}
+
+/** 四个页签。 */
+@Composable
+private fun NavRow(
+    items: List<LiquidNavItem>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        items.forEachIndexed { index, item ->
+            val isSelected = index == selected
+            val interactionSource = remember { MutableInteractionSource() }
+            val itemModifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .semantics { contentDescription = item.label }
+                .selectable(
+                    selected = isSelected,
+                    interactionSource = interactionSource,
+                    indication = null,
+                    role = Role.Tab,
                     onClick = { onSelect(index) },
-                    modifier = Modifier.weight(1f),
+                )
+
+            Box(
+                modifier = itemModifier,
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (isSelected) item.selectedIcon else item.icon,
+                    contentDescription = null,
+                    tint = if (isSelected) {
+                        colors.onSurface
+                    } else {
+                        colors.onSurface.copy(alpha = 0.72f)
+                    },
+                    modifier = Modifier
+                        .offset(y = NavIconOffset)
+                        .size(NavGlyph),
+                )
+                Text(
+                    text = item.label,
+                    fontSize = NavLabelSize,
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Visible,
+                    color = if (isSelected) {
+                        colors.onSurface
+                    } else {
+                        colors.onSurface.copy(alpha = 0.66f)
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 5.dp),
                 )
             }
         }
     }
 }
 
+/** 底栏的磨砂胶囊底：半透明表面色 + 顶部高光 + 白色玻璃边 + 下方柔和投影。 */
 @Composable
-private fun LiquidGlassNavItem(
-    item: LiquidNavItem,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+private fun FrostedCapsule(modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    val lensScale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.58f, stiffness = Spring.StiffnessMediumLow),
-        label = "lensScale",
-    )
-    val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1.16f else 1f,
-        animationSpec = spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMedium),
-        label = "iconScale",
-    )
-
     Box(
-        modifier = modifier
-            .fillMaxHeight()
-            .selectable(selected = selected, role = Role.Tab, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (lensScale > 0.01f) {
-            Box(
-                modifier = Modifier
-                    .size(LensSize)
-                    .graphicsLayer {
-                        scaleX = 0.72f + 0.28f * lensScale
-                        scaleY = 0.72f + 0.28f * lensScale
-                        alpha = lensScale
-                    }
-                    .drawBehind { drawLens(colors.primary) }
+        modifier = modifier.drawWithCache {
+            val shape = RoundedCornerShape(BarCorner)
+            val outline = shape.createOutline(size, layoutDirection, this)
+            val path = Path().apply { addOutline(outline) }
+            val fill = Brush.verticalGradient(
+                0f to colors.surface.copy(alpha = 0.78f),
+                0.14f to colors.surface.copy(alpha = 0.66f),
+                0.55f to colors.surface.copy(alpha = 0.62f),
+                1f to colors.surface.copy(alpha = 0.74f),
             )
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = if (selected) item.selectedIcon else item.icon,
-                contentDescription = null,
-                tint = if (selected) colors.onSurface else colors.onSurfaceVariant.copy(alpha = 0.78f),
-                modifier = Modifier
-                    .size(22.dp)
-                    .graphicsLayer {
-                        scaleX = iconScale
-                        scaleY = iconScale
-                    },
-            )
-            Text(
-                text = item.label,
-                style = MaterialTheme.typography.labelSmall,
-                fontSize = 10.sp,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Visible,
-                color = if (selected) {
-                    colors.onSurface
-                } else {
-                    colors.onSurfaceVariant.copy(alpha = 0.72f)
-                },
-            )
-        }
-    }
-}
-
-/** 胶囊玻璃：竖向渐变底色 + 顶部高光 + 一圈带色散的折射描边。 */
-private fun DrawScope.drawGlassCapsule(shape: Shape, surface: Color, accent: Color) {
-    val radius = BarCorner.toPx()
-    val corner = CornerRadius(radius, radius)
-    val rect = Rect(Offset.Zero, size)
-    val outline = shape.createOutline(size, layoutDirection, this)
-    val round = (outline as? androidx.compose.ui.graphics.Outline.Rounded)?.roundRect
-        ?: RoundRect(rect, corner, corner)
-
-    drawPath(
-        path = androidx.compose.ui.graphics.Path().apply { addRoundRect(round) },
-        brush = Brush.verticalGradient(
-            colorStops = arrayOf(
-                0f to surface.copy(alpha = 0.86f),
-                0.55f to surface.copy(alpha = 0.68f),
-                1f to surface.copy(alpha = 0.80f),
-            ),
-        ),
-    )
-    drawPath(
-        path = androidx.compose.ui.graphics.Path().apply { addRoundRect(round) },
-        brush = Brush.verticalGradient(
-            colorStops = arrayOf(
+            val sheen = Brush.verticalGradient(
                 0f to Color.White.copy(alpha = 0.34f),
-                0.42f to Color.White.copy(alpha = 0.05f),
-                1f to Color.White.copy(alpha = 0f),
-            ),
-        ),
-    )
-    drawPath(
-        path = androidx.compose.ui.graphics.Path().apply { addRoundRect(round) },
-        brush = Brush.linearGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.62f),
-                Color.White.copy(alpha = 0.08f),
-                accent.copy(alpha = 0.20f),
-                Color.White.copy(alpha = 0.46f),
-            ),
-            start = Offset.Zero,
-            end = Offset(size.width, size.height),
-        ),
-        style = Stroke(width = 1.dp.toPx()),
-    )
-}
-
-/** 镜头：透明径向渐变本体 + 色散折射外圈 + 镜面高光。 */
-private fun DrawScope.drawLens(accent: Color) {
-    val radius = size.minDimension / 2f
-    val center = Offset(size.width / 2f, size.height / 2f)
-    val bodyRadius = radius - 1.5.dp.toPx()
-
-    // 外圈柔光
-    drawCircle(
-        brush = Brush.radialGradient(
-            colorStops = arrayOf(
-                0f to accent.copy(alpha = 0.20f),
-                0.72f to accent.copy(alpha = 0.06f),
+                0.20f to Color.White.copy(alpha = 0.08f),
+                0.46f to Color.Transparent,
+            )
+            val rim = Brush.verticalGradient(
+                0f to Color.White.copy(alpha = 0.92f),
+                0.16f to Color.White.copy(alpha = 0.18f),
+                0.68f to colors.outlineVariant.copy(alpha = 0.10f),
+                1f to colors.outlineVariant.copy(alpha = 0.38f),
+            )
+            val rimStroke = Stroke(width = 1.dp.toPx())
+            val shadowBrush = Brush.radialGradient(
+                0f to Color.Black.copy(alpha = 0.12f),
+                0.62f to Color.Black.copy(alpha = 0.05f),
                 1f to Color.Transparent,
-            ),
-            center = center,
-            radius = radius * 1.08f,
-        ),
-        radius = radius * 1.08f,
-        center = center,
-    )
-    // 透明白色镜片本体（内部放大感来自图标层级缩放）
-    drawCircle(
-        brush = Brush.radialGradient(
-            colorStops = arrayOf(
-                0f to Color.White.copy(alpha = 0.52f),
-                0.58f to Color.White.copy(alpha = 0.24f),
-                1f to Color.White.copy(alpha = 0.10f),
-            ),
-            center = Offset(center.x, center.y * 0.82f),
-            radius = bodyRadius,
-        ),
-        radius = bodyRadius,
-        center = center,
-    )
-    // 色散折射外圈
-    drawCircle(
-        brush = Brush.sweepGradient(
-            0f to Color.White.copy(alpha = 0.55f),
-            0.14f to Color(0x33A8E6FF),
-            0.28f to Color.White.copy(alpha = 0.12f),
-            0.42f to Color(0x3AFF9DE2),
-            0.56f to Color.White.copy(alpha = 0.50f),
-            0.70f to Color(0x2E9DFFE0),
-            0.86f to Color.White.copy(alpha = 0.16f),
-            1f to Color.White.copy(alpha = 0.55f),
-            center = center,
-        ),
-        radius = bodyRadius,
-        center = center,
-        style = Stroke(width = 1.6.dp.toPx()),
-    )
-    // 左上镜面高光
-    val specularCenter = Offset(size.width * 0.33f, size.height * 0.24f)
-    drawCircle(
-        brush = Brush.radialGradient(
-            colorStops = arrayOf(
-                0f to Color.White.copy(alpha = 0.85f),
-                1f to Color.Transparent,
-            ),
-            center = specularCenter,
-            radius = radius * 0.40f,
-        ),
-        radius = radius * 0.40f,
-        center = specularCenter,
-    )
+                center = Offset(size.width / 2f, size.height * 1.06f),
+                radius = size.width * 0.56f,
+            )
+            onDrawBehind {
+                drawOval(
+                    brush = shadowBrush,
+                    topLeft = Offset(size.width * 0.10f, size.height * 0.86f),
+                    size = Size(size.width * 0.80f, size.height * 0.62f),
+                )
+                drawPath(path, fill)
+                drawPath(path, sheen)
+                drawPath(path, rim, style = rimStroke)
+            }
+        },
+    ) {}
 }

@@ -559,6 +559,9 @@ private suspend fun parseZipContent(
         )
         ReadCloudLog.info("   └─ 累计: sections=${allSections.size}, questions=${startIndex + questions.size}")
         return questions.size
+    } catch (e: ResolverAuthorizationDeniedException) {
+        ReadCloudLog.error("   └─ ✗ 解析授权被拦截: ${e.message}")
+        throw e
     } catch (e: Exception) {
         ReadCloudLog.error("   └─ ✗ 解析 content.json 失败: ${e.message}")
         return 0

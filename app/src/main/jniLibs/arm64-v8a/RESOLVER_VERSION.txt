@@ -1,1 +1,1 @@
-libresolver.so 来自 v1.2.0-fe83f0dd546（契约授权门禁）
+libresolver.so 来自 ets_resolver@7fb8a7a（离线版门禁关闭 RESOLVER_OFFLINE=1）

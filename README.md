@@ -6,7 +6,8 @@
 > ⚡ **Fe (Fuck_ets100) 官方极速直链下载**：[https://lastudio.cc/download?app=fe](https://lastudio.cc/download?app=fe)（免登录、不限速）  
 > 💻 **Fe Web 网页版在线提取**：[https://fe-web.lastudio.cc](https://fe-web.lastudio.cc)（无需安装手机 App，电脑/手机浏览器在线查答案）  
 > 📁 **网盘分流与历史版本**：[https://oplist.lastudio.cc/Fe_release](https://oplist.lastudio.cc/Fe_release)  
-> 📦 **GitHub Releases 发布页**：[https://github.com/laststudio/Fuck_ets100/releases](https://github.com/laststudio/Fuck_ets100/releases)
+> 📦 **GitHub Releases 发布页**：[https://github.com/laststudio/Fuck_ets100/releases](https://github.com/laststudio/Fuck_ets100/releases)  
+> 🔧 **源码与构建**：由私有仓库 `laststudio/Fe-pro` 维护；本仓库只保留文档与 Release，不再存放源码
 
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](https://lastudio.cc/terms)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.4.10-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)

@@ -1,8 +1,9 @@
 name: Build & Release APK
 
 on:
-  push:
-    branches: [main]
+  # 源码与构建归 laststudio/Fe-pro：本仓库只承接 Release 资产与公开文档。
+  # 关闭 push 自动构建，避免与 Fe-pro 的 CI 抢同一个正式 tag（v${VERSION}）。
+  # 需要手工出包时用 workflow_dispatch 显式触发。
   workflow_dispatch:
 
 permissions:

@@ -7,7 +7,6 @@
 > 💻 **Fe Web 网页版在线提取**：[https://fe-web.lastudio.cc](https://fe-web.lastudio.cc)（无需安装手机 App，电脑/手机浏览器在线查答案）  
 > 📁 **网盘分流与历史版本**：[https://oplist.lastudio.cc/Fe_release](https://oplist.lastudio.cc/Fe_release)  
 > 📦 **GitHub Releases 发布页**：[https://github.com/laststudio/Fuck_ets100/releases](https://github.com/laststudio/Fuck_ets100/releases)  
-> 🔧 **源码与构建**：由私有仓库 `laststudio/Fe-pro` 维护；本仓库只保留文档与 Release，不再存放源码
 
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](https://lastudio.cc/terms)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.4.10-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
@@ -15,11 +14,6 @@
 [![Android](https://img.shields.io/badge/Android-8.0+-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Direct Download](https://img.shields.io/badge/官方直链-免登录高速下载-blue?logo=googlechrome&logoColor=white)](https://lastudio.cc/download?app=fe)
 [![Fe Web](https://img.shields.io/badge/在线网页版-fe--web.lastudio.cc-0ea5e9?logo=firefox&logoColor=white)](https://fe-web.lastudio.cc)
-
-> 🏷️ **核心搜索关键词**：  
-> **品牌与项目**：Fe | Fuck_ets100 | Fuck ets100 | 科大讯飞e听说 | 讯飞e听说 | e听说中学 | 畅言教育 | LastStudio (lastudio)  
-> **核心功能词**：e听说答案 | e听说作业答案 | e听说自动完成 | e听说考试答案 | e听说外挂 | 英语听说答案 | ets100 | e听说模拟考试  
-> **支持题型与技术**：听选信息答案 | 回答问题答案 | 信息转述答案 | 短文朗读 | 模仿朗读 | 云端直连模式 | 零宽字符直读 | Shizuku免Root
 
 ---
 
@@ -212,19 +206,3 @@ Fe 的诞生与持续演进离不开以下开源生态与技术贡献者：
 - 📦 [laststudio/ets_get_answer](https://github.com/laststudio/ets_get_answer)
 - 📦 [laststudio/eauxiliary](https://github.com/laststudio/eauxiliary)
 
-**联系与反馈：**
-- GitHub Issues: [问题反馈与建议](https://github.com/laststudio/Fuck_ets100/issues)
-- 官方抖音: [抖音主页](https://v.douyin.com/P0GrWYTqi4s/)
-- 官方B站: [B站主页](https://space.bilibili.com/2116040615h)
-
----
-
-## 💰 赞助支持
-
-如果 Fe 在你的学习过程中帮到了你，欢迎请作者喝杯奶茶 ☕，你的支持是项目长期维护与更新的最大动力！
-
-| 支付宝 | 微信支付 |
-| :---: | :---: |
-| ![支付宝](./donate/alipay.png) | ![微信](./donate/wechat.png) |
-
-> 💖 感谢每一位陪伴和支持 LastStudio 成长的小伙伴！

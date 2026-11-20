@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 缓存目录 - 用于分享图片 -->
-    <cache-path name="shared_images" path="." />
-    <!-- 外部存储图片目录 -->
-    <external-files-path name="downloads" path="Download/" />
-</paths>

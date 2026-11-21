@@ -203,6 +203,4 @@ Fe 的诞生与持续演进离不开以下开源生态与技术贡献者：
 - 🚀 [Fe 官方极速下载通道](https://lastudio.cc/download?app=fe)
 - 💻 [Fe Web 在线提取平台](https://fe-web.lastudio.cc)
 - 🦅 [Eklose · 翼课网学习辅助配套工具](https://github.com/laststudio/eklose)
-- 📦 [laststudio/ets_get_answer](https://github.com/laststudio/ets_get_answer)
-- 📦 [laststudio/eauxiliary](https://github.com/laststudio/eauxiliary)
 

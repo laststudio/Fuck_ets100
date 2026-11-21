@@ -819,14 +819,29 @@ content.json
 
 ## 13.3 文本清洗规则
 
-解析题干和答案时建议清洗：
+解析题干和答案时建议清洗，顺序不能反：
 
 ```text
 1. 移除 ets_th{数字} 前缀
-2. 移除 HTML 标签，例如 <p>、<br>、</p>
-3. 移除零宽空格 \u200B
-4. 将 </p><p> 替换为换行
-5. trim 前后空白
+2. 先把结构性标签归一化为换行：</p><p>、<br>、<br/>、</br>、<p>、</p>
+3. 再移除剩余 HTML 标签
+4. 移除零宽空格 \u200B
+5. 逐行 trim，丢弃空行
+```
+
+`<br>` 和 `</p><p>` 是内容的一部分，不是要删除的噪音。如果先执行第 3 步，它们在进入第 2 步前就已经被删掉，换行替换不会命中，题干与选项、段落之间会直接粘连。
+
+示例（广东初中 `collector.role` 的 `ask`）：
+
+```text
+ets_th1 Where will the speakers watch the movie tomorrow?<br>(In the Wanxiang Cinema. / In the Hongxing Cinema. / In the Dadi Cinema.)
+```
+
+按上述顺序清洗后：
+
+```text
+Where will the speakers watch the movie tomorrow?
+(In the Wanxiang Cinema. / In the Hongxing Cinema. / In the Dadi Cinema.)
 ```
 
 ## 13.4 输出数据结构建议
